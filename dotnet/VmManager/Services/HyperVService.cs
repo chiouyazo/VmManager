@@ -240,33 +240,21 @@ public class HyperVService : IVmBackend
             WaitForJob(result);
 
             // Rename the snapshot (WMI creates it with a default name)
-            var jobPath = (string)result["Job"];
-            if (jobPath != null)
+            var snapshotSettingsPath = (string?)result["ResultingSnapshot"];
+            if (snapshotSettingsPath != null)
             {
-                using var job = new ManagementObject(
+                using var snapshotSettings = new ManagementObject(
                     new ManagementScope(@"\\.\root\virtualization\v2"),
-                    new ManagementPath(jobPath),
+                    new ManagementPath(snapshotSettingsPath),
                     null
                 );
-                job.Get();
-                var snapshotSettingsPath = (
-                    (string[])job["ResultingSnapshotSettingData"]
-                )?.FirstOrDefault();
-                if (snapshotSettingsPath != null)
-                {
-                    using var snapshotSettings = new ManagementObject(
-                        new ManagementScope(@"\\.\root\virtualization\v2"),
-                        new ManagementPath(snapshotSettingsPath),
-                        null
-                    );
-                    snapshotSettings.Get();
-                    snapshotSettings["ElementName"] = snapshotName;
+                snapshotSettings.Get();
+                snapshotSettings["ElementName"] = snapshotName;
 
-                    var mgmt = GetManagementService();
-                    var modParams = mgmt.GetMethodParameters("ModifySystemSettings");
-                    modParams["SystemSettings"] = snapshotSettings.GetText(TextFormat.WmiDtd20);
-                    mgmt.InvokeMethod("ModifySystemSettings", modParams, null);
-                }
+                var mgmt = GetManagementService();
+                var modParams = mgmt.GetMethodParameters("ModifySystemSettings");
+                modParams["SystemSettings"] = snapshotSettings.GetText(TextFormat.WmiDtd20);
+                mgmt.InvokeMethod("ModifySystemSettings", modParams, null);
             }
         });
 
@@ -343,6 +331,37 @@ public class HyperVService : IVmBackend
     {
         var name = $"Snapshot {DateTime.Now:yyyy-MM-dd HH:mm}";
         return CreateSnapshotAsync(vmName, name);
+    }
+
+    public async Task CloneVmFromSnapshotAsync(string vmName, string snapshotName, string newVmName)
+    {
+        var script = $$"""
+            $exportPath = Join-Path $env:TEMP "vmm-clone-$([Guid]::NewGuid().ToString('N'))"
+            try {
+                $snap = Get-VMSnapshot -VMName {{Q(vmName)}} -Name {{Q(snapshotName)}}
+                if (-not $snap) { throw 'Snapshot not found.' }
+
+                Export-VMSnapshot -VMSnapshot $snap -Path $exportPath
+
+                $vmcxFile = Get-ChildItem -Path $exportPath -Recurse -Filter '*.vmcx' | Select-Object -First 1
+                if (-not $vmcxFile) { throw 'Export did not produce a .vmcx file.' }
+
+                $defaultPath = (Get-VMHost).VirtualMachinePath
+                $vmDest = Join-Path $defaultPath {{Q(newVmName)}}
+                $vhdDest = Join-Path $vmDest 'Virtual Hard Disks'
+
+                $imported = Import-VM -Path $vmcxFile.FullName -Copy -GenerateNewId `
+                    -VirtualMachinePath $vmDest `
+                    -SnapshotFilePath $vmDest `
+                    -SmartPagingFilePath $vmDest `
+                    -VhdDestinationPath $vhdDest
+
+                Rename-VM -VM $imported -NewName {{Q(newVmName)}}
+            } finally {
+                Remove-Item $exportPath -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            """;
+        await RunPsAsync(script);
     }
 
     // ── Reset disk (kept as PowerShell) ──────────────────────────────────
@@ -669,6 +688,7 @@ public class HyperVService : IVmBackend
     {
         var snapQuery = new RelatedObjectQuery(vm.Path.Path, "Msvm_VirtualSystemSettingData");
         using var snapSearcher = new ManagementObjectSearcher(Scope, snapQuery);
+        var seen = new HashSet<string>();
         var result = new List<SnapshotInfo>();
 
         foreach (ManagementObject snap in snapSearcher.Get())
@@ -676,10 +696,11 @@ public class HyperVService : IVmBackend
             using (snap)
             {
                 var vsType = (string)snap["VirtualSystemType"];
-                if (
-                    vsType != "Microsoft:Hyper-V:Snapshot:Realized"
-                    && vsType != "Microsoft:Hyper-V:Snapshot:Recovery"
-                )
+                if (vsType != "Microsoft:Hyper-V:Snapshot:Realized")
+                    continue;
+
+                var id = (string)snap["VirtualSystemIdentifier"];
+                if (!seen.Add(id))
                     continue;
 
                 var creationTimeStr = (string)snap["CreationTime"];
@@ -689,12 +710,7 @@ public class HyperVService : IVmBackend
                         : DateTime.MinValue;
 
                 result.Add(
-                    new SnapshotInfo(
-                        (string)snap["VirtualSystemIdentifier"],
-                        (string)snap["ElementName"],
-                        creationTime,
-                        snap.Path.Path
-                    )
+                    new SnapshotInfo(id, (string)snap["ElementName"], creationTime, snap.Path.Path)
                 );
             }
         }

@@ -1,5 +1,6 @@
 using System.Windows;
 using VmManager.ViewModels;
+using VmManager.Views.Dialogs;
 
 namespace VmManager.Views.Pages;
 
@@ -17,6 +18,13 @@ public partial class SnapshotsPage : System.Windows.Controls.Page
         DataContext = viewModel;
         InitializeComponent();
         Loaded += OnFirstLoaded;
+
+        _viewModel.RequestVmName = defaultName =>
+        {
+            var dlg = new RenameDialog(defaultName, "Clone VM", "Clone");
+            dlg.Owner = Window.GetWindow(this);
+            return Task.FromResult(dlg.ShowDialog() == true ? dlg.NewName : (string?)null);
+        };
     }
 
     private void OnFirstLoaded(object sender, RoutedEventArgs e)

@@ -180,6 +180,15 @@
                     />
 
                     <Button
+                      Content="📋  Clone VM"
+                      Margin="0,0,8,0"
+                      ToolTip="Create a new VM from this snapshot"
+                      Command="{Binding DataContext.CloneVmFromSnapshotCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                      CommandParameter="{Binding}"
+                      IsEnabled="{Binding DataContext.IsBusy, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource InverseBoolConverter}}"
+                    />
+
+                    <Button
                       Content="⬆  Push"
                       Margin="0,0,8,0"
                       ToolTip="Push this snapshot to the OCI registry so others can use it"

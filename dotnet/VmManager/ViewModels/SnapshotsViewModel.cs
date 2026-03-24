@@ -181,6 +181,38 @@ public partial class SnapshotsViewModel : ObservableObject
         }
     }
 
+    /// <summary>Set by the View to request a name for the new VM clone.</summary>
+    public Func<string, Task<string?>>? RequestVmName { get; set; }
+
+    [RelayCommand]
+    public async Task CloneVmFromSnapshotAsync(VmSnapshot snapshot)
+    {
+        if (SelectedVm == null)
+            return;
+
+        var defaultName = $"{SelectedVm.Name}-{snapshot.Name}".Replace(" ", "-");
+        var newName = RequestVmName != null ? await RequestVmName(defaultName) : defaultName;
+        if (string.IsNullOrWhiteSpace(newName))
+            return;
+
+        IsBusy = true;
+        BusyText = $"Cloning VM from \"{snapshot.Name}\"…";
+
+        try
+        {
+            await _hyperVService.CloneVmFromSnapshotAsync(SelectedVm.Name, snapshot.Name, newName);
+            ShowSuccess($"Created new VM \"{newName}\" from snapshot \"{snapshot.Name}\".");
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Clone failed: {ex.Message}");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     /// <summary>
     /// Exports a snapshot and pushes it to the OCI registry.
     /// The snapshot is exported to a temp directory, packaged, then pushed via the OCI API.
