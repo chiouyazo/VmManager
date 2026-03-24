@@ -1,0 +1,189 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Extract version from tag
+        id: version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -match '^refs/tags/v(.+)$') {
+            $v = $Matches[1]
+          } else {
+            $v = "0.0.0-dev"
+          }
+          Write-Host "Version: $v"
+          "version=$v" | Out-File -Append $env:GITHUB_OUTPUT
+
+      - name: Install CSharpier
+        run: dotnet tool install --global csharpier --version 1.2.6
+
+      - name: Check formatting
+        run: csharpier check dotnet/
+
+      - name: Publish
+        run: >
+          dotnet publish dotnet/VmManager/VmManager.csproj
+          -c Release
+          -r win-x64
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:PublishSingleFile=true
+          -p:SelfContained=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          --output publish/
+
+      - name: Sign application exe
+        shell: pwsh
+        env:
+          SIGN_CERT_PFX: ${{ secrets.SIGN_CERT_PFX }}
+          SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGN_CERT_PFX)) { Write-Host "No signing certificate configured, skipping"; exit 0 }
+          $pfxBytes = [Convert]::FromBase64String($env:SIGN_CERT_PFX)
+          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, $pfxBytes)
+          try {
+            & signtool sign /f $pfxPath /p $env:SIGN_CERT_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 publish\VmManager.exe
+          } finally {
+            Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Build installer
+        run: iscc /DAppVersion=${{ steps.version.outputs.version }} installer\setup.iss
+
+      - name: Sign installer
+        shell: pwsh
+        env:
+          SIGN_CERT_PFX: ${{ secrets.SIGN_CERT_PFX }}
+          SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGN_CERT_PFX)) { Write-Host "No signing certificate configured, skipping"; exit 0 }
+          $pfxBytes = [Convert]::FromBase64String($env:SIGN_CERT_PFX)
+          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, $pfxBytes)
+          try {
+            & signtool sign /f $pfxPath /p $env:SIGN_CERT_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 installer\Output\*.exe
+          } finally {
+            Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Update manifest version and size
+        shell: pwsh
+        run: |
+          Compress-Archive -Path publish\* -DestinationPath "vm-manager-${{ steps.version.outputs.version }}.zip"
+          $size = (Get-Item "vm-manager-${{ steps.version.outputs.version }}.zip").Length
+          $manifest = Get-Content stork-manifest.json -Raw
+          $manifest = $manifest -replace '"version":\s*"[^"]*"', "`"version`": `"${{ steps.version.outputs.version }}`""
+          $manifest = $manifest -replace '"downloadSizeBytes":\s*\d+', "`"downloadSizeBytes`": $size"
+          $manifest | Set-Content stork-manifest.json -NoNewline
+          Write-Host "Package size: $size bytes"
+
+      - name: Package standalone zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path publish\VmManager.exe -DestinationPath publish\VmManager-${{ steps.version.outputs.version }}-win-x64.zip
+
+      - name: Generate checksums
+        shell: pwsh
+        run: |
+          $files = @(
+            "publish\VmManager.exe",
+            "publish\VmManager-${{ steps.version.outputs.version }}-win-x64.zip",
+            (Get-Item "installer\Output\*.exe" -ErrorAction SilentlyContinue).FullName
+          ) | Where-Object { $_ -and (Test-Path $_) }
+          $checksums = $files | ForEach-Object {
+            $hash = (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower()
+            "$hash  $(Split-Path $_ -Leaf)"
+          }
+          $checksums | Out-File -FilePath publish\SHA256SUMS.txt -Encoding utf8
+          Write-Host "Checksums:"
+          $checksums | ForEach-Object { Write-Host $_ }
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: |
+            publish/VmManager.exe
+            publish/VmManager-*-win-x64.zip
+            publish/SHA256SUMS.txt
+            installer/Output/*.exe
+            vm-manager-*.zip
+            stork-manifest.json
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="0.0.0-dev"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: artifacts/
+
+      - name: Publish to Nexus
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+
+          curl -fSk -u "${{ secrets.NEXUS_USERNAME }}:${{ secrets.NEXUS_PASSWORD }}" \
+            -X POST "${{ secrets.NEXUS_URL }}/service/rest/v1/components?repository=Intern" \
+            -F "raw.directory=vm-manager" \
+            -F "raw.asset1=@artifacts/stork-manifest.json" \
+            -F "raw.asset1.filename=manifest.json"
+
+          curl -fSk -u "${{ secrets.NEXUS_USERNAME }}:${{ secrets.NEXUS_PASSWORD }}" \
+            -X POST "${{ secrets.NEXUS_URL }}/service/rest/v1/components?repository=Intern" \
+            -F "raw.directory=vm-manager/versions/${VERSION}" \
+            -F "raw.asset1=@artifacts/stork-manifest.json" \
+            -F "raw.asset1.filename=manifest.json"
+
+          curl -fSk -u "${{ secrets.NEXUS_USERNAME }}:${{ secrets.NEXUS_PASSWORD }}" \
+            -X POST "${{ secrets.NEXUS_URL }}/service/rest/v1/components?repository=Intern" \
+            -F "raw.directory=vm-manager/versions/${VERSION}" \
+            -F "raw.asset1=@artifacts/vm-manager-${VERSION}.zip" \
+            -F "raw.asset1.filename=vm-manager-${VERSION}.zip"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/publish/VmManager.exe
+            artifacts/publish/VmManager-*-win-x64.zip
+            artifacts/publish/SHA256SUMS.txt
+            artifacts/installer/Output/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

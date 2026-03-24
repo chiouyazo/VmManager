@@ -1,0 +1,29 @@
+<Window
+  x:Class="VmManager.Views.Dialogs.RenameDialog"
+  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  Title="Rename VM"
+  Width="340"
+  SizeToContent="Height"
+  ResizeMode="NoResize"
+  WindowStartupLocation="CenterOwner"
+  Background="{DynamicResource BgBrush}"
+  ShowInTaskbar="False"
+>
+  <StackPanel Margin="20">
+    <TextBlock Text="New name" Margin="0,0,0,6" Foreground="{DynamicResource TextBrush}" />
+
+    <TextBox x:Name="NameBox" Margin="0,0,0,20" KeyDown="NameBox_KeyDown" />
+
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+      <Button Content="Cancel" Margin="0,0,8,0" IsCancel="True" Click="Cancel_Click" />
+      <Button
+        x:Name="OkButton"
+        Content="Rename"
+        Style="{StaticResource PrimaryButtonStyle}"
+        IsDefault="True"
+        Click="OK_Click"
+      />
+    </StackPanel>
+  </StackPanel>
+</Window>

@@ -1,0 +1,28 @@
+{
+  "productId": "vm-manager",
+  "title": "VM Manager",
+  "version": "1.0.0",
+  "releaseDate": "2026-03-24",
+  "installType": "Suite",
+  "description": "Hyper-V virtual machine management tool. Create, import, manage and snapshot VMs from OCI image catalogs.",
+  "releaseNotes": "# VM Manager 1.0.0\n\n- Hyper-V VM lifecycle management\n- OCI registry and local catalog support\n- Snapshot management\n- WMI-based operations for fast performance",
+  "recommendedInstallPath": "C:\\Program Files\\VmManager",
+  "downloadSizeBytes": 0,
+  "requirements": [
+    "Windows 10/11 or Windows Server 2019+",
+    "Hyper-V enabled",
+    "Administrator privileges"
+  ],
+  "cleanup": {
+    "registryKeys": [],
+    "dataLocations": [
+      "%LOCALAPPDATA%\\VmManager"
+    ]
+  },
+  "shortcuts": [
+    {
+      "exeName": "VmManager.exe",
+      "displayName": "VM Manager"
+    }
+  ]
+}
