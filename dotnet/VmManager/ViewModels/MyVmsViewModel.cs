@@ -14,7 +14,7 @@ namespace VmManager.ViewModels;
 /// </summary>
 public partial class MyVmsViewModel : ObservableObject
 {
-    private readonly HyperVService _hyperVService;
+    internal readonly HyperVService _hyperVService;
     private readonly DockerService _dockerService;
     private readonly VmBackendFactory _backendFactory;
     private readonly SettingsService _settingsService;
@@ -401,72 +401,83 @@ public partial class MyVmsViewModel : ObservableObject
         }
     }
 
+    /// <summary>Set by the View to navigate to snapshots page with a VM pre-selected.</summary>
+    public Action<string>? NavigateToSnapshots { get; set; }
+
     [RelayCommand]
     public async Task QuickSnapshotAsync(VmInstance vm)
     {
-        if (vm.Backend == "HyperV")
+        var defaultName = $"Snapshot {DateTime.Now:yyyy-MM-dd HH:mm}";
+        var snapshotName = RequestVmName != null ? await RequestVmName(defaultName) : defaultName;
+        if (string.IsNullOrWhiteSpace(snapshotName))
+            return;
+
+        IsBusy = true;
+        ShowStatus = false;
+        StatusMessage = $"Creating snapshot of {vm.Name}…";
+
+        try
         {
-            await RunOperationAsync(
-                $"Creating snapshot of {vm.Name}…",
-                () => _hyperVService.QuickSnapshotAsync(vm.Name),
-                $"Snapshot of {vm.Name} created."
-            );
+            if (vm.Backend == "HyperV")
+                await _hyperVService.CreateSnapshotAsync(vm.Name, snapshotName);
+            else
+                await BackendFor(vm).CreateSnapshotAsync(vm.Name, snapshotName);
+
+            ShowSuccess($"Snapshot \"{snapshotName}\" of {vm.Name} created.");
+            NavigateToSnapshots?.Invoke(vm.Name);
         }
-        else
+        catch (Exception ex)
         {
-            var snapshotName = $"snapshot-{DateTime.Now:yyyyMMdd-HHmm}";
-            await RunOperationAsync(
-                $"Committing {vm.Name}…",
-                () => BackendFor(vm).CreateSnapshotAsync(vm.Name, snapshotName),
-                $"Snapshot of {vm.Name} committed."
-            );
+            ShowError($"Snapshot failed: {ex.Message}");
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
+
+    /// <summary>Set by the View to let user pick a snapshot to restore.</summary>
+    public Func<VmInstance, Task<string?>>? PickSnapshotForRestore { get; set; }
 
     [RelayCommand]
     public async Task ResetVmAsync(VmInstance vm)
     {
-        if (ConfirmAction != null)
+        // Let user choose: pick a specific snapshot or reset to base
+        string? choice = null;
+        if (PickSnapshotForRestore != null)
         {
-            var confirmed = await ConfirmAction(
-                $"Reset \"{vm.Name}\"?",
-                vm.Backend == "Docker"
-                    ? "This will stop and remove the container."
-                    : "This will stop the VM and restore it to its oldest snapshot.\n"
-                        + "If no snapshots exist, the VM's disk will be reset to the original base image."
-            );
-            if (!confirmed)
-                return;
+            choice = await PickSnapshotForRestore(vm);
+            if (choice == null)
+                return; // cancelled
         }
 
         IsBusy = true;
         ShowStatus = false;
-        StatusMessage = $"Resetting {vm.Name}…";
+        StatusMessage = $"Restoring {vm.Name}…";
 
         try
         {
-            var backend = BackendFor(vm);
-            var restored = await backend.ResetVmAsync(vm.Name);
-            if (restored)
+            if (choice == "__base__")
             {
-                ShowSuccess($"{vm.Name} reset.");
+                // Reset to base image
+                var backend = BackendFor(vm);
+                var restored = await backend.ResetVmAsync(vm.Name);
+                if (!restored && vm.Backend == "HyperV")
+                    await _hyperVService.ResetDiskAsync(vm.Name);
+                ShowSuccess($"{vm.Name} reset to base image.");
             }
-            else if (vm.Backend == "HyperV")
+            else if (!string.IsNullOrEmpty(choice))
             {
-                // No checkpoints - reset the differencing disk to original state
-                await _hyperVService.ResetDiskAsync(vm.Name);
-                ShowSuccess($"{vm.Name} reset to original base image.");
-            }
-            else
-            {
-                ShowSuccess($"{vm.Name} removed.");
+                // Restore to specific snapshot
+                await _hyperVService.RestoreSnapshotAsync(vm.Name, choice);
+                ShowSuccess($"{vm.Name} restored to snapshot.");
             }
 
             await RefreshAsync();
         }
         catch (Exception ex)
         {
-            ShowError(ex.Message);
+            ShowError($"Restore failed: {ex.Message}");
         }
         finally
         {

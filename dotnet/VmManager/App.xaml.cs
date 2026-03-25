@@ -109,8 +109,6 @@ public partial class App : Application
         var settings = settingsService.Load();
         if (!settings.IsRegistryConfigured)
         {
-            // Prevent WPF from shutting down when the dialog closes (no MainWindow yet)
-            ShutdownMode = ShutdownMode.OnExplicitShutdown;
             var setup = new SetupDialog();
             if (setup.ShowDialog() == true && !setup.WasSkipped)
             {

@@ -28,6 +28,46 @@ public partial class MyVmsPage : System.Windows.Controls.Page
             );
             return Task.FromResult(result == MessageBoxResult.Yes);
         };
+
+        // Wire up snapshot name prompt
+        _viewModel.RequestVmName = defaultName =>
+        {
+            var dlg = new RenameDialog(defaultName, "Snapshot Name", "Create");
+            dlg.Owner = Window.GetWindow(this);
+            return Task.FromResult(dlg.ShowDialog() == true ? dlg.NewName : (string?)null);
+        };
+
+        // Wire up snapshot restore picker
+        _viewModel.PickSnapshotForRestore = async vm =>
+        {
+            var snapshots = await viewModel._hyperVService.GetSnapshotsAsync(vm.Name);
+
+            var items = new List<string>();
+            var idMap = new Dictionary<int, string>();
+
+            for (var i = 0; i < snapshots.Count; i++)
+            {
+                items.Add($"{snapshots[i].Name}  ({snapshots[i].CreationTime:yyyy-MM-dd HH:mm})");
+                idMap[i] = snapshots[i].Id;
+            }
+
+            items.Add("Reset to base image");
+            idMap[items.Count - 1] = "__base__";
+
+            var picker = new SnapshotPickerDialog(items) { Owner = Window.GetWindow(this) };
+            if (picker.ShowDialog() != true || picker.SelectedIndex < 0)
+                return null;
+
+            return idMap[picker.SelectedIndex];
+        };
+
+        // Wire up navigation to snapshots page
+        _viewModel.NavigateToSnapshots = vmName =>
+        {
+            var mainWindow = (Views.MainWindow)Window.GetWindow(this)!;
+            mainWindow.PendingSnapshotVmName = vmName;
+            mainWindow.NavigateToPage("Snapshots");
+        };
     }
 
     private void OnFirstLoaded(object sender, RoutedEventArgs e)

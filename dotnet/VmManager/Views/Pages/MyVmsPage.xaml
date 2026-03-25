@@ -260,40 +260,91 @@
                   <Button
                     Content="📸"
                     Margin="0,0,6,0"
-                    ToolTip="Take a quick snapshot (auto-named with timestamp)"
+                    ToolTip="{Binding State, Converter={StaticResource VmStateIsOffConverter}, ConverterParameter=off, StringFormat='Create a snapshot'}"
                     Visibility="{Binding Backend, Converter={StaticResource IsNotDockerToVisibilityConverter}}"
                     Command="{Binding DataContext.QuickSnapshotCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                     CommandParameter="{Binding}"
-                    IsEnabled="{Binding DataContext.IsBusy, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource InverseBoolConverter}}"
-                  />
+                    IsEnabled="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+                  >
+                    <Button.Style>
+                      <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                        <Style.Triggers>
+                          <DataTrigger
+                            Binding="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+                            Value="False"
+                          >
+                            <Setter Property="ToolTip" Value="Requires the VM to be turned off" />
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </Button.Style>
+                  </Button>
 
                   <Button
-                    Content="↺  Reset"
+                    Content="↺  Restore"
                     Margin="0,0,6,0"
-                    ToolTip="Restore this VM to its oldest snapshot"
                     Visibility="{Binding Backend, Converter={StaticResource IsNotDockerToVisibilityConverter}}"
                     Command="{Binding DataContext.ResetVmCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                     CommandParameter="{Binding}"
-                    IsEnabled="{Binding DataContext.IsBusy, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource InverseBoolConverter}}"
-                  />
+                    IsEnabled="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+                  >
+                    <Button.Style>
+                      <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                        <Setter Property="ToolTip" Value="Restore to a snapshot or base image" />
+                        <Style.Triggers>
+                          <DataTrigger
+                            Binding="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+                            Value="False"
+                          >
+                            <Setter Property="ToolTip" Value="Requires the VM to be turned off" />
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </Button.Style>
+                  </Button>
 
                   <Button
                     Content="✏"
                     Margin="0,0,6,0"
-                    ToolTip="Rename this VM"
                     Click="RenameButton_Click"
                     Tag="{Binding}"
-                    IsEnabled="{Binding DataContext.IsBusy, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource InverseBoolConverter}}"
-                  />
+                    IsEnabled="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+                  >
+                    <Button.Style>
+                      <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                        <Setter Property="ToolTip" Value="Rename this VM" />
+                        <Style.Triggers>
+                          <DataTrigger
+                            Binding="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+                            Value="False"
+                          >
+                            <Setter Property="ToolTip" Value="Requires the VM to be turned off" />
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </Button.Style>
+                  </Button>
 
                   <Button
                     Content="🗑"
-                    Style="{StaticResource DangerButtonStyle}"
-                    ToolTip="Permanently delete this VM"
                     Command="{Binding DataContext.DeleteVmCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                     CommandParameter="{Binding}"
-                    IsEnabled="{Binding DataContext.IsBusy, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource InverseBoolConverter}}"
-                  />
+                    IsEnabled="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+                  >
+                    <Button.Style>
+                      <Style TargetType="Button" BasedOn="{StaticResource DangerButtonStyle}">
+                        <Setter Property="ToolTip" Value="Permanently delete this VM" />
+                        <Style.Triggers>
+                          <DataTrigger
+                            Binding="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+                            Value="False"
+                          >
+                            <Setter Property="ToolTip" Value="Requires the VM to be turned off" />
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </Button.Style>
+                  </Button>
                 </StackPanel>
               </Grid>
             </Border>

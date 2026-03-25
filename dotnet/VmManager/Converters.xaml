@@ -13,4 +13,5 @@
   <conv:BackendDisplayNameConverter x:Key="BackendDisplayNameConverter" />
   <conv:BackendToExpandedConverter x:Key="BackendToExpandedConverter" />
   <conv:IsNotDockerToVisibilityConverter x:Key="IsNotDockerToVisibilityConverter" />
+  <conv:VmStateIsOffConverter x:Key="VmStateIsOffConverter" />
 </ResourceDictionary>

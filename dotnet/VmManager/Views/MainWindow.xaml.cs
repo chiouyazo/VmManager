@@ -109,6 +109,9 @@ public partial class MainWindow : Window
     private Page? _currentPage;
     private DateTime _lastRefresh = DateTime.MinValue;
 
+    /// <summary>When set, the Snapshots page will auto-select this VM after navigation.</summary>
+    public string? PendingSnapshotVmName { get; set; }
+
     private async void OnWindowActivated(object? sender, EventArgs e)
     {
         // Debounce - don't refresh if we just did (< 3 seconds ago)
@@ -199,7 +202,7 @@ public partial class MainWindow : Window
             NavigateTo(btn, page);
     }
 
-    private void NavigateTo(Button navButton, Page page)
+    private async void NavigateTo(Button navButton, Page page)
     {
         if (_activeNavButton is not null)
             _activeNavButton.Style = (Style)FindResource("NavButtonStyle");
@@ -209,5 +212,15 @@ public partial class MainWindow : Window
         _currentPage = page;
 
         ContentFrame.Navigate(page);
+
+        // Auto-select VM on snapshots page if requested
+        if (page == _snapshotsPage && PendingSnapshotVmName != null)
+        {
+            var vmName = PendingSnapshotVmName;
+            PendingSnapshotVmName = null;
+            var vm = _snapshotsPage.DataContext as ViewModels.SnapshotsViewModel;
+            if (vm != null)
+                await vm.SelectVmByNameAsync(vmName);
+        }
     }
 }

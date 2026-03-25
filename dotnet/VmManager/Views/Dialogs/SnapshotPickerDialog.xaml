@@ -1,0 +1,37 @@
+<Window
+  x:Class="VmManager.Views.Dialogs.SnapshotPickerDialog"
+  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  Title="Restore to Snapshot"
+  Width="420"
+  SizeToContent="Height"
+  ResizeMode="NoResize"
+  WindowStartupLocation="CenterOwner"
+  Background="{DynamicResource BgBrush}"
+  ShowInTaskbar="False"
+>
+  <StackPanel Margin="20">
+    <TextBlock
+      Text="Choose a snapshot to restore:"
+      Margin="0,0,0,12"
+      Foreground="{DynamicResource TextBrush}"
+    />
+
+    <ListBox
+      x:Name="SnapshotList"
+      MaxHeight="300"
+      FontSize="13"
+      MouseDoubleClick="SnapshotList_DoubleClick"
+    />
+
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+      <Button Content="Cancel" Margin="0,0,8,0" IsCancel="True" Click="Cancel_Click" />
+      <Button
+        Content="Restore"
+        Style="{StaticResource PrimaryButtonStyle}"
+        IsDefault="True"
+        Click="OK_Click"
+      />
+    </StackPanel>
+  </StackPanel>
+</Window>

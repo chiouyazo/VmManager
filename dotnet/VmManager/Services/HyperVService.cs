@@ -253,28 +253,13 @@ public class HyperVService : IVmBackend
 
     public async Task<bool> ResetVmAsync(string name)
     {
-        return await Task.Run(() =>
-        {
-            var vm = GetVm(name) ?? throw new InvalidOperationException($"VM '{name}' not found.");
+        var snapshots = await GetSnapshotsAsync(name);
+        if (snapshots.Count == 0)
+            return false;
 
-            // Force stop
-            var state = (ushort)vm["EnabledState"];
-            if (state != 3)
-            {
-                var stopParams = vm.GetMethodParameters("RequestStateChange");
-                stopParams["RequestedState"] = (ushort)3;
-                WaitForJob(vm.InvokeMethod("RequestStateChange", stopParams, null));
-            }
-
-            // Find oldest snapshot
-            var snapshots = GetSnapshotsForVm(vm);
-            if (snapshots.Count == 0)
-                return false;
-
-            var oldest = snapshots.OrderBy(s => s.CreationTime).First();
-            ApplySnapshotInternal(oldest.WmiPath!);
-            return true;
-        });
+        var oldest = snapshots.OrderBy(s => s.CreationTime).First();
+        await RestoreSnapshotAsync(name, oldest.Id);
+        return true;
     }
 
     // ── Import VM (kept as PowerShell - complex VHD/VM creation) ─────────
@@ -341,98 +326,76 @@ public class HyperVService : IVmBackend
         await RunPsAsync(script);
     }
 
-    // ── Snapshots (WMI) ──────────────────────────────────────────────────────
+    // ── Snapshots (PowerShell — reliable across all Hyper-V configurations) ──
 
-    public Task<List<VmSnapshot>> GetSnapshotsAsync(string vmName)
+    public async Task<List<VmSnapshot>> GetSnapshotsAsync(string vmName)
     {
-        return Task.Run(() =>
+        try
         {
-            var vm = GetVm(vmName);
-            if (vm == null)
-                return new List<VmSnapshot>();
-            return GetSnapshotsForVm(vm)
-                .Select(s => new VmSnapshot
+            var output = await RunPsAsync(
+                $"Get-VMSnapshot -VMName {Q(vmName)} | Select-Object Name, Id, CreationTime | ConvertTo-Json -Compress"
+            );
+            if (string.IsNullOrWhiteSpace(output) || output == "null")
+                return [];
+
+            var json = output.TrimStart().StartsWith("[") ? output : $"[{output}]";
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            return doc
+                .RootElement.EnumerateArray()
+                .Select(el => new VmSnapshot
                 {
-                    Id = s.Id,
-                    Name = s.Name,
+                    Id = el.GetProperty("Id").GetString() ?? "",
+                    Name = el.GetProperty("Name").GetString() ?? "",
                     VmName = vmName,
-                    CreationTime = s.CreationTime,
+                    CreationTime = el.TryGetProperty("CreationTime", out var ct)
+                        ? ParsePsDateTime(ct)
+                        : DateTime.MinValue,
                 })
+                .OrderByDescending(s => s.CreationTime)
                 .ToList();
-        });
+        }
+        catch
+        {
+            return [];
+        }
     }
 
-    public Task CreateSnapshotAsync(string vmName, string snapshotName) =>
-        Task.Run(() =>
+    private static DateTime ParsePsDateTime(System.Text.Json.JsonElement el)
+    {
+        try
         {
-            var vm =
-                GetVm(vmName) ?? throw new InvalidOperationException($"VM '{vmName}' not found.");
-            var snapshotService = GetSnapshotService();
-            var settings = GetVmSettings(vm);
+            if (el.ValueKind == System.Text.Json.JsonValueKind.String)
+                return DateTime.Parse(el.GetString()!);
+            if (
+                el.ValueKind == System.Text.Json.JsonValueKind.Object
+                && el.TryGetProperty("DateTime", out var dt)
+            )
+                return DateTime.Parse(dt.GetString()!);
+        }
+        catch { }
+        return DateTime.MinValue;
+    }
 
-            var inParams = snapshotService.GetMethodParameters("CreateSnapshot");
-            inParams["AffectedSystem"] = vm.Path.Path;
-            inParams["SnapshotSettings"] = "";
-            inParams["SnapshotType"] = (ushort)2; // Full snapshot
+    public async Task CreateSnapshotAsync(string vmName, string snapshotName)
+    {
+        await RunPsAsync(
+            $"Checkpoint-VM -Name {Q(vmName)} -SnapshotName {Q(snapshotName)} -Confirm:$false"
+        );
+    }
 
-            var result = snapshotService.InvokeMethod("CreateSnapshot", inParams, null);
-            WaitForJob(result);
+    public async Task RestoreSnapshotAsync(string vmName, string snapshotId)
+    {
+        await RunPsAsync(
+            $"$vm = Get-VM -Name {Q(vmName)}; if ($vm.State -ne 'Off') {{ Stop-VM -Name {Q(vmName)} -Force -TurnOff }}; $snap = Get-VMSnapshot -VMName {Q(vmName)} | Where-Object {{ $_.Id -eq '{snapshotId}' }}; if (-not $snap) {{ throw 'Snapshot not found.' }}; Restore-VMSnapshot -VMSnapshot $snap -Confirm:$false"
+        );
+    }
 
-            // Rename the snapshot (WMI creates it with a default name)
-            var snapshotSettingsPath = (string?)result["ResultingSnapshot"];
-            if (snapshotSettingsPath != null)
-            {
-                using var snapshotSettings = new ManagementObject(
-                    new ManagementScope(@"\\.\root\virtualization\v2"),
-                    new ManagementPath(snapshotSettingsPath),
-                    null
-                );
-                snapshotSettings.Get();
-                snapshotSettings["ElementName"] = snapshotName;
-
-                var mgmt = GetManagementService();
-                var modParams = mgmt.GetMethodParameters("ModifySystemSettings");
-                modParams["SystemSettings"] = snapshotSettings.GetText(TextFormat.WmiDtd20);
-                mgmt.InvokeMethod("ModifySystemSettings", modParams, null);
-            }
-        });
-
-    public Task RestoreSnapshotAsync(string vmName, string snapshotId) =>
-        Task.Run(() =>
-        {
-            var vm =
-                GetVm(vmName) ?? throw new InvalidOperationException($"VM '{vmName}' not found.");
-
-            // Force stop
-            var state = (ushort)vm["EnabledState"];
-            if (state != 3)
-            {
-                var stopParams = vm.GetMethodParameters("RequestStateChange");
-                stopParams["RequestedState"] = (ushort)3;
-                WaitForJob(vm.InvokeMethod("RequestStateChange", stopParams, null));
-            }
-
-            var snapshot =
-                GetSnapshotsForVm(vm).FirstOrDefault(s => s.Id == snapshotId)
-                ?? throw new InvalidOperationException("Snapshot not found.");
-            ApplySnapshotInternal(snapshot.WmiPath!);
-        });
-
-    public Task DeleteSnapshotAsync(string vmName, string snapshotId) =>
-        Task.Run(() =>
-        {
-            var vm =
-                GetVm(vmName) ?? throw new InvalidOperationException($"VM '{vmName}' not found.");
-            var snapshot =
-                GetSnapshotsForVm(vm).FirstOrDefault(s => s.Id == snapshotId)
-                ?? throw new InvalidOperationException("Snapshot not found.");
-
-            var snapshotService = GetSnapshotService();
-            var inParams = snapshotService.GetMethodParameters("DestroySnapshot");
-            inParams["AffectedSnapshot"] = snapshot.WmiPath;
-            var result = snapshotService.InvokeMethod("DestroySnapshot", inParams, null);
-            WaitForJob(result);
-        });
+    public async Task DeleteSnapshotAsync(string vmName, string snapshotId)
+    {
+        await RunPsAsync(
+            $"$snap = Get-VMSnapshot -VMName {Q(vmName)} | Where-Object {{ $_.Id -eq '{snapshotId}' }}; if (-not $snap) {{ throw 'Snapshot not found.' }}; Remove-VMSnapshot -VMSnapshot $snap -Confirm:$false"
+        );
+    }
 
     // ── Connect ──────────────────────────────────────────────────────────────
 
@@ -509,6 +472,7 @@ public class HyperVService : IVmBackend
     {
         var script = $$"""
             $vm = Get-VM -Name {{Q(name)}}
+            if ($vm.State -ne 'Off') { Stop-VM -Name {{Q(name)}} -Force -TurnOff }
             $vhd = $vm | Get-VMHardDiskDrive | Select-Object -First 1
             if (-not $vhd) { throw 'No hard disk found on VM.' }
             $vhdPath = $vhd.Path

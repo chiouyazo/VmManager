@@ -191,3 +191,17 @@ public class IsNotDockerToVisibilityConverter : IValueConverter
         CultureInfo culture
     ) => throw new NotSupportedException();
 }
+
+/// <summary>Returns true when the VM state is "Off", false otherwise.</summary>
+public class VmStateIsOffConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+        value?.ToString() == "Off";
+
+    public object ConvertBack(
+        object value,
+        Type targetType,
+        object parameter,
+        CultureInfo culture
+    ) => throw new NotSupportedException();
+}

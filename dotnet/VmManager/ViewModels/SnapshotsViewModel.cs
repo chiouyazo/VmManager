@@ -65,11 +65,17 @@ public partial class SnapshotsViewModel : ObservableObject
 
         try
         {
+            var previousName = SelectedVm?.Name;
             var vms = await _hyperVService.GetVmsAsync();
             AvailableVms = new ObservableCollection<VmInstance>(vms);
 
-            if (SelectedVm != null)
-                await LoadSnapshotsAsync();
+            // Restore previous selection by name
+            if (previousName != null)
+            {
+                var match = vms.FirstOrDefault(v => v.Name == previousName);
+                if (match != null)
+                    SelectedVm = match;
+            }
         }
         catch (Exception ex)
         {
@@ -79,6 +85,16 @@ public partial class SnapshotsViewModel : ObservableObject
         {
             IsLoadingVms = false;
         }
+    }
+
+    /// <summary>Selects a VM by name (used for cross-page navigation).</summary>
+    public async Task SelectVmByNameAsync(string vmName)
+    {
+        if (AvailableVms.Count == 0)
+            await LoadVmsAsync();
+        var match = AvailableVms.FirstOrDefault(v => v.Name == vmName);
+        if (match != null)
+            SelectedVm = match;
     }
 
     [RelayCommand]
@@ -196,7 +212,8 @@ public partial class SnapshotsViewModel : ObservableObject
             return;
 
         IsBusy = true;
-        BusyText = $"Cloning VM from \"{snapshot.Name}\"…";
+        BusyText =
+            $"Cloning \"{newName}\" from snapshot \"{snapshot.Name}\" — this may take several minutes…";
 
         try
         {
