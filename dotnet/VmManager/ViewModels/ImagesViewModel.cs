@@ -297,6 +297,7 @@ public partial class ImagesViewModel : ObservableObject
                 settings.DefaultVmPassword
             );
 
+            MyVmsViewModel.TrackManagedVm(defaultName);
             ShowSuccess($"VM \"{defaultName}\" created with DE locale and QWERTZ keyboard.");
             NavigateTo?.Invoke("MyVMs");
         }
@@ -343,6 +344,7 @@ public partial class ImagesViewModel : ObservableObject
                 settings.DefaultCpuCount,
                 localImage.Name
             );
+            MyVmsViewModel.TrackManagedVm(localImage.Name);
             ShowSuccess($"VM \"{localImage.Name}\" created.");
             NavigateTo?.Invoke("MyVMs");
         }

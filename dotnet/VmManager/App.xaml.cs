@@ -109,6 +109,8 @@ public partial class App : Application
         var settings = settingsService.Load();
         if (!settings.IsRegistryConfigured)
         {
+            // Prevent WPF from shutting down when the dialog closes (no MainWindow yet)
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
             var setup = new SetupDialog();
             if (setup.ShowDialog() == true && !setup.WasSkipped)
             {
@@ -119,7 +121,6 @@ public partial class App : Application
         }
 
         var mainWindow = _host.Services.GetRequiredService<MainWindow>();
-        // Switch to normal shutdown mode now that the main window is about to show
         ShutdownMode = ShutdownMode.OnMainWindowClose;
         MainWindow = mainWindow;
         mainWindow.Show();

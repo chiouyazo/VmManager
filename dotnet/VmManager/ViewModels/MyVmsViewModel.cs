@@ -85,6 +85,56 @@ public partial class MyVmsViewModel : ObservableObject
     public string DefaultUsername => _settingsService.Load().DefaultVmUsername;
     public string DefaultPassword => _settingsService.Load().DefaultVmPassword;
 
+    // ── Managed VMs tracking ─────────────────────────────────────────────────
+
+    private static readonly string ManagedVmsPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "VmManager",
+        "managed-vms.json"
+    );
+
+    private HashSet<string> _managedVms = [];
+
+    private void LoadManagedVms()
+    {
+        try
+        {
+            if (File.Exists(ManagedVmsPath))
+            {
+                var json = File.ReadAllText(ManagedVmsPath);
+                _managedVms = JsonSerializer.Deserialize<HashSet<string>>(json) ?? [];
+            }
+        }
+        catch
+        {
+            _managedVms = [];
+        }
+    }
+
+    public static void TrackManagedVm(string vmName)
+    {
+        try
+        {
+            var path = ManagedVmsPath;
+            HashSet<string> vms = [];
+            if (File.Exists(path))
+            {
+                var json = File.ReadAllText(path);
+                vms = JsonSerializer.Deserialize<HashSet<string>>(json) ?? [];
+            }
+
+            vms.Add(vmName);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(
+                path,
+                JsonSerializer.Serialize(vms, new JsonSerializerOptions { WriteIndented = true })
+            );
+        }
+        catch
+        { /* non-fatal */
+        }
+    }
+
     // ── Notes persistence ────────────────────────────────────────────────────
 
     private static readonly string NotesPath = Path.Combine(
@@ -138,6 +188,7 @@ public partial class MyVmsViewModel : ObservableObject
         try
         {
             LoadNotes();
+            LoadManagedVms();
             var allVms = new List<VmInstance>();
 
             // Load Hyper-V VMs
@@ -171,10 +222,16 @@ public partial class MyVmsViewModel : ObservableObject
                 // Docker not available - silently skip
             }
 
-            // Attach notes to VMs
+            // Attach notes and managed status to VMs
             foreach (var vm in allVms)
+            {
                 if (_notes.TryGetValue(vm.Name, out var note))
                     vm.Notes = note;
+                if (vm.Backend == "HyperV")
+                    vm.IsManaged = _managedVms.Contains(vm.Name);
+                else
+                    vm.IsManaged = true; // Docker containers are always app-managed
+            }
 
             Vms = new ObservableCollection<VmInstance>(allVms);
         }

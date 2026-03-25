@@ -18,6 +18,15 @@ public class VmInstance
     /// <summary>Which backend manages this VM: "HyperV" or "Docker".</summary>
     public string Backend { get; set; } = "HyperV";
 
+    /// <summary>Whether this VM was created/imported through VM Manager.</summary>
+    public bool IsManaged { get; set; }
+
+    /// <summary>Grouping key for the My VMs page: "HyperV", "HyperV_External", or "Docker".</summary>
+    public string GroupKey =>
+        Backend == "Docker" ? "Docker"
+        : IsManaged ? "HyperV"
+        : "HyperV_External";
+
     /// <summary>Temporary storage for the rename dialog result before the command fires.</summary>
     public string PendingRename { get; set; } = "";
 

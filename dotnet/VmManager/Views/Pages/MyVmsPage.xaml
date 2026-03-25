@@ -13,7 +13,7 @@
   <Page.Resources>
     <CollectionViewSource x:Key="GroupedVms" Source="{Binding Vms}">
       <CollectionViewSource.GroupDescriptions>
-        <PropertyGroupDescription PropertyName="Backend" />
+        <PropertyGroupDescription PropertyName="GroupKey" />
       </CollectionViewSource.GroupDescriptions>
     </CollectionViewSource>
   </Page.Resources>
@@ -261,6 +261,7 @@
                     Content="📸"
                     Margin="0,0,6,0"
                     ToolTip="Take a quick snapshot (auto-named with timestamp)"
+                    Visibility="{Binding Backend, Converter={StaticResource IsNotDockerToVisibilityConverter}}"
                     Command="{Binding DataContext.QuickSnapshotCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                     CommandParameter="{Binding}"
                     IsEnabled="{Binding DataContext.IsBusy, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource InverseBoolConverter}}"
@@ -270,6 +271,7 @@
                     Content="↺  Reset"
                     Margin="0,0,6,0"
                     ToolTip="Restore this VM to its oldest snapshot"
+                    Visibility="{Binding Backend, Converter={StaticResource IsNotDockerToVisibilityConverter}}"
                     Command="{Binding DataContext.ResetVmCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                     CommandParameter="{Binding}"
                     IsEnabled="{Binding DataContext.IsBusy, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource InverseBoolConverter}}"

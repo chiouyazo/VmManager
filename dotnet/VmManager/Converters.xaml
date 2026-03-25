@@ -12,4 +12,5 @@
   <conv:ZeroCountToVisibilityConverter x:Key="ZeroCountToVisibilityConverter" />
   <conv:BackendDisplayNameConverter x:Key="BackendDisplayNameConverter" />
   <conv:BackendToExpandedConverter x:Key="BackendToExpandedConverter" />
+  <conv:IsNotDockerToVisibilityConverter x:Key="IsNotDockerToVisibilityConverter" />
 </ResourceDictionary>

@@ -54,6 +54,11 @@ public partial class MainWindow : Window
         DataContext = this;
         InitializeComponent();
 
+        // Set version from assembly
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        if (version != null)
+            VersionText.Text = $"VM Manager v{version.Major}.{version.Minor}.{version.Build}";
+
         // Start on the Images page
         NavigateTo(NavImages, _imagesPage);
 

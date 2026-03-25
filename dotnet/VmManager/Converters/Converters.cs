@@ -144,13 +144,15 @@ public class ZeroCountToVisibilityConverter : IValueConverter
     ) => throw new NotSupportedException();
 }
 
-/// <summary>Converts the internal backend key ("HyperV") to a display-friendly name ("Hyper-V").</summary>
+/// <summary>Converts a GroupKey to a display-friendly name.</summary>
 public class BackendDisplayNameConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
         value?.ToString() switch
         {
             "HyperV" => "Hyper-V",
+            "HyperV_External" => "Hyper-V (External)",
+            "Docker" => "Docker",
             _ => value?.ToString() ?? "",
         };
 
@@ -162,11 +164,25 @@ public class BackendDisplayNameConverter : IValueConverter
     ) => throw new NotSupportedException();
 }
 
-/// <summary>Returns false when the string equals "Docker", true otherwise. Used to collapse Docker group by default.</summary>
+/// <summary>Returns true only for the "HyperV" (managed) group. Docker and External are collapsed by default.</summary>
 public class BackendToExpandedConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
-        value?.ToString() != "Docker";
+        value?.ToString() == "HyperV";
+
+    public object ConvertBack(
+        object value,
+        Type targetType,
+        object parameter,
+        CultureInfo culture
+    ) => throw new NotSupportedException();
+}
+
+/// <summary>Returns <see cref="Visibility.Collapsed"/> for Docker VMs, <see cref="Visibility.Visible"/> otherwise.</summary>
+public class IsNotDockerToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+        value?.ToString() == "Docker" ? Visibility.Collapsed : Visibility.Visible;
 
     public object ConvertBack(
         object value,
