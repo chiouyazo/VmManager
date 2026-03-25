@@ -35,36 +35,175 @@ public class HyperVService : IVmBackend
 
     // ── VMs ──────────────────────────────────────────────────────────────────
 
-    public Task<List<VmInstance>> GetVmsAsync()
+    public async Task<List<VmInstance>> GetVmsAsync()
     {
-        return Task.Run(() =>
+        // Try WMI first (fast)
+        var vms = await Task.Run(() =>
         {
-            var query = new SelectQuery("Msvm_ComputerSystem", "Caption = 'Virtual Machine'");
-            using var searcher = new ManagementObjectSearcher(Scope, query);
-            var vms = new List<VmInstance>();
-
-            foreach (ManagementObject vm in searcher.Get())
+            try
             {
-                using (vm)
+                var query = new SelectQuery("Msvm_ComputerSystem", "Caption = 'Virtual Machine'");
+                using var searcher = new ManagementObjectSearcher(Scope, query);
+                var result = new List<VmInstance>();
+
+                foreach (ManagementObject vm in searcher.Get())
                 {
-                    var state = (ushort)vm["EnabledState"];
-                    var onTime = vm["OnTimeInMilliseconds"];
-                    vms.Add(
-                        new VmInstance
-                        {
-                            Name = (string)vm["ElementName"],
-                            State = MapWmiState(state),
-                            MemoryAssigned = state == 2 ? GetMemoryUsage(vm) : 0,
-                            Uptime =
-                                onTime != null
-                                    ? TimeSpan.FromMilliseconds((ulong)onTime)
-                                    : TimeSpan.Zero,
-                        }
-                    );
+                    using (vm)
+                    {
+                        var state = (ushort)vm["EnabledState"];
+                        var onTime = vm["OnTimeInMilliseconds"];
+                        result.Add(
+                            new VmInstance
+                            {
+                                Name = (string)vm["ElementName"],
+                                State = MapWmiState(state),
+                                MemoryAssigned = state == 2 ? GetMemoryUsage(vm) : 0,
+                                Uptime =
+                                    onTime != null
+                                        ? TimeSpan.FromMilliseconds((ulong)onTime)
+                                        : TimeSpan.Zero,
+                            }
+                        );
+                    }
                 }
+
+                return result;
             }
-            return vms;
+            catch
+            {
+                return new List<VmInstance>();
+            }
         });
+
+        // Fallback to PowerShell if WMI returned nothing
+        if (vms.Count == 0)
+            vms = await GetVmsViaPowerShellAsync();
+
+        return vms;
+    }
+
+    private async Task<List<VmInstance>> GetVmsViaPowerShellAsync()
+    {
+        try
+        {
+            var output = await RunPsAsync(
+                "Get-VM | Select-Object Name, State, MemoryAssigned, Uptime | ConvertTo-Json -Compress"
+            );
+            if (string.IsNullOrWhiteSpace(output) || output == "null")
+                return [];
+
+            var vms = new List<VmInstance>();
+            using var doc = System.Text.Json.JsonDocument.Parse(
+                output.TrimStart().StartsWith("[") ? output : $"[{output}]"
+            );
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                vms.Add(
+                    new VmInstance
+                    {
+                        Name = el.GetProperty("Name").GetString() ?? "",
+                        State = MapPsState(el.GetProperty("State").GetInt32()),
+                        MemoryAssigned = el.TryGetProperty("MemoryAssigned", out var mem)
+                            ? mem.GetInt64()
+                            : 0,
+                        Uptime = el.TryGetProperty("Uptime", out var up)
+                            ? ParsePsTimeSpan(up)
+                            : TimeSpan.Zero,
+                    }
+                );
+            }
+
+            return vms;
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static string MapPsState(int state) =>
+        state switch
+        {
+            2 => "Running",
+            3 => "Off",
+            6 => "Saved",
+            9 => "Paused",
+            _ => $"Unknown ({state})",
+        };
+
+    private static TimeSpan ParsePsTimeSpan(System.Text.Json.JsonElement el)
+    {
+        try
+        {
+            if (el.ValueKind == System.Text.Json.JsonValueKind.String)
+                return TimeSpan.Parse(el.GetString()!);
+            if (
+                el.ValueKind == System.Text.Json.JsonValueKind.Object
+                && el.TryGetProperty("Ticks", out var ticks)
+            )
+                return TimeSpan.FromTicks(ticks.GetInt64());
+        }
+        catch { }
+        return TimeSpan.Zero;
+    }
+
+    /// <summary>
+    /// Runs diagnostic checks and returns a report about Hyper-V VM visibility.
+    /// </summary>
+    public async Task<string> TroubleshootVmListingAsync()
+    {
+        var lines = new List<string>();
+        try
+        {
+            // Check WMI namespace
+            try
+            {
+                var scope = new ManagementScope(@"\\.\root\virtualization\v2");
+                scope.Connect();
+                lines.Add("[OK] WMI namespace root\\virtualization\\v2 is accessible.");
+
+                var query = new SelectQuery("Msvm_ComputerSystem", "Caption = 'Virtual Machine'");
+                using var searcher = new ManagementObjectSearcher(scope, query);
+                var count = searcher.Get().Count;
+                lines.Add($"[OK] WMI query returned {count} VM(s).");
+            }
+            catch (Exception ex)
+            {
+                lines.Add($"[FAIL] WMI namespace error: {ex.Message}");
+            }
+
+            // Check PowerShell Get-VM
+            try
+            {
+                var psOutput = await RunPsAsync(
+                    "$vms = Get-VM; Write-Output \"$($vms.Count) VM(s) found via Get-VM\"; $vms | ForEach-Object { Write-Output \"  - $($_.Name) ($($_.State)) Path=$($_.Path)\" }"
+                );
+                lines.Add($"[PS] {psOutput}");
+            }
+            catch (Exception ex)
+            {
+                lines.Add($"[FAIL] PowerShell Get-VM failed: {ex.Message}");
+            }
+
+            // Check Hyper-V feature
+            try
+            {
+                var featureOutput = await RunPsAsync(
+                    "(Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V).State"
+                );
+                lines.Add($"[INFO] Hyper-V feature state: {featureOutput}");
+            }
+            catch (Exception ex)
+            {
+                lines.Add($"[WARN] Could not check Hyper-V feature: {ex.Message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            lines.Add($"[ERROR] Troubleshoot failed: {ex.Message}");
+        }
+
+        return string.Join("\n", lines);
     }
 
     public Task StartVmAsync(string name) => ChangeVmStateAsync(name, 2); // 2 = Enabled/Running

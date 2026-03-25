@@ -56,6 +56,15 @@ public partial class MyVmsViewModel : ObservableObject
     [ObservableProperty]
     private bool _hyperVUnavailable;
 
+    [ObservableProperty]
+    private bool _noVmsDetected;
+
+    [ObservableProperty]
+    private string _troubleshootReport = "";
+
+    [ObservableProperty]
+    private bool _showTroubleshoot;
+
     /// <summary>
     /// Set by the View to show confirmation dialogs.
     /// Returns true if user confirms, false to cancel.
@@ -103,6 +112,29 @@ public partial class MyVmsViewModel : ObservableObject
             {
                 var json = File.ReadAllText(ManagedVmsPath);
                 _managedVms = JsonSerializer.Deserialize<HashSet<string>>(json) ?? [];
+            }
+            else
+            {
+                // First run with tracking: seed from VMs that have notes
+                // (user interacted with them through the app → managed)
+                _managedVms = [];
+                if (File.Exists(NotesPath))
+                {
+                    var notesJson = File.ReadAllText(NotesPath);
+                    var notes = JsonSerializer.Deserialize<Dictionary<string, string>>(notesJson);
+                    if (notes != null)
+                        _managedVms = [.. notes.Keys];
+                }
+
+                // Persist so next load uses the file
+                Directory.CreateDirectory(Path.GetDirectoryName(ManagedVmsPath)!);
+                File.WriteAllText(
+                    ManagedVmsPath,
+                    JsonSerializer.Serialize(
+                        _managedVms,
+                        new JsonSerializerOptions { WriteIndented = true }
+                    )
+                );
             }
         }
         catch
@@ -179,11 +211,30 @@ public partial class MyVmsViewModel : ObservableObject
     // ── Commands ─────────────────────────────────────────────────────────────
 
     [RelayCommand]
+    public async Task RunTroubleshootAsync()
+    {
+        ShowTroubleshoot = false;
+        TroubleshootReport = "Running diagnostics…";
+        ShowTroubleshoot = true;
+
+        try
+        {
+            TroubleshootReport = await _hyperVService.TroubleshootVmListingAsync();
+        }
+        catch (Exception ex)
+        {
+            TroubleshootReport = $"Troubleshoot failed: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
     public async Task RefreshAsync()
     {
         IsLoading = true;
         ShowStatus = false;
         HyperVUnavailable = false;
+        NoVmsDetected = false;
+        ShowTroubleshoot = false;
 
         try
         {
@@ -227,13 +278,11 @@ public partial class MyVmsViewModel : ObservableObject
             {
                 if (_notes.TryGetValue(vm.Name, out var note))
                     vm.Notes = note;
-                if (vm.Backend == "HyperV")
-                    vm.IsManaged = _managedVms.Contains(vm.Name);
-                else
-                    vm.IsManaged = true; // Docker containers are always app-managed
+                vm.IsManaged = vm.Backend != "HyperV" || _managedVms.Contains(vm.Name);
             }
 
             Vms = new ObservableCollection<VmInstance>(allVms);
+            NoVmsDetected = allVms.Count == 0 && !HyperVUnavailable;
         }
         catch (Exception ex)
         {

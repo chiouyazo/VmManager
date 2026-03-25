@@ -201,6 +201,7 @@ public partial class SnapshotsViewModel : ObservableObject
         try
         {
             await _hyperVService.CloneVmFromSnapshotAsync(SelectedVm.Name, snapshot.Name, newName);
+            MyVmsViewModel.TrackManagedVm(newName);
             ShowSuccess($"Created new VM \"{newName}\" from snapshot \"{snapshot.Name}\".");
         }
         catch (Exception ex)

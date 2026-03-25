@@ -289,6 +289,7 @@ public partial class ImagesViewModel : ObservableObject
                 settings.DefaultCpuCount,
                 defaultName
             );
+            MyVmsViewModel.TrackManagedVm(defaultName);
 
             CreateVmStatusMessage = "Applying DE locale + QWERTZ keyboard (VM is booting)…";
             await _hyperVService.ConfigureLocaleAsync(
@@ -296,8 +297,6 @@ public partial class ImagesViewModel : ObservableObject
                 settings.DefaultVmUsername,
                 settings.DefaultVmPassword
             );
-
-            MyVmsViewModel.TrackManagedVm(defaultName);
             ShowSuccess($"VM \"{defaultName}\" created with DE locale and QWERTZ keyboard.");
             NavigateTo?.Invoke("MyVMs");
         }

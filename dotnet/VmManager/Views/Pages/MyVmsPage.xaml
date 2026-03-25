@@ -322,6 +322,29 @@
         Foreground="{DynamicResource MutedBrush}"
         HorizontalAlignment="Center"
       />
+      <Button
+        Content="Troubleshoot"
+        Margin="0,16,0,0"
+        HorizontalAlignment="Center"
+        Visibility="{Binding NoVmsDetected, Converter={StaticResource BoolToVisibilityConverter}}"
+        Command="{Binding RunTroubleshootCommand}"
+      />
+      <Border
+        Style="{StaticResource CardStyle}"
+        Margin="0,12,0,0"
+        MaxWidth="600"
+        Visibility="{Binding ShowTroubleshoot, Converter={StaticResource BoolToVisibilityConverter}}"
+      >
+        <TextBox
+          Text="{Binding TroubleshootReport, Mode=OneWay}"
+          IsReadOnly="True"
+          FontFamily="Consolas"
+          FontSize="11"
+          TextWrapping="Wrap"
+          Background="Transparent"
+          BorderThickness="0"
+        />
+      </Border>
     </StackPanel>
 
     <!-- Default credentials footer -->
