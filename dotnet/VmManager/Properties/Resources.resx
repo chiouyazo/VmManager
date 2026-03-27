@@ -1,0 +1,277 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msOccurs="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msOccurs="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="xml:space" use="optional" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msOccurs="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>1.3</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+
+  <!-- App -->
+  <data name="AppTitle" xml:space="preserve"><value>VM Manager</value></data>
+  <data name="AppSubtitle" xml:space="preserve"><value>VM Manager</value></data>
+  <data name="AppSetupTitle" xml:space="preserve"><value>VM Manager Setup</value></data>
+
+  <!-- Navigation -->
+  <data name="Nav_Marketplace" xml:space="preserve"><value>Marketplace</value></data>
+  <data name="Nav_MyVms" xml:space="preserve"><value>My VMs</value></data>
+  <data name="Nav_Settings" xml:space="preserve"><value>Settings</value></data>
+
+  <!-- Status bar tooltips -->
+  <data name="Tooltip_OpenGitHub" xml:space="preserve"><value>Open project on GitHub</value></data>
+  <data name="Tooltip_GoToImageSources" xml:space="preserve"><value>Go to Image Sources settings</value></data>
+  <data name="Tooltip_Refresh" xml:space="preserve"><value>Refresh</value></data>
+  <data name="Tooltip_CopyToClipboard" xml:space="preserve"><value>Copy to clipboard</value></data>
+  <data name="Tooltip_CopyUsername" xml:space="preserve"><value>Copy username</value></data>
+  <data name="Tooltip_CopyPassword" xml:space="preserve"><value>Copy password</value></data>
+  <data name="Tooltip_RenameVm" xml:space="preserve"><value>Rename this VM</value></data>
+  <data name="Tooltip_RenameRequiresOff" xml:space="preserve"><value>Requires the VM to be turned off</value></data>
+  <data name="Tooltip_DeleteVm" xml:space="preserve"><value>Permanently delete this VM</value></data>
+  <data name="Tooltip_DeleteSnapshot" xml:space="preserve"><value>Delete snapshot</value></data>
+  <data name="Tooltip_RemoveFeed" xml:space="preserve"><value>Remove this feed</value></data>
+  <data name="Tooltip_Delete" xml:space="preserve"><value>Delete</value></data>
+
+  <!-- My VMs page -->
+  <data name="MyVms_PageTitle" xml:space="preserve"><value>My VMs</value></data>
+  <data name="MyVms_Start" xml:space="preserve"><value>Start</value></data>
+  <data name="MyVms_Stop" xml:space="preserve"><value>Stop</value></data>
+  <data name="MyVms_Connect" xml:space="preserve"><value>Connect</value></data>
+  <data name="MyVms_Rename" xml:space="preserve"><value>Rename</value></data>
+  <data name="MyVms_Restore" xml:space="preserve"><value>Restore</value></data>
+  <data name="MyVms_Clone" xml:space="preserve"><value>Clone</value></data>
+  <data name="MyVms_Push" xml:space="preserve"><value>Push</value></data>
+  <data name="MyVms_Create" xml:space="preserve"><value>Create</value></data>
+  <data name="MyVms_ResetToBase" xml:space="preserve"><value>Reset to base</value></data>
+  <data name="MyVms_Snapshots" xml:space="preserve"><value>Snapshots</value></data>
+  <data name="MyVms_LoadingVms" xml:space="preserve"><value>Loading VMs...</value></data>
+  <data name="MyVms_NoVmsFound" xml:space="preserve"><value>No virtual machines found</value></data>
+  <data name="MyVms_NoVmsHint" xml:space="preserve"><value>Import an image from the Images page to get started.</value></data>
+  <data name="MyVms_Troubleshoot" xml:space="preserve"><value>Troubleshoot</value></data>
+  <data name="MyVms_BackendUnavailable" xml:space="preserve"><value>The VM backend is not available. Check that the required virtualization platform is enabled on the agent machine.</value></data>
+  <data name="MyVms_DefaultCredentials" xml:space="preserve"><value>Default credentials</value></data>
+  <data name="MyVms_User" xml:space="preserve"><value>User:</value></data>
+  <data name="MyVms_Password" xml:space="preserve"><value>Password:</value></data>
+  <data name="MyVms_From" xml:space="preserve"><value>from </value></data>
+  <data name="MyVms_NotesPlaceholder" xml:space="preserve"><value>Add notes...</value></data>
+  <data name="MyVms_SnapshotNamePlaceholder" xml:space="preserve"><value>Snapshot name...</value></data>
+  <data name="MyVms_UptimeFormat" xml:space="preserve"><value>Uptime: {0:hh\:mm\:ss}</value></data>
+
+  <!-- Images / Marketplace page -->
+  <data name="Images_PageTitle" xml:space="preserve"><value>Marketplace</value></data>
+  <data name="Images_SearchPlaceholder" xml:space="preserve"><value>Search images...</value></data>
+  <data name="Images_Import" xml:space="preserve"><value>Import</value></data>
+  <data name="Images_CreateVm" xml:space="preserve"><value>Create VM</value></data>
+  <data name="Images_ReImport" xml:space="preserve"><value>Re-import</value></data>
+  <data name="Images_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Images_LocalImages" xml:space="preserve"><value>Local Images</value></data>
+  <data name="Images_SharedSnapshots" xml:space="preserve"><value>Shared Snapshots</value></data>
+  <data name="Images_SnapshotBadge" xml:space="preserve"><value>snapshot</value></data>
+  <data name="Images_LoadingCatalog" xml:space="preserve"><value>Loading catalog...</value></data>
+  <data name="Images_NoSourcesConfigured" xml:space="preserve"><value>No image sources configured</value></data>
+  <data name="Images_NoSourcesHint" xml:space="preserve"><value>Go to Settings to configure an OCI registry, Nexus, or local catalog path.</value></data>
+  <data name="Images_NoImagesFound" xml:space="preserve"><value>No images found</value></data>
+  <data name="Images_NoImagesHint" xml:space="preserve"><value>Push images to your registry, or check your search filters.</value></data>
+
+  <!-- Settings page -->
+  <data name="Settings_PageTitle" xml:space="preserve"><value>Settings</value></data>
+  <data name="Settings_ImageSources" xml:space="preserve"><value>Image Sources</value></data>
+  <data name="Settings_AddFeed" xml:space="preserve"><value>Add Feed</value></data>
+  <data name="Settings_FeedNamePlaceholder" xml:space="preserve"><value>Feed name</value></data>
+  <data name="Settings_UrlPlaceholder" xml:space="preserve"><value>URL or path</value></data>
+  <data name="Settings_UsernamePlaceholder" xml:space="preserve"><value>Username</value></data>
+  <data name="Settings_PasswordPlaceholder" xml:space="preserve"><value>Password</value></data>
+  <data name="Settings_TestConnection" xml:space="preserve"><value>Test Connection</value></data>
+  <data name="Settings_Discover" xml:space="preserve"><value>Discover</value></data>
+  <data name="Settings_VmDefaults" xml:space="preserve"><value>VM Defaults</value></data>
+  <data name="Settings_Memory" xml:space="preserve"><value>Memory: </value></data>
+  <data name="Settings_MemoryUnit" xml:space="preserve"><value> MB</value></data>
+  <data name="Settings_Cpu" xml:space="preserve"><value>CPU: </value></data>
+  <data name="Settings_CpuUnit" xml:space="preserve"><value> cores</value></data>
+  <data name="Settings_DefaultUsername" xml:space="preserve"><value>Default Username</value></data>
+  <data name="Settings_DefaultPassword" xml:space="preserve"><value>Default Password</value></data>
+  <data name="Settings_UsernameSample" xml:space="preserve"><value>e.g. Administrator</value></data>
+  <data name="Settings_PasswordSample" xml:space="preserve"><value>e.g. Admin123!</value></data>
+  <data name="Settings_LocalVmStorage" xml:space="preserve"><value>Local VM Storage</value></data>
+  <data name="Settings_LocalVmPathSample" xml:space="preserve"><value>e.g. C:\VMs</value></data>
+  <data name="Settings_Browse" xml:space="preserve"><value>Browse...</value></data>
+  <data name="Settings_LocaleSettings" xml:space="preserve"><value>Locale Settings</value></data>
+  <data name="Settings_ApplyLocale" xml:space="preserve"><value>Apply locale and keyboard layout after VM creation</value></data>
+  <data name="Settings_Locale" xml:space="preserve"><value>Locale</value></data>
+  <data name="Settings_KeyboardLayout" xml:space="preserve"><value>Keyboard Layout</value></data>
+  <data name="Settings_Save" xml:space="preserve"><value>Save Settings</value></data>
+  <data name="Settings_Saved" xml:space="preserve"><value>Settings saved.</value></data>
+  <data name="Settings_SaveFailedFormat" xml:space="preserve"><value>Failed to save: {0}</value></data>
+  <data name="Settings_Remove" xml:space="preserve"><value>Remove</value></data>
+  <data name="Settings_SelectVmFolder" xml:space="preserve"><value>Select Local VMs Folder</value></data>
+
+  <!-- Settings connection status -->
+  <data name="Settings_Testing" xml:space="preserve"><value>Testing...</value></data>
+  <data name="Settings_Connected" xml:space="preserve"><value>Connected</value></data>
+  <data name="Settings_Unreachable" xml:space="preserve"><value>Unreachable</value></data>
+  <data name="Settings_ConnectionFailedFormat" xml:space="preserve"><value>Failed: {0}</value></data>
+  <data name="Settings_Discovering" xml:space="preserve"><value>Discovering repositories...</value></data>
+  <data name="Settings_ReposFoundFormat" xml:space="preserve"><value>{0} repositor{1} found</value></data>
+  <data name="Settings_NewFeedName" xml:space="preserve"><value>New Feed</value></data>
+
+  <!-- Dialogs -->
+  <data name="Dialog_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Dialog_Push" xml:space="preserve"><value>Push</value></data>
+  <data name="Dialog_Rename" xml:space="preserve"><value>Rename</value></data>
+  <data name="Dialog_RenameVm" xml:space="preserve"><value>Rename VM</value></data>
+  <data name="Dialog_NewName" xml:space="preserve"><value>New name</value></data>
+  <data name="Dialog_SelectPushTarget" xml:space="preserve"><value>Select Push Target</value></data>
+  <data name="Dialog_NoPushFeedMessage" xml:space="preserve"><value>This VM has no linked feed. Choose where to push:</value></data>
+  <data name="Dialog_Back" xml:space="preserve"><value>Back</value></data>
+  <data name="Dialog_Next" xml:space="preserve"><value>Next</value></data>
+  <data name="Dialog_Finish" xml:space="preserve"><value>Finish</value></data>
+  <data name="Dialog_SelectRepository" xml:space="preserve"><value>Select Repository</value></data>
+  <data name="Dialog_SelectRepositoryMessage" xml:space="preserve"><value>This feed has multiple repositories. Choose where to push:</value></data>
+  <data name="Dialog_Select" xml:space="preserve"><value>Select</value></data>
+  <data name="Dialog_SnapshotName" xml:space="preserve"><value>Snapshot Name</value></data>
+  <data name="Dialog_NameYourVm" xml:space="preserve"><value>Name your VM</value></data>
+  <data name="Dialog_CopyFailed" xml:space="preserve"><value>Copy failed</value></data>
+
+  <!-- Wizard -->
+  <data name="Wizard_WelcomeTitle" xml:space="preserve"><value>Welcome to VM Manager</value></data>
+  <data name="Wizard_WelcomeSubtitle" xml:space="preserve"><value>Create, manage, and share virtual machines with your team.</value></data>
+  <data name="Wizard_WelcomeDescription" xml:space="preserve"><value>This wizard will help you configure your VM storage location, default settings, and connect to image feeds.</value></data>
+  <data name="Wizard_VmDefaults" xml:space="preserve"><value>VM Defaults</value></data>
+  <data name="Wizard_VmDefaultsDescription" xml:space="preserve"><value>Configure default settings for new virtual machines.</value></data>
+  <data name="Wizard_VmStoragePath" xml:space="preserve"><value>VM Storage Path</value></data>
+  <data name="Wizard_ApplyLocale" xml:space="preserve"><value>Apply locale after VM creation</value></data>
+  <data name="Wizard_Locale" xml:space="preserve"><value>Locale</value></data>
+  <data name="Wizard_Keyboard" xml:space="preserve"><value>Keyboard</value></data>
+  <data name="Wizard_ImageSources" xml:space="preserve"><value>Image Sources</value></data>
+  <data name="Wizard_ImageSourcesDescription" xml:space="preserve"><value>Configure where to pull VM images from. You can add more later in Settings.</value></data>
+  <data name="Wizard_SkipHint" xml:space="preserve"><value>You can skip this step and configure feeds later in Settings.</value></data>
+  <data name="Wizard_StepFormat" xml:space="preserve"><value>Step {0} of 3</value></data>
+
+  <!-- Status bar (MainWindowViewModel) -->
+  <data name="Status_BackendChecking" xml:space="preserve"><value>Backend: Checking...</value></data>
+  <data name="Status_FeedsChecking" xml:space="preserve"><value>Feeds: checking...</value></data>
+  <data name="Status_NoFeedsConfigured" xml:space="preserve"><value>No feeds configured</value></data>
+  <data name="Status_FeedsConfiguredFormat" xml:space="preserve"><value>Feeds: {0} configured</value></data>
+  <data name="Status_VersionFormat" xml:space="preserve"><value>VM Manager v{0}.{1}.{2}</value></data>
+
+  <!-- MyVmsViewModel messages -->
+  <data name="Status_RunningDiagnostics" xml:space="preserve"><value>Running diagnostics...</value></data>
+  <data name="Status_TroubleshootFailedFormat" xml:space="preserve"><value>Troubleshoot failed: {0}</value></data>
+  <data name="Status_CheckingRamFormat" xml:space="preserve"><value>Checking available RAM for {0}...</value></data>
+  <data name="Status_StartingFormat" xml:space="preserve"><value>Starting {0}...</value></data>
+  <data name="Status_StartedFormat" xml:space="preserve"><value>{0} started.</value></data>
+  <data name="Status_StoppingFormat" xml:space="preserve"><value>Stopping {0}...</value></data>
+  <data name="Status_StoppedFormat" xml:space="preserve"><value>{0} stopped.</value></data>
+  <data name="Status_DeletingFormat" xml:space="preserve"><value>Deleting {0}...</value></data>
+  <data name="Status_DeletedFormat" xml:space="preserve"><value>{0} deleted.</value></data>
+  <data name="Status_ConnectingFormat" xml:space="preserve"><value>Connecting to {0}...</value></data>
+  <data name="Status_RenamingFormat" xml:space="preserve"><value>Renaming {0}...</value></data>
+  <data name="Status_RenamedFormat" xml:space="preserve"><value>Renamed to {0}.</value></data>
+  <data name="Status_CreatingSnapshotFormat" xml:space="preserve"><value>Creating snapshot of {0}...</value></data>
+  <data name="Status_SnapshotCreatedFormat" xml:space="preserve"><value>Snapshot "{0}" created.</value></data>
+  <data name="Status_RestoringFormat" xml:space="preserve"><value>Stopping {0}...</value></data>
+  <data name="Status_ApplyingSnapshotFormat" xml:space="preserve"><value>Applying snapshot "{0}"...</value></data>
+  <data name="Status_RefreshingVmList" xml:space="preserve"><value>Refreshing VM list...</value></data>
+  <data name="Status_RestoredFormat" xml:space="preserve"><value>Restored to "{0}".</value></data>
+  <data name="Status_ResettingFormat" xml:space="preserve"><value>Resetting {0} to base image...</value></data>
+  <data name="Status_RecreatingDiskFormat" xml:space="preserve"><value>Recreating disk for {0}...</value></data>
+  <data name="Status_ResetCompleteFormat" xml:space="preserve"><value>{0} reset to base image.</value></data>
+  <data name="Status_ExportingSnapshotFormat" xml:space="preserve"><value>Exporting snapshot "{0}" for cloning...</value></data>
+  <data name="Status_ClonedFormat" xml:space="preserve"><value>Created new VM "{0}" from snapshot "{1}".</value></data>
+  <data name="Status_PushingToFormat" xml:space="preserve"><value>Pushing to {0}...</value></data>
+  <data name="Status_PushCompleteFormat" xml:space="preserve"><value>Snapshot "{0}" pushed to {1}.</value></data>
+  <data name="Status_DeletingSnapshotFormat" xml:space="preserve"><value>Deleting "{0}"...</value></data>
+  <data name="Status_SnapshotDeletedFormat" xml:space="preserve"><value>Snapshot "{0}" deleted.</value></data>
+
+  <!-- MyVmsViewModel confirm dialogs -->
+  <data name="Confirm_DeleteTitleFormat" xml:space="preserve"><value>Delete "{0}"?</value></data>
+  <data name="Confirm_DeleteVmFormat" xml:space="preserve"><value>This will permanently remove the {0}.</value></data>
+  <data name="Confirm_DeleteVmType" xml:space="preserve"><value>VM</value></data>
+  <data name="Confirm_RestoreTitleFormat" xml:space="preserve"><value>Restore to "{0}"?</value></data>
+  <data name="Confirm_RestoreMessage" xml:space="preserve"><value>This will stop the VM and restore it to this snapshot.</value></data>
+  <data name="Confirm_ResetTitleFormat" xml:space="preserve"><value>Reset "{0}" to base image?</value></data>
+  <data name="Confirm_ResetMessage" xml:space="preserve"><value>This will stop the VM and discard all changes since it was created.</value></data>
+  <data name="Confirm_DeleteSnapshotTitleFormat" xml:space="preserve"><value>Delete snapshot "{0}"?</value></data>
+  <data name="Confirm_DeleteSnapshotMessage" xml:space="preserve"><value>This cannot be undone.</value></data>
+
+  <!-- Error messages -->
+  <data name="Error_ConnectFailedFormat" xml:space="preserve"><value>Failed to connect: {0}</value></data>
+  <data name="Error_SnapshotsFailedFormat" xml:space="preserve"><value>Failed to load snapshots: {0}</value></data>
+  <data name="Error_BaseNameReserved" xml:space="preserve"><value>The name "Base" is reserved for the initial VM state.</value></data>
+  <data name="Error_SnapshotFailedFormat" xml:space="preserve"><value>Snapshot failed: {0}</value></data>
+  <data name="Error_RestoreFailedFormat" xml:space="preserve"><value>Restore failed: {0}</value></data>
+  <data name="Error_ResetFailedFormat" xml:space="preserve"><value>Reset failed: {0}</value></data>
+  <data name="Error_CloneFailedFormat" xml:space="preserve"><value>Clone failed: {0}</value></data>
+  <data name="Error_NoPushTarget" xml:space="preserve"><value>No push target available. Configure a feed in Settings.</value></data>
+  <data name="Error_PushFailedFormat" xml:space="preserve"><value>Push failed: {0}</value></data>
+  <data name="Error_DeleteFailedFormat" xml:space="preserve"><value>Delete failed: {0}</value></data>
+  <data name="Error_NexusDiscoverFailedFormat" xml:space="preserve"><value>Failed to discover repositories on Nexus: {0}</value></data>
+  <data name="Error_NoNexusRepos" xml:space="preserve"><value>No raw repositories found on this Nexus server. Check connectivity and credentials.</value></data>
+  <data name="Error_ImportFailedFormat" xml:space="preserve"><value>Import failed: {0}</value></data>
+  <data name="Error_ImportCancelled" xml:space="preserve"><value>Import cancelled.</value></data>
+  <data name="Error_LocalFilesNotFound" xml:space="preserve"><value>Local files not found. Please Import the version first.</value></data>
+  <data name="Error_CreateVmFailedFormat" xml:space="preserve"><value>Create VM failed: {0}</value></data>
+  <data name="Error_LocalImageNotFound" xml:space="preserve"><value>Local image folder not found.</value></data>
+  <data name="Error_DeleteLocalFailedFormat" xml:space="preserve"><value>Failed to delete: {0}</value></data>
+
+  <!-- ImagesViewModel messages -->
+  <data name="Status_CreatingVm" xml:space="preserve"><value>Creating VM...</value></data>
+  <data name="Status_CopyingFormat" xml:space="preserve"><value>Copying {0}...</value></data>
+  <data name="Status_DownloadingFormat" xml:space="preserve"><value>Downloading {0}...</value></data>
+  <data name="Status_Extracting" xml:space="preserve"><value>Extracting archive...</value></data>
+  <data name="Status_ImportComplete" xml:space="preserve"><value>Import complete - click Create VM to spin up an instance.</value></data>
+  <data name="Status_CreatingBaseSnapshot" xml:space="preserve"><value>Creating base snapshot...</value></data>
+  <data name="Status_ApplyingLocaleFormat" xml:space="preserve"><value>Applying locale {0} (VM is booting)...</value></data>
+  <data name="Status_VmCreatedFormat" xml:space="preserve"><value>VM "{0}" created successfully.</value></data>
+  <data name="Status_DeletedLocalImageFormat" xml:space="preserve"><value>Deleted local image "{0}".</value></data>
+
+  <!-- App-level error messages -->
+  <data name="Error_UnexpectedFormat" xml:space="preserve"><value>An unexpected error occurred:
+
+{0}</value></data>
+  <data name="Error_Title" xml:space="preserve"><value>Error</value></data>
+  <data name="Error_FatalFormat" xml:space="preserve"><value>Fatal error:
+
+{0}
+
+{1}</value></data>
+  <data name="Error_FatalTitle" xml:space="preserve"><value>Fatal Error</value></data>
+  <data name="Error_StartupFormat" xml:space="preserve"><value>VM Manager failed to start:
+
+{0}
+
+{1}</value></data>
+  <data name="Error_StartupTitle" xml:space="preserve"><value>Startup Error</value></data>
+  <data name="Error_NoBackendMessage" xml:space="preserve"><value>No VM backend is available on this machine.
+
+On Windows, enable Hyper-V in Windows Features and restart.
+On Linux, install libvirt and QEMU/KVM.
+
+Continue anyway?</value></data>
+  <data name="Error_NoBackendTitle" xml:space="preserve"><value>No VM Backend Found</value></data>
+
+</root>

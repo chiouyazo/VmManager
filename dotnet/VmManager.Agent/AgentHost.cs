@@ -1,0 +1,132 @@
+using Serilog;
+using VmManager.Agent.Endpoints;
+using VmManager.Agent.Hubs;
+using VmManager.Agent.Services;
+
+namespace VmManager.Agent;
+
+public static class AgentHost
+{
+    public static async Task RunAsync(string[] args, CancellationToken cancellationToken = default)
+    {
+        Log.Information("AgentHost.RunAsync starting");
+
+        RdpConnectionHandler? rdpHandler = null;
+
+        WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+        builder.Host.UseSerilog();
+
+        int httpPort = builder.Configuration.GetValue("VmManager:HttpPort", 18275);
+
+        builder.WebHost.ConfigureKestrel(kestrel =>
+        {
+            kestrel.ListenAnyIP(
+                httpPort,
+                listenOptions =>
+                {
+                    listenOptions.Use(next =>
+                        async context =>
+                        {
+                            System.IO.Pipelines.PipeReader input = context.Transport.Input;
+                            System.IO.Pipelines.ReadResult result = await input.ReadAsync(
+                                context.ConnectionClosed
+                            );
+                            System.Buffers.ReadOnlySequence<byte> buffer = result.Buffer;
+
+                            if (buffer.Length > 0 && buffer.First.Span[0] == 0x03)
+                            {
+                                input.AdvanceTo(buffer.Start);
+                                DuplexPipeStream stream = new DuplexPipeStream(
+                                    input,
+                                    context.Transport.Output
+                                );
+                                await rdpHandler!.HandleRdpConnectionAsync(
+                                    stream,
+                                    context.ConnectionClosed
+                                );
+                                return;
+                            }
+
+                            input.AdvanceTo(buffer.Start);
+                            await next(context);
+                        }
+                    );
+                }
+            );
+        });
+
+        Log.Information("AgentHost: configuring services");
+
+        if (OperatingSystem.IsWindows())
+            builder.Services.AddWindowsService();
+        else if (OperatingSystem.IsLinux())
+            builder.Host.UseSystemd();
+        builder.Services.AddBackendServices();
+        builder.Services.AddCatalogServices();
+        builder.Services.AddAgentServices();
+
+        builder.Services.AddControllers().AddApplicationPart(typeof(AgentHost).Assembly);
+        builder.Services.AddSignalR();
+        builder.Services.AddHealthChecks();
+        builder.Services.AddEndpointsApiExplorer();
+        builder.Services.AddSwaggerGen(options =>
+        {
+            string xmlFile = Path.ChangeExtension(typeof(AgentHost).Assembly.Location, ".xml");
+            if (File.Exists(xmlFile))
+                options.IncludeXmlComments(xmlFile);
+        });
+        builder.Services.AddCors(options =>
+        {
+            options.AddDefaultPolicy(policy =>
+            {
+                policy
+                    .SetIsOriginAllowed(_ => true)
+                    .AllowAnyMethod()
+                    .AllowAnyHeader()
+                    .AllowCredentials();
+            });
+        });
+
+        Log.Information("AgentHost: building app");
+        WebApplication app = builder.Build();
+
+        rdpHandler = app.Services.GetRequiredService<RdpConnectionHandler>();
+
+        app.UseCors();
+        app.UseSwagger();
+        app.UseSwaggerUI();
+        app.MapControllers();
+        app.MapHub<ProgressHub>("/hubs/progress");
+        app.MapHealthChecks("/health");
+        app.MapRdpEndpoints();
+
+        int rdpProxyPort = builder.Configuration.GetValue("VmManager:RdpProxyPort", 13389);
+        if (rdpProxyPort > 0)
+        {
+            RdpProxyListener rdpProxyListener = app.Services.GetRequiredService<RdpProxyListener>();
+            _ = Task.Run(
+                async () =>
+                {
+                    try
+                    {
+                        await rdpProxyListener.StartAsync(rdpProxyPort, cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Error(ex, "RDP proxy listener crashed");
+                    }
+                },
+                cancellationToken
+            );
+        }
+
+        Log.Information(
+            "AgentHost: starting (HTTP+RDP :{HttpPort}{StandaloneRdp})",
+            httpPort,
+            rdpProxyPort > 0 ? ", standalone RDP :" + rdpProxyPort : ""
+        );
+        Task runTask = app.RunAsync();
+        cancellationToken.Register(() => app.StopAsync().GetAwaiter().GetResult());
+        await runTask;
+    }
+}

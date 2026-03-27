@@ -1,40 +1,21 @@
 using System.Collections.ObjectModel;
-using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using VmManager.Models;
+using Microsoft.Extensions.Logging;
 using VmManager.Services;
 
 namespace VmManager.ViewModels;
 
-/// <summary>
-/// ViewModel for the Images (marketplace) page.
-///
-/// Two-step workflow:
-///   1. Import - downloads the .box from the OCI registry and extracts it locally (one-time per version).
-///   2. Create - registers the already-extracted files with Hyper-V (repeatable, fast).
-/// </summary>
-public partial class ImagesViewModel : ObservableObject
+public partial class ImagesViewModel : ViewModelBase
 {
-    private readonly CatalogService _catalogService;
-    private readonly HyperVService _hyperVService;
-    private readonly ImportService _importService;
-    private readonly SettingsService _settingsService;
-    private readonly PreflightService _preflightService;
+    private readonly ILogger<ImagesViewModel> _logger;
 
-    public ImagesViewModel(
-        CatalogService catalogService,
-        HyperVService hyperVService,
-        ImportService importService,
-        SettingsService settingsService,
-        PreflightService preflightService
-    )
+    private AgentClient _agentClient => App.AgentClient!;
+
+    public ImagesViewModel(ILogger<ImagesViewModel> logger)
     {
-        _catalogService = catalogService;
-        _hyperVService = hyperVService;
-        _importService = importService;
-        _settingsService = settingsService;
-        _preflightService = preflightService;
+        ArgumentNullException.ThrowIfNull(logger);
+        _logger = logger;
     }
 
     [ObservableProperty]
@@ -50,7 +31,7 @@ public partial class ImagesViewModel : ObservableObject
     private bool _isCreatingVm;
 
     [ObservableProperty]
-    private string _createVmStatusMessage = "Creating VM…";
+    private string _createVmStatusMessage = Resources.Status_CreatingVm;
 
     [ObservableProperty]
     private double _importProgress;
@@ -61,25 +42,15 @@ public partial class ImagesViewModel : ObservableObject
     [ObservableProperty]
     private string _importSpeedText = "";
 
-    private CancellationTokenSource? _importCts;
-
     [ObservableProperty]
-    private string _statusMessage = "";
-
-    [ObservableProperty]
-    private bool _showStatus;
-
-    [ObservableProperty]
-    private bool _isError;
-
-    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowEmptyState))]
     private bool _registryNotConfigured;
 
-    /// <summary>Set by the View to request a VM name. Returns null to cancel.</summary>
-    public Func<string, Task<string?>>? RequestVmName { get; set; }
+    public bool ShowEmptyState => !RegistryNotConfigured && FilteredImages.Count == 0;
 
-    /// <summary>Set by the View to navigate to a page after VM creation.</summary>
+    public Func<string, Task<string?>>? RequestVmName { get; set; }
     public Action<string>? NavigateTo { get; set; }
+    public Action<string, string>? NavigateWithMessage { get; set; }
 
     [ObservableProperty]
     private ObservableCollection<LocalImage> _localImages = [];
@@ -87,42 +58,139 @@ public partial class ImagesViewModel : ObservableObject
     [ObservableProperty]
     private bool _hasLocalImages;
 
-    // ── Commands ─────────────────────────────────────────────────────────────
+    [ObservableProperty]
+    private string? _highlightImageId;
+
+    [ObservableProperty]
+    private string _searchQuery = "";
+
+    [ObservableProperty]
+    private string _selectedSourceFilter = "All";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowEmptyState))]
+    private ObservableCollection<VmImage> _filteredImages = new ObservableCollection<VmImage>();
+
+    [ObservableProperty]
+    private ObservableCollection<string> _allFeatures = new ObservableCollection<string>();
+
+    [ObservableProperty]
+    private ObservableCollection<string> _activeFeatureFilters = new ObservableCollection<string>();
+
+    [ObservableProperty]
+    private ObservableCollection<string> _availableSources = new ObservableCollection<string>();
+
+    partial void OnSearchQueryChanged(string value) => ApplyFilter();
+
+    partial void OnSelectedSourceFilterChanged(string value) => ApplyFilter();
+
+    [RelayCommand]
+    public void ToggleFeatureFilter(string feature)
+    {
+        if (ActiveFeatureFilters.Contains(feature))
+            ActiveFeatureFilters.Remove(feature);
+        else
+            ActiveFeatureFilters.Add(feature);
+        ApplyFilter();
+    }
+
+    [RelayCommand]
+    public void ClearFilters()
+    {
+        SearchQuery = "";
+        SelectedSourceFilter = "All";
+        ActiveFeatureFilters.Clear();
+        ApplyFilter();
+    }
+
+    private void RebuildFilterOptions()
+    {
+        HashSet<string> features = new HashSet<string>();
+        List<string> sources = new List<string> { "All" };
+        HashSet<string> seenSources = new HashSet<string>();
+        foreach (VmImage image in Images)
+        {
+            if (!string.IsNullOrEmpty(image.SourceLabel) && seenSources.Add(image.SourceLabel))
+                sources.Add(image.SourceLabel);
+            foreach (string feature in image.Features)
+                features.Add(feature);
+        }
+        AllFeatures = new ObservableCollection<string>(features.OrderBy(f => f));
+        AvailableSources = new ObservableCollection<string>(sources);
+        SelectedSourceFilter = "All";
+    }
+
+    private void ApplyFilter()
+    {
+        IEnumerable<VmImage> result = Images;
+
+        if (!string.IsNullOrWhiteSpace(SearchQuery))
+        {
+            string query = SearchQuery.ToLowerInvariant();
+            result = result.Where(i =>
+                i.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || i.Description.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || i.Id.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || i.Features.Any(f => f.Contains(query, StringComparison.OrdinalIgnoreCase))
+            );
+        }
+
+        if (SelectedSourceFilter != "All" && !string.IsNullOrEmpty(SelectedSourceFilter))
+            result = result.Where(i => i.SourceLabel == SelectedSourceFilter);
+
+        if (ActiveFeatureFilters.Count > 0)
+            result = result.Where(i => ActiveFeatureFilters.All(f => i.Features.Contains(f)));
+
+        FilteredImages = new ObservableCollection<VmImage>(result.ToList());
+    }
 
     [RelayCommand]
     public async Task LoadCatalogAsync()
     {
+        if (App.AgentClient == null)
+        {
+            Images = new ObservableCollection<VmImage>();
+            LocalImages.Clear();
+            HasLocalImages = false;
+            FilteredImages = new ObservableCollection<VmImage>();
+            return;
+        }
         IsLoading = true;
         ShowStatus = false;
         RegistryNotConfigured = false;
 
         try
         {
-            var settings = _settingsService.Load();
+            await LoadLocalImagesAsync();
 
-            // Always scan local images regardless of source config
-            await ScanLocalImagesAsync(settings);
-
-            if (!_catalogService.IsAnySourceConfigured())
+            List<VmImage> images = new List<VmImage>();
+            try
             {
+                images = await _agentClient.GetCatalogAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to load remote catalog, showing local images only");
+            }
+
+            if (images.Count == 0 && !HasLocalImages)
+            {
+                Images = new ObservableCollection<VmImage>();
+                FilteredImages = new ObservableCollection<VmImage>();
                 RegistryNotConfigured = true;
-                return;
             }
-
-            var images = await _catalogService.LoadCatalogAsync();
-
-            // Check which versions are already extracted locally
-            foreach (var img in images)
-            foreach (var ver in img.Versions)
+            else
             {
-                var safeName = SafeFileName(ver.FileName);
-                ver.IsLocallyAvailable = IsExtracted(settings.LocalVmPath, safeName);
+                Images = new ObservableCollection<VmImage>(images);
+                RebuildFilterOptions();
+                ApplyFilter();
             }
 
-            Images = new ObservableCollection<VmImage>(images);
+            await ReconnectToActiveTasksAsync();
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to load catalog");
             ShowError(ex.Message);
         }
         finally
@@ -131,148 +199,247 @@ public partial class ImagesViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Downloads and extracts a version from the OCI registry to local disk.
-    /// </summary>
+    private async Task ReconnectToActiveTasksAsync()
+    {
+        try
+        {
+            List<AgentTaskInfo> tasks = await _agentClient.GetTasksAsync();
+            foreach (AgentTaskInfo task in tasks)
+            {
+                if (task.IsComplete || task.IsFailed || task.IsCancelled)
+                    continue;
+
+                if (task.Title.StartsWith("Creating VM"))
+                {
+                    _logger.LogInformation("Reconnecting to running task: {Title}", task.Title);
+                    IsCreatingVm = true;
+                    _currentCreateVmTaskId = task.Id;
+                    CreateVmStatusMessage = task.Status;
+
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            (
+                                TaskCompletionSource<(bool, string?)> completion,
+                                CancellationTokenSource timeoutCts
+                            ) = await ConnectProgressHubAsync(status =>
+                            {
+                                CreateVmStatusMessage = status;
+                            });
+                            using CancellationTokenSource __ = timeoutCts;
+
+                            (bool success, string? error) = await completion.Task;
+                            await _agentClient.DisconnectProgressHubAsync();
+
+                            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                            {
+                                if (success)
+                                    NavigateWithMessage?.Invoke("MyVMs", "VM created successfully");
+                                else
+                                    ShowError("VM creation failed: " + (error ?? "unknown"));
+                                IsCreatingVm = false;
+                                _currentCreateVmTaskId = null;
+                                CreateVmStatusMessage = Resources.Status_CreatingVm;
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to reconnect to task");
+                            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                            {
+                                IsCreatingVm = false;
+                                _currentCreateVmTaskId = null;
+                            });
+                        }
+                    });
+                }
+                else if (task.Title.StartsWith("Importing"))
+                {
+                    _logger.LogInformation("Reconnecting to running import: {Title}", task.Title);
+                    IsImporting = true;
+                    _currentImportTaskId = task.Id;
+                    ImportStatusText = task.Status;
+
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            (
+                                TaskCompletionSource<(bool, string?)> completion,
+                                CancellationTokenSource timeoutCts
+                            ) = await ConnectProgressHubAsync(status =>
+                            {
+                                ImportStatusText = status;
+                            });
+                            using CancellationTokenSource __ = timeoutCts;
+
+                            (bool success, string? error) = await completion.Task;
+                            await _agentClient.DisconnectProgressHubAsync();
+
+                            Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
+                            {
+                                if (success)
+                                {
+                                    ShowSuccess(Resources.Status_ImportComplete);
+                                    await LoadLocalImagesAsync();
+                                    ApplyFilter();
+                                }
+                                else
+                                    ShowError("Import failed: " + (error ?? "unknown"));
+                                IsImporting = false;
+                                _currentImportTaskId = null;
+                                ImportStatusText = "";
+                                ImportProgress = 0;
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to reconnect to import task");
+                            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                            {
+                                IsImporting = false;
+                                _currentImportTaskId = null;
+                            });
+                        }
+                    });
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to check for active tasks");
+        }
+    }
+
     [RelayCommand]
     public async Task ImportVersionAsync(VmImageVersion version)
     {
         if (IsImporting)
             return;
 
-        var settings = _settingsService.Load();
-
-        // Pre-flight: check disk space
-        var diskError = await _preflightService.CheckDiskSpaceAsync(
-            settings.LocalVmPath,
-            version.SizeGb
-        );
-        if (diskError != null)
-        {
-            ShowError(diskError);
-            return;
-        }
-
-        var safeFileName = SafeFileName(version.FileName);
-        var localBoxPath = Path.Combine(settings.LocalVmPath, "downloads", safeFileName + ".box");
-        var extractDir = ExtractDir(settings.LocalVmPath, safeFileName);
-        var isLocal = CatalogService.IsLocalVersion(version.FileName);
-
-        _importCts = new CancellationTokenSource();
         IsImporting = true;
         ImportProgress = 0;
         ImportSpeedText = "";
+        ImportStatusText = Resources.Status_Extracting;
         ShowStatus = false;
 
         try
         {
-            // Step 1 - get .box file locally
-            if (isLocal)
+            string safeFileName = !string.IsNullOrEmpty(version.ParentImageName)
+                ? version.ParentImageName + "-" + version.Version
+                : SafeFileName(version.FileName);
+            safeFileName = SanitizePath(safeFileName);
+
+            (TaskCompletionSource<(bool, string?)> completion, CancellationTokenSource timeoutCts) =
+                await ConnectProgressHubAsync(status =>
+                {
+                    ImportStatusText = status;
+                });
+            using CancellationTokenSource _ = timeoutCts;
+
+            string? taskId = await _agentClient.ImportVersionAsync(
+                version.FileName,
+                safeFileName,
+                version
+            );
+
+            if (taskId == null)
             {
-                // Copy from local/network path
-                var sourcePath = await _catalogService.GetDownloadUrlAsync(version.FileName);
-                ImportStatusText = $"Copying {version.Version}…";
-                await _importService.CopyWithProgressAsync(
-                    sourcePath,
-                    localBoxPath,
-                    new Progress<double>(p => ImportProgress = p * 0.5),
-                    _importCts.Token
-                );
+                await _agentClient.DisconnectProgressHubAsync();
+                ShowError("Failed to start import task");
+                return;
+            }
+
+            _logger.LogInformation("Import task started: {TaskId}", taskId);
+            _currentImportTaskId = taskId;
+            ImportStatusText = "Starting download...";
+
+            (bool succeeded, string? error) = await completion.Task;
+            await _agentClient.DisconnectProgressHubAsync();
+
+            if (succeeded)
+            {
+                ShowSuccess(Resources.Status_ImportComplete);
+                version.IsLocallyAvailable = true;
+                await LoadLocalImagesAsync();
+                ApplyFilter();
             }
             else
             {
-                // Download from OCI registry
-                ImportStatusText = $"Downloading {version.Version}…";
-                var downloadUrl = await _catalogService.GetDownloadUrlAsync(version.FileName);
-                var auth = _catalogService.GetAuthHeader();
-                await _importService.DownloadWithProgressAsync(
-                    downloadUrl,
-                    localBoxPath,
-                    new Progress<Models.DownloadProgress>(p =>
-                    {
-                        ImportProgress = p.Percent * 0.5;
-                        var speedMb = p.SpeedBytesPerSec / 1024.0 / 1024.0;
-                        var dlMb = p.DownloadedBytes / 1024.0 / 1024.0;
-                        var totalMb = p.TotalBytes / 1024.0 / 1024.0;
-                        ImportSpeedText = p.Eta.HasValue
-                            ? $"{dlMb:F0}/{totalMb:F0} MB - {speedMb:F1} MB/s - ~{p.Eta.Value:mm\\:ss} remaining"
-                            : $"{dlMb:F0} MB - {speedMb:F1} MB/s";
-                    }),
-                    _importCts.Token,
-                    auth
-                );
+                ShowError("Import failed: " + (error ?? "unknown error"));
             }
-
-            // Step 2 - extract the .box archive
-            ImportStatusText = "Extracting archive…";
-            ImportSpeedText = "";
-            await _importService.ExtractAsync(
-                localBoxPath,
-                extractDir,
-                new Progress<double>(p => ImportProgress = 50 + p * 0.5),
-                _importCts.Token
-            );
-
-            // Clean up downloaded archive
-            try
-            {
-                File.Delete(localBoxPath);
-            }
-            catch
-            { /* non-fatal */
-            }
-
-            version.IsLocallyAvailable = true;
-            ShowSuccess($"v{version.Version} is ready - click Create VM to spin up an instance.");
-        }
-        catch (OperationCanceledException)
-        {
-            ShowError("Import cancelled.");
         }
         catch (Exception ex)
         {
-            ShowError($"Import failed: {ex.Message}");
+            _logger.LogError(ex, "Failed to import version {FileName}", version.FileName);
+            ShowError(string.Format(Resources.Error_ImportFailedFormat, ex.Message));
         }
         finally
         {
             IsImporting = false;
+            ImportProgress = 0;
             ImportStatusText = "";
             ImportSpeedText = "";
-            _importCts?.Dispose();
-            _importCts = null;
+            _currentImportTaskId = null;
         }
     }
 
-    /// <summary>Cancels the current import/download.</summary>
+    private string? _currentImportTaskId;
+    private string? _currentCreateVmTaskId;
+
     [RelayCommand]
-    public void CancelImport()
+    public async Task CancelImportAsync()
     {
-        _importCts?.Cancel();
+        string? taskId = _currentImportTaskId;
+        if (taskId == null)
+            return;
+
+        try
+        {
+            await _agentClient.CancelTaskAsync(taskId);
+            _logger.LogInformation("Import task cancellation requested: {TaskId}", taskId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to cancel import task {TaskId}", taskId);
+        }
     }
 
-    /// <summary>
-    /// Registers a locally available version with Hyper-V as a new VM.
-    /// </summary>
+    [RelayCommand]
+    public async Task CancelCreateVmAsync()
+    {
+        string? taskId = _currentCreateVmTaskId;
+        if (taskId == null)
+            return;
+
+        try
+        {
+            await _agentClient.CancelTaskAsync(taskId);
+            _logger.LogInformation("Create VM task cancellation requested: {TaskId}", taskId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to cancel create VM task {TaskId}", taskId);
+        }
+    }
+
     [RelayCommand]
     public async Task CreateVmAsync(VmImageVersion version)
     {
-        var settings = _settingsService.Load();
-        var safeFileName = SafeFileName(version.FileName);
-        var extractDir = ExtractDir(settings.LocalVmPath, safeFileName);
+        AppSettings settings = await _agentClient.GetSettingsAsync();
+        string safeFileName = !string.IsNullOrEmpty(version.ParentImageName)
+            ? version.ParentImageName + "-" + version.Version
+            : SafeFileName(version.FileName);
+        safeFileName = SanitizePath(safeFileName);
+        string extractDir = ExtractDir(settings.LocalVmPath, safeFileName);
 
-        if (!Directory.Exists(extractDir))
-        {
-            ShowError("Local files not found. Please Import the version first.");
-            return;
-        }
-
-        // Ask for VM name
-        var defaultName = Path.GetFileName(extractDir);
+        string defaultName = Path.GetFileName(extractDir);
         if (RequestVmName != null)
         {
-            var name = await RequestVmName(defaultName);
+            string? name = await RequestVmName(defaultName);
             if (name == null)
-                return; // Cancelled
+                return;
             defaultName = name;
         }
 
@@ -281,171 +448,270 @@ public partial class ImagesViewModel : ObservableObject
 
         try
         {
-            CreateVmStatusMessage = "Creating VM…";
-            await _hyperVService.ImportVmAsync(
+            VmOrigin origin = new VmOrigin
+            {
+                ImageId = version.ParentImageId,
+                ImageName = version.ParentImageName,
+                Version = version.Version,
+                FeedId = version.FeedId,
+                FeedUrl = version.FeedUrl,
+                Repository = version.FeedRepository,
+            };
+
+            (TaskCompletionSource<(bool, string?)> completion, CancellationTokenSource timeoutCts) =
+                await ConnectProgressHubAsync(status =>
+                {
+                    CreateVmStatusMessage = status;
+                });
+            using CancellationTokenSource _ = timeoutCts;
+
+            string? taskId = await _agentClient.CreateVmAsync(
                 extractDir,
-                settings.LocalVmPath,
+                defaultName,
                 settings.DefaultMemoryMb,
                 settings.DefaultCpuCount,
-                defaultName
+                origin,
+                version.Networks
             );
-            MyVmsViewModel.TrackManagedVm(defaultName);
 
-            CreateVmStatusMessage = "Applying DE locale + QWERTZ keyboard (VM is booting)…";
-            await _hyperVService.ConfigureLocaleAsync(
-                defaultName,
-                settings.DefaultVmUsername,
-                settings.DefaultVmPassword
-            );
-            ShowSuccess($"VM \"{defaultName}\" created with DE locale and QWERTZ keyboard.");
-            NavigateTo?.Invoke("MyVMs");
+            if (taskId == null)
+            {
+                await _agentClient.DisconnectProgressHubAsync();
+                ShowError("Failed to start VM creation task");
+                return;
+            }
+
+            _logger.LogInformation("Create VM task started: {TaskId}", taskId);
+            _currentCreateVmTaskId = taskId;
+            CreateVmStatusMessage = "Creating VM...";
+
+            (bool success, string? error) = await completion.Task;
+            await _agentClient.DisconnectProgressHubAsync();
+
+            if (success)
+            {
+                NavigateWithMessage?.Invoke(
+                    "MyVMs",
+                    string.Format(Resources.Status_VmCreatedFormat, defaultName)
+                );
+            }
+            else
+            {
+                ShowError("VM creation failed: " + (error ?? "unknown error"));
+            }
         }
         catch (Exception ex)
         {
-            ShowError($"Create VM failed: {ex.Message}");
+            _logger.LogError(
+                ex,
+                "Failed to create VM {VmName} from version {FileName}",
+                defaultName,
+                version.FileName
+            );
+            ShowError(string.Format(Resources.Error_CreateVmFailedFormat, ex.Message));
         }
         finally
         {
             IsCreatingVm = false;
-            CreateVmStatusMessage = "Creating VM…";
+            _currentCreateVmTaskId = null;
+            CreateVmStatusMessage = Resources.Status_CreatingVm;
         }
     }
 
-    /// <summary>Creates a VM from a local extracted image.</summary>
     [RelayCommand]
     public async Task CreateVmFromLocalAsync(LocalImage localImage)
     {
-        if (!Directory.Exists(localImage.Path))
-        {
-            ShowError("Local image folder not found.");
-            return;
-        }
-
-        // Ask for VM name
         if (RequestVmName != null)
         {
-            var name = await RequestVmName(localImage.Name);
+            string? name = await RequestVmName(localImage.Name);
             if (name == null)
                 return;
             localImage = localImage with { Name = name };
         }
 
-        var settings = _settingsService.Load();
         IsCreatingVm = true;
+        CreateVmStatusMessage = Resources.Status_CreatingVm;
         ShowStatus = false;
 
         try
         {
-            await _hyperVService.ImportVmAsync(
+            AppSettings settings = await _agentClient.GetSettingsAsync();
+
+            VmOrigin? origin = null;
+            if (!string.IsNullOrEmpty(localImage.FeedId))
+            {
+                origin = new VmOrigin
+                {
+                    ImageId = localImage.ParentImageId ?? "",
+                    ImageName = localImage.ParentImageName ?? "",
+                    Version = localImage.ImageVersion ?? "",
+                    FeedId = localImage.FeedId,
+                    FeedUrl = localImage.FeedUrl ?? "",
+                    Repository = localImage.FeedRepository,
+                };
+            }
+
+            (TaskCompletionSource<(bool, string?)> completion, CancellationTokenSource timeoutCts) =
+                await ConnectProgressHubAsync(status =>
+                {
+                    CreateVmStatusMessage = status;
+                });
+            using CancellationTokenSource _ = timeoutCts;
+
+            string? taskId = await _agentClient.CreateVmAsync(
                 localImage.Path,
-                settings.LocalVmPath,
+                localImage.Name,
                 settings.DefaultMemoryMb,
                 settings.DefaultCpuCount,
-                localImage.Name
+                origin
             );
-            MyVmsViewModel.TrackManagedVm(localImage.Name);
-            ShowSuccess($"VM \"{localImage.Name}\" created.");
-            NavigateTo?.Invoke("MyVMs");
+
+            if (taskId == null)
+            {
+                await _agentClient.DisconnectProgressHubAsync();
+                ShowError("Failed to start VM creation task");
+                return;
+            }
+
+            CreateVmStatusMessage = "Creating VM...";
+
+            (bool success, string? error) = await completion.Task;
+            await _agentClient.DisconnectProgressHubAsync();
+
+            if (success)
+            {
+                NavigateWithMessage?.Invoke(
+                    "MyVMs",
+                    string.Format(Resources.Status_VmCreatedFormat, localImage.Name)
+                );
+            }
+            else
+            {
+                ShowError("VM creation failed: " + (error ?? "unknown error"));
+            }
         }
         catch (Exception ex)
         {
-            ShowError($"Create VM failed: {ex.Message}");
+            _logger.LogError(ex, "Failed to create VM {VmName} from local image", localImage.Name);
+            ShowError(string.Format(Resources.Error_CreateVmFailedFormat, ex.Message));
         }
         finally
         {
             IsCreatingVm = false;
+            _currentCreateVmTaskId = null;
+            CreateVmStatusMessage = Resources.Status_CreatingVm;
         }
     }
 
-    /// <summary>Deletes a locally extracted image from disk.</summary>
     [RelayCommand]
     public async Task DeleteLocalImageAsync(LocalImage localImage)
     {
         try
         {
-            await Task.Run(() => Directory.Delete(localImage.Path, true));
+            await _agentClient.DeleteLocalImageAsync(localImage.Path);
             LocalImages.Remove(localImage);
             HasLocalImages = LocalImages.Count > 0;
-            ShowSuccess($"Deleted local image \"{localImage.Name}\".");
+            ShowSuccess(string.Format(Resources.Status_DeletedLocalImageFormat, localImage.Name));
         }
         catch (Exception ex)
         {
-            ShowError($"Failed to delete: {ex.Message}");
+            _logger.LogError(ex, "Failed to delete local image {ImageName}", localImage.Name);
+            ShowError(string.Format(Resources.Error_DeleteLocalFailedFormat, ex.Message));
         }
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
-
-    private Task ScanLocalImagesAsync(AppSettings settings)
+    private async Task LoadLocalImagesAsync()
     {
-        return Task.Run(() =>
+        try
         {
-            var extractedDir = Path.Combine(settings.LocalVmPath, "extracted");
-            if (!Directory.Exists(extractedDir))
-                return;
-
-            var locals = new List<LocalImage>();
-            foreach (var dir in Directory.GetDirectories(extractedDir))
-            {
-                // Only include directories that have a .vhdx (valid extracted image)
-                var vhdxFiles = Directory.GetFiles(dir, "*.vhdx", SearchOption.AllDirectories);
-                if (vhdxFiles.Length == 0)
-                    continue;
-
-                var dirInfo = new DirectoryInfo(dir);
-                var totalSize = vhdxFiles.Sum(f => new FileInfo(f).Length);
-
-                locals.Add(
-                    new LocalImage
-                    {
-                        Name = dirInfo.Name,
-                        Path = dir,
-                        SizeGb = totalSize / 1024.0 / 1024.0 / 1024.0,
-                        ExtractedAt = dirInfo.CreationTime,
-                    }
-                );
-            }
-
-            App.Current.Dispatcher.Invoke(() =>
-            {
-                LocalImages = new ObservableCollection<LocalImage>(
-                    locals.OrderByDescending(l => l.ExtractedAt)
-                );
-                HasLocalImages = locals.Count > 0;
-            });
-        });
+            List<LocalImage> locals = await _agentClient.GetLocalImagesAsync();
+            LocalImages = new ObservableCollection<LocalImage>(locals);
+            HasLocalImages = locals.Count > 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load local images");
+        }
     }
 
-    /// <summary>Sanitizes a version FileName for filesystem use (strips prefixes, replaces invalid chars).</summary>
+    private async Task<(
+        TaskCompletionSource<(bool, string?)> Completion,
+        CancellationTokenSource Timeout
+    )> ConnectProgressHubAsync(Action<string>? onStatus = null)
+    {
+        TaskCompletionSource<(bool, string?)> completion =
+            new TaskCompletionSource<(bool, string?)>();
+        CancellationTokenSource timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(30));
+        timeoutCts.Token.Register(() => completion.TrySetResult((false, "Operation timed out")));
+
+        await _agentClient.ConnectToProgressHubAsync(
+            (_, progress, status) =>
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (progress >= 0)
+                        ImportProgress = progress * 100.0;
+                    onStatus?.Invoke(status);
+                });
+            },
+            (_, success, error) =>
+            {
+                completion.TrySetResult((success, error));
+            },
+            _ =>
+            {
+                completion.TrySetResult((false, "Lost connection to agent"));
+                return Task.CompletedTask;
+            }
+        );
+
+        return (completion, timeoutCts);
+    }
+
     private static string SafeFileName(string fileName)
     {
-        // Strip "local:" prefix if present
-        if (fileName.StartsWith("local:"))
-            fileName = Path.GetFileNameWithoutExtension(fileName["local:".Length..]);
-        return fileName.Replace(':', '_').Replace('/', '_').Replace('\\', '_');
+        VersionReference reference = VersionReference.Parse(fileName);
+
+        switch (reference)
+        {
+            case VersionReference.Local local:
+                return Path.GetFileNameWithoutExtension(local.FilePath);
+            case VersionReference.Nexus nexus:
+                try
+                {
+                    string path = new Uri(nexus.DownloadUrl).AbsolutePath;
+                    return Path.GetFileNameWithoutExtension(path);
+                }
+                catch
+                {
+                    return Path.GetFileNameWithoutExtension(nexus.DownloadUrl);
+                }
+            case VersionReference.Oci oci:
+                return oci.RepositoryTag.Replace(':', '_').Replace('/', '_').Replace('\\', '_');
+            default:
+                return fileName.Replace(':', '_').Replace('/', '_').Replace('\\', '_');
+        }
+    }
+
+    private static string SanitizePath(string name)
+    {
+        char[] invalid = Path.GetInvalidFileNameChars();
+        foreach (char c in invalid)
+            name = name.Replace(c, '_');
+        return name;
+    }
+
+    public void ResetTransientState()
+    {
+        IsImporting = false;
+        IsCreatingVm = false;
+        ImportProgress = 0;
+        ImportStatusText = "";
+        ImportSpeedText = "";
+        if (App.AgentClient != null)
+            _ = _agentClient.DisconnectProgressHubAsync();
     }
 
     public static string ExtractDir(string localVmPath, string fileName) =>
-        Path.Combine(localVmPath, "extracted", Path.GetFileNameWithoutExtension(fileName));
-
-    private static bool IsExtracted(string localVmPath, string fileName)
-    {
-        var dir = ExtractDir(localVmPath, fileName);
-        return Directory.Exists(dir)
-            && Directory.GetFiles(dir, "*.vhdx", SearchOption.AllDirectories).Length > 0;
-    }
-
-    private void ShowSuccess(string message)
-    {
-        IsError = false;
-        StatusMessage = message;
-        ShowStatus = true;
-    }
-
-    private void ShowError(string message)
-    {
-        IsError = true;
-        StatusMessage = message;
-        ShowStatus = true;
-    }
+        localVmPath.TrimEnd('/', '\\') + "/extracted/" + fileName;
 }

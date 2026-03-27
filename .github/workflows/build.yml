@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -21,6 +21,7 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
+          include-prerelease: true
 
       - name: Extract version from tag
         id: version
@@ -35,12 +36,12 @@ jobs:
           "version=$v" | Out-File -Append $env:GITHUB_OUTPUT
 
       - name: Install CSharpier
-        run: dotnet tool install --global csharpier --version 1.2.6
+        run: dotnet tool install --global csharpier --version 1.2.1
 
       - name: Check formatting
         run: csharpier check dotnet/
 
-      - name: Publish
+      - name: Publish Desktop App (Windows, with agent)
         run: >
           dotnet publish dotnet/VmManager/VmManager.csproj
           -c Release
@@ -51,40 +52,39 @@ jobs:
           -p:IncludeNativeLibrariesForSelfExtract=true
           --output publish/
 
-      - name: Sign application exe
-        shell: pwsh
-        env:
-          SIGN_CERT_PFX: ${{ secrets.SIGN_CERT_PFX }}
-          SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:SIGN_CERT_PFX)) { Write-Host "No signing certificate configured, skipping"; exit 0 }
-          $pfxBytes = [Convert]::FromBase64String($env:SIGN_CERT_PFX)
-          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
-          [IO.File]::WriteAllBytes($pfxPath, $pfxBytes)
-          try {
-            & signtool sign /f $pfxPath /p $env:SIGN_CERT_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 publish\VmManager.exe
-          } finally {
-            Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue
-          }
+      - name: Publish Agent
+        run: >
+          dotnet publish dotnet/VmManager.Agent/VmManager.Agent.csproj
+          -c Release
+          -r win-x64
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:PublishSingleFile=true
+          -p:SelfContained=true
+          --output publish-agent/
 
-      - name: Build installer
+      - name: Publish Client (Windows, no agent)
+        run: >
+          dotnet publish dotnet/VmManager/VmManager.csproj
+          -c Release
+          -r win-x64
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:PublishSingleFile=true
+          -p:SelfContained=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:ClientOnly=true
+          --output publish-client/
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build Desktop installer (with agent)
         run: iscc /DAppVersion=${{ steps.version.outputs.version }} installer\setup.iss
 
-      - name: Sign installer
-        shell: pwsh
-        env:
-          SIGN_CERT_PFX: ${{ secrets.SIGN_CERT_PFX }}
-          SIGN_CERT_PASSWORD: ${{ secrets.SIGN_CERT_PASSWORD }}
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:SIGN_CERT_PFX)) { Write-Host "No signing certificate configured, skipping"; exit 0 }
-          $pfxBytes = [Convert]::FromBase64String($env:SIGN_CERT_PFX)
-          $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
-          [IO.File]::WriteAllBytes($pfxPath, $pfxBytes)
-          try {
-            & signtool sign /f $pfxPath /p $env:SIGN_CERT_PASSWORD /tr http://timestamp.digicert.com /td sha256 /fd sha256 installer\Output\*.exe
-          } finally {
-            Remove-Item $pfxPath -Force -ErrorAction SilentlyContinue
-          }
+      - name: Build Client installer (no agent)
+        run: iscc /DAppVersion=${{ steps.version.outputs.version }} installer\setup-client.iss
+
+      - name: Build Agent installer
+        run: iscc /DAppVersion=${{ steps.version.outputs.version }} dotnet\VmManager.Agent\setup.iss
 
       - name: Update manifest version, size, date, and release notes
         shell: pwsh
@@ -93,7 +93,6 @@ jobs:
           $size = (Get-Item "vm-manager-${{ steps.version.outputs.version }}.zip").Length
           $today = (Get-Date).ToString("yyyy-MM-dd")
 
-          # Build release notes from tag annotation + commits
           $tagMsg = ""
           $commits = ""
           try {
@@ -114,47 +113,228 @@ jobs:
           $manifest = $manifest -replace '"releaseDate":\s*"[^"]*"', "`"releaseDate`": `"$today`""
           $manifest = $manifest -replace '"releaseNotes":\s*"[^"]*"', "`"releaseNotes`": `"$notesEscaped`""
           $manifest | Set-Content stork-manifest.json -NoNewline
-          Write-Host "Package size: $size bytes"
-          Write-Host "Release date: $today"
 
-      - name: Package standalone zip
+      - name: Package standalone zips
         shell: pwsh
         run: |
-          Compress-Archive -Path publish\VmManager.exe -DestinationPath publish\VmManager-${{ steps.version.outputs.version }}-win-x64.zip
+          Compress-Archive -Path publish\VmManager.exe -DestinationPath publish\VmManager-Full-${{ steps.version.outputs.version }}-win-x64.zip
+          Compress-Archive -Path publish-client\VmManager.exe -DestinationPath publish-client\VmManager-Client-${{ steps.version.outputs.version }}-win-x64.zip
+          Compress-Archive -Path publish-agent\* -DestinationPath publish-agent\VmManager.Agent-${{ steps.version.outputs.version }}-win-x64.zip
 
       - name: Generate checksums
         shell: pwsh
         run: |
           $files = @(
             "publish\VmManager.exe",
-            "publish\VmManager-${{ steps.version.outputs.version }}-win-x64.zip",
-            (Get-Item "installer\Output\*.exe" -ErrorAction SilentlyContinue).FullName
+            "publish\VmManager-Full-${{ steps.version.outputs.version }}-win-x64.zip",
+            "publish-agent\VmManager.Agent.exe",
+            "publish-agent\VmManager.Agent-${{ steps.version.outputs.version }}-win-x64.zip",
+            (Get-Item "installer\Output\*.exe" -ErrorAction SilentlyContinue).FullName,
+            (Get-Item "dotnet\VmManager.Agent\Output\*.exe" -ErrorAction SilentlyContinue).FullName
           ) | Where-Object { $_ -and (Test-Path $_) }
           $checksums = $files | ForEach-Object {
             $hash = (Get-FileHash $_ -Algorithm SHA256).Hash.ToLower()
             "$hash  $(Split-Path $_ -Leaf)"
           }
           $checksums | Out-File -FilePath publish\SHA256SUMS.txt -Encoding utf8
-          Write-Host "Checksums:"
-          $checksums | ForEach-Object { Write-Host $_ }
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build
+          name: build-windows
           path: |
             publish/VmManager.exe
-            publish/VmManager-*-win-x64.zip
+            publish/VmManager-Full-*-win-x64.zip
             publish/SHA256SUMS.txt
+            publish-client/VmManager-Client-*-win-x64.zip
+            publish-agent/VmManager.Agent.exe
+            publish-agent/VmManager.Agent-*-win-x64.zip
             installer/Output/*.exe
+            dotnet/VmManager.Agent/Output/*.exe
             vm-manager-*.zip
             stork-manifest.json
 
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+          include-prerelease: true
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="0.0.0-dev"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Publish macOS ARM
+        run: >
+          dotnet publish dotnet/VmManager/VmManager.csproj
+          -c Release
+          -r osx-arm64
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:PublishSingleFile=true
+          -p:SelfContained=true
+          --output publish-macos-arm64/
+
+      - name: Publish macOS x64
+        run: >
+          dotnet publish dotnet/VmManager/VmManager.csproj
+          -c Release
+          -r osx-x64
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:PublishSingleFile=true
+          -p:SelfContained=true
+          --output publish-macos-x64/
+
+      - name: Convert icon to icns
+        run: |
+          mkdir -p icon.iconset
+          sips -z 256 256 dotnet/VmManager/Assets/app_256.png --out icon.iconset/icon_256x256.png 2>/dev/null || cp dotnet/VmManager/Assets/app_256.png icon.iconset/icon_256x256.png
+          sips -z 128 128 dotnet/VmManager/Assets/app_256.png --out icon.iconset/icon_128x128.png 2>/dev/null || true
+          sips -z 32 32 dotnet/VmManager/Assets/app_32.png --out icon.iconset/icon_32x32.png 2>/dev/null || cp dotnet/VmManager/Assets/app_32.png icon.iconset/icon_32x32.png
+          sips -z 16 16 dotnet/VmManager/Assets/app_32.png --out icon.iconset/icon_16x16.png 2>/dev/null || true
+          iconutil -c icns icon.iconset -o app.icns 2>/dev/null || true
+
+      - name: Create macOS .app bundles
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          for ARCH in arm64 x64; do
+            APP="VmManager.app"
+            STAGING="staging-${ARCH}"
+            rm -rf "${STAGING}"
+            mkdir -p "${STAGING}/${APP}/Contents/MacOS"
+            mkdir -p "${STAGING}/${APP}/Contents/Resources"
+            cp publish-macos-${ARCH}/* "${STAGING}/${APP}/Contents/MacOS/"
+            if [ -f app.icns ]; then
+              cp app.icns "${STAGING}/${APP}/Contents/Resources/app.icns"
+            fi
+            cat > "${STAGING}/${APP}/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key>
+            <string>VM Manager</string>
+            <key>CFBundleDisplayName</key>
+            <string>VM Manager</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.vmmanager.client</string>
+            <key>CFBundleVersion</key>
+            <string>${VERSION}</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${VERSION}</string>
+            <key>CFBundleExecutable</key>
+            <string>VmManager</string>
+            <key>CFBundleIconFile</key>
+            <string>app</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>12.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+          </dict>
+          </plist>
+          PLIST
+          done
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Create macOS DMG installers
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          for ARCH in arm64 x64; do
+            create-dmg \
+              --volname "VM Manager" \
+              --window-pos 200 120 \
+              --window-size 600 400 \
+              --icon-size 100 \
+              --icon "VmManager.app" 150 190 \
+              --app-drop-link 450 190 \
+              --no-internet-enable \
+              "VmManager-Client-${VERSION}-osx-${ARCH}.dmg" \
+              "staging-${ARCH}/VmManager.app" || true
+          done
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-macos
+          path: |
+            VmManager-Client-*-osx-*.dmg
+
+  build-linux-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+          include-prerelease: true
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="0.0.0-dev"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Publish Linux Agent
+        run: >
+          dotnet publish dotnet/VmManager.Agent/VmManager.Agent.csproj
+          -c Release
+          -r linux-x64
+          -p:Version=${{ steps.version.outputs.version }}
+          -p:PublishSingleFile=true
+          -p:SelfContained=true
+          --output publish-agent-linux/
+
+      - name: Copy systemd service file
+        run: |
+          if [ -f dotnet/VmManager.Agent/vmmanager-agent.service ]; then
+            cp dotnet/VmManager.Agent/vmmanager-agent.service publish-agent-linux/
+          fi
+
+      - name: Package Linux Agent
+        run: >
+          tar czf VmManager-Agent-${{ steps.version.outputs.version }}-linux-x64.tar.gz
+          -C publish-agent-linux/ .
+
+      - name: Upload Linux Agent artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-linux-agent
+          path: |
+            VmManager-Agent-*-linux-x64.tar.gz
+
   release:
-    needs: build
+    needs: [build-windows, build-macos, build-linux-agent]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout for release notes
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: repo
+
       - name: Determine version
         id: version
         shell: bash
@@ -166,11 +346,23 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Download artifacts
+      - name: Download Windows artifacts
         uses: actions/download-artifact@v4
         with:
-          name: build
+          name: build-windows
           path: artifacts/
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-macos
+          path: artifacts-macos/
+
+      - name: Download Linux Agent artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-linux-agent
+          path: artifacts-linux/
 
       - name: Publish to Nexus
         if: startsWith(github.ref, 'refs/tags/v')
@@ -196,27 +388,19 @@ jobs:
             -F "raw.asset1=@artifacts/vm-manager-${VERSION}.zip" \
             -F "raw.asset1.filename=vm-manager-${VERSION}.zip"
 
-      - name: Checkout for release notes
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Generate release notes
         id: notes
         shell: bash
         run: |
+          cd repo
           TAG="${GITHUB_REF#refs/tags/}"
-          # Get tag annotation (if annotated tag)
           TAG_MSG=$(git tag -l --format='%(contents)' "$TAG" 2>/dev/null | head -50)
-          # Find previous non-dev release tag
           PREV_TAG=$(git tag --list 'v*' --sort=-version:refname | grep -v '\-dev' | grep -v "^${TAG}$" | head -1)
-          # Collect commits since previous tag
           if [ -n "$PREV_TAG" ]; then
             COMMITS=$(git log --pretty=format:'- %s' "${PREV_TAG}..${TAG}" 2>/dev/null || echo "")
           else
             COMMITS=$(git log --pretty=format:'- %s' "${TAG}" 2>/dev/null | head -50)
           fi
-          # Build body
           BODY=""
           if [ -n "$TAG_MSG" ]; then
             BODY="${TAG_MSG}"$'\n\n'
@@ -224,17 +408,22 @@ jobs:
           if [ -n "$COMMITS" ]; then
             BODY="${BODY}## Changes"$'\n'"${COMMITS}"
           fi
-          # Write to file (multi-line safe)
           echo "$BODY" > release_notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          body_path: release_notes.md
+          body_path: repo/release_notes.md
           files: |
             artifacts/publish/VmManager.exe
-            artifacts/publish/VmManager-*-win-x64.zip
+            artifacts/publish/VmManager-Full-*-win-x64.zip
             artifacts/publish/SHA256SUMS.txt
+            artifacts/publish-client/VmManager-Client-*-win-x64.zip
+            artifacts/publish-agent/VmManager.Agent.exe
+            artifacts/publish-agent/VmManager.Agent-*-win-x64.zip
             artifacts/installer/Output/*.exe
+            artifacts/dotnet/VmManager.Agent/Output/*.exe
+            artifacts-macos/VmManager-Client-*-osx-*.dmg
+            artifacts-linux/VmManager-Agent-*-linux-x64.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,645 @@
+<UserControl
+  x:Class="VmManager.Views.Pages.MyVmsPage"
+  xmlns="https://github.com/avaloniaui"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+  xmlns:vm="clr-namespace:VmManager.ViewModels"
+  xmlns:models="clr-namespace:VmManager.Contracts.Models;assembly=VmManager.Contracts"
+  xmlns:ui="using:FluentAvalonia.UI.Controls"
+  xmlns:props="clr-namespace:VmManager.Properties"
+  x:DataType="vm:MyVmsViewModel"
+  d:DataContext="{d:DesignInstance Type=vm:MyVmsViewModel}"
+  mc:Ignorable="d"
+>
+  <Grid Margin="24,16,24,16">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <ItemsControl Grid.Row="3" ItemsSource="{Binding Vms}" Margin="0,0,0,4">
+      <ItemsControl.Styles>
+        <Style Selector="ItemsControl > ContentPresenter">
+          <Setter Property="HorizontalAlignment" Value="Stretch" />
+        </Style>
+      </ItemsControl.Styles>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate>
+          <StackPanel IsVisible="{Binding IsBusy}" Margin="0,2,0,2">
+            <ProgressBar IsIndeterminate="True" Height="3" />
+            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" Margin="0,0,6,0" />
+              <TextBlock Text="{Binding StatusMessage}" Opacity="0.55" FontSize="12" />
+            </StackPanel>
+          </StackPanel>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
+    <Grid Grid.Row="0" Margin="0,0,0,16">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+
+      <TextBlock
+        Grid.Column="0"
+        Text="{x:Static props:Resources.MyVms_PageTitle}"
+        Classes="title"
+        VerticalAlignment="Center"
+      />
+
+      <Button
+        Grid.Column="1"
+        Background="Transparent"
+        BorderThickness="0"
+        Cursor="Hand"
+        ToolTip.Tip="{x:Static props:Resources.Tooltip_Refresh}"
+        Command="{Binding RefreshCommand}"
+        IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBoolConverter}}"
+      >
+        <ui:SymbolIcon
+          Symbol="Sync"
+          FontSize="16"
+          Foreground="#666666"
+        />
+      </Button>
+    </Grid>
+
+    <Border
+      Grid.Row="1"
+      Background="#7A4B00"
+      CornerRadius="5"
+      Padding="12,8"
+      Margin="0,0,0,12"
+      IsVisible="{Binding BackendUnavailable}"
+    >
+      <TextBlock
+        Text="{x:Static props:Resources.MyVms_BackendUnavailable}"
+        Foreground="White"
+        TextWrapping="Wrap"
+      />
+    </Border>
+
+    <Border
+      Grid.Row="2"
+      Background="{Binding IsError, Converter={StaticResource BoolToStatusBrushConverter}}"
+      CornerRadius="5"
+      Padding="12,8"
+      Margin="0,0,0,12"
+      IsVisible="{Binding ShowStatus}"
+    >
+      <DockPanel>
+        <Button
+          DockPanel.Dock="Right"
+          ToolTip.Tip="{x:Static props:Resources.Tooltip_CopyToClipboard}"
+          Click="CopyStatus_Click"
+          Background="Transparent"
+          Padding="8,4"
+          VerticalAlignment="Center"
+        >
+          <ui:SymbolIcon
+            Symbol="Copy"
+            FontSize="14"
+            Foreground="White"
+          />
+        </Button>
+        <TextBlock
+          Text="{Binding StatusMessage, Mode=OneWay}"
+          Foreground="White"
+          TextWrapping="Wrap"
+          FontSize="13"
+          VerticalAlignment="Center"
+        />
+      </DockPanel>
+    </Border>
+
+    <StackPanel
+      Grid.Row="4"
+      HorizontalAlignment="Center"
+      VerticalAlignment="Center"
+      IsVisible="{Binding IsLoading}"
+    >
+      <ProgressBar IsIndeterminate="True" Width="200" Height="4" />
+      <TextBlock
+        Text="{x:Static props:Resources.MyVms_LoadingVms}"
+        Margin="0,12,0,0"
+        HorizontalAlignment="Center"
+        Opacity="0.7"
+      />
+    </StackPanel>
+
+    <ScrollViewer
+      Grid.Row="4"
+      VerticalScrollBarVisibility="Auto"
+      IsVisible="{Binding IsLoading, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+    >
+      <ItemsControl ItemsSource="{Binding GroupedVms}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate DataType="vm:VmGroup">
+            <Expander IsExpanded="{Binding IsExpanded}" HorizontalAlignment="Stretch" Margin="0,0,0,8" Padding="0" Background="Transparent" BorderThickness="0">
+              <Expander.Header>
+                <TextBlock Text="{Binding Name}" Classes="heading-small" Margin="0,8,0,4" />
+              </Expander.Header>
+              <ItemsControl ItemsSource="{Binding Items}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="vm:VmInstanceViewModel">
+                    <Border Theme="{StaticResource CardStyle}">
+                      <Grid>
+                        <Grid.RowDefinitions>
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="Auto" />
+                          <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Row="0" Grid.Column="0" VerticalAlignment="Center">
+                          <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <TextBlock
+                              Text="{Binding Name}"
+                              FontSize="15"
+                              FontWeight="SemiBold"
+                              VerticalAlignment="Center"
+                              Margin="0,0,10,0"
+                            />
+                            <Border
+                              CornerRadius="4"
+                              Padding="8,2"
+                              VerticalAlignment="Center"
+                              Background="{Binding State, Converter={StaticResource VmStateToBrushConverter}}"
+                            >
+                              <TextBlock
+                                Text="{Binding State}"
+                                FontSize="11"
+                                FontWeight="Medium"
+                                Foreground="White"
+                              />
+                            </Border>
+                          </StackPanel>
+
+                          <StackPanel Orientation="Horizontal">
+                            <TextBlock
+                              Text="{Binding MemoryDisplay}"
+                              Classes="muted"
+                              Margin="0,0,16,0"
+                            />
+                            <TextBlock
+                              Text="{Binding Uptime, StringFormat='Uptime: {0:hh\\:mm\\:ss}'}"
+                              Classes="muted"
+                            />
+                            <TextBlock
+                              Margin="16,0,0,0"
+                              FontSize="12"
+                              IsVisible="{Binding OriginDisplay, Converter={StaticResource StringToVisibilityConverter}}"
+                            >
+                              <Run Text="from " Foreground="{DynamicResource MutedBrush}" />
+                              <Run Text="{Binding OriginDisplay, Mode=OneWay}" />
+                            </TextBlock>
+                          </StackPanel>
+                        </StackPanel>
+
+                        <TextBox
+                          Grid.Row="1"
+                          Grid.ColumnSpan="2"
+                          Text="{Binding Notes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                          Watermark="{x:Static props:Resources.MyVms_NotesPlaceholder}"
+                          Margin="0,8,0,0"
+                          FontSize="12"
+                          Opacity="0.85"
+                          LostFocus="NoteBox_LostFocus"
+                          AcceptsReturn="False"
+                          Background="#FAFAFA"
+                          BorderBrush="{DynamicResource DividerBrush}"
+                        />
+
+                        <StackPanel
+                          Grid.Row="0"
+                          Grid.Column="1"
+                          Orientation="Horizontal"
+                          VerticalAlignment="Center"
+                        >
+                          <Button
+                            Margin="0,0,4,0"
+                            Command="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).StartVmCommand}"
+                            CommandParameter="{Binding}"
+                            IsEnabled="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+                          >
+                            <StackPanel Orientation="Horizontal">
+                              <ui:SymbolIcon
+                                Symbol="Play"
+                                FontSize="12"
+                                VerticalAlignment="Center"
+                                Margin="0,0,6,0"
+                              />
+                              <TextBlock
+                                Text="{x:Static props:Resources.MyVms_Start}"
+                                VerticalAlignment="Center"
+                              />
+                            </StackPanel>
+                          </Button>
+
+                          <Button
+                            Margin="0,0,4,0"
+                            Command="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).StopVmCommand}"
+                            CommandParameter="{Binding}"
+                            IsEnabled="{Binding State, Converter={StaticResource VmStateIsRunningConverter}}"
+                          >
+                            <StackPanel Orientation="Horizontal">
+                              <ui:SymbolIcon
+                                Symbol="Stop"
+                                FontSize="12"
+                                VerticalAlignment="Center"
+                                Margin="0,0,6,0"
+                              />
+                              <TextBlock
+                                Text="{x:Static props:Resources.MyVms_Stop}"
+                                VerticalAlignment="Center"
+                              />
+                            </StackPanel>
+                          </Button>
+
+                          <Button
+                            Theme="{StaticResource PrimaryButtonStyle}"
+                            Margin="0,0,4,0"
+                            ToolTip.Tip="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).CredentialTooltip}"
+                            Command="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).ConnectVmCommand}"
+                            CommandParameter="{Binding}"
+                            IsEnabled="{Binding State, Converter={StaticResource VmStateIsRunningConverter}}"
+                          >
+                            <StackPanel Orientation="Horizontal">
+                              <ui:SymbolIcon
+                                Symbol="Play"
+                                FontSize="12"
+                                VerticalAlignment="Center"
+                                Margin="0,0,6,0"
+                              />
+                              <TextBlock
+                                Text="{x:Static props:Resources.MyVms_Connect}"
+                                VerticalAlignment="Center"
+                              />
+                            </StackPanel>
+                          </Button>
+
+                          <Button
+                            Content="{x:Static props:Resources.MyVms_Rename}"
+                            Margin="0,0,4,0"
+                            Click="RenameButton_Click"
+                            Tag="{Binding}"
+                            IsEnabled="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+                            ToolTip.Tip="{x:Static props:Resources.Tooltip_RenameVm}"
+                          />
+
+                          <Button
+                            Margin="0,0,4,0"
+                            Padding="12,7"
+                            ToolTip.Tip="Apply locale, keyboard, and timezone from settings"
+                            Command="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).ApplyLocaleCommand}"
+                            CommandParameter="{Binding}"
+                            IsEnabled="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+                          >
+                            <ui:SymbolIcon Symbol="Globe" FontSize="14" />
+                          </Button>
+
+                          <Button
+                            Theme="{StaticResource DangerButtonStyle}"
+                            Command="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).DeleteVmCommand}"
+                            CommandParameter="{Binding}"
+                            IsEnabled="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+                            ToolTip.Tip="{x:Static props:Resources.Tooltip_DeleteVm}"
+                          >
+                            <ui:SymbolIcon
+                              Symbol="Delete"
+                              FontSize="14"
+                              Foreground="White"
+                            />
+                          </Button>
+                        </StackPanel>
+
+                        <Expander
+                          Grid.Row="2"
+                          Grid.ColumnSpan="2"
+                          Margin="0,8,0,0"
+                          HorizontalAlignment="Stretch"
+                          BorderThickness="0"
+                          IsExpanded="{Binding SnapshotsExpanded}"
+                          Expanded="SnapshotExpander_Expanded"
+                        >
+                          <Expander.Styles>
+                            <Style Selector="Expander">
+                              <Setter Property="BorderThickness" Value="0" />
+                              <Setter Property="Background" Value="Transparent" />
+                            </Style>
+                          </Expander.Styles>
+                          <Expander.Header>
+                            <StackPanel Orientation="Horizontal">
+                              <TextBlock
+                                Text="{x:Static props:Resources.MyVms_Snapshots}"
+                                FontSize="12"
+                                Opacity="0.7"
+                              />
+                              <TextBlock FontSize="12" Opacity="0.5"
+                                Text="{Binding SnapshotCount, StringFormat=' ({0})'}"
+                              />
+                            </StackPanel>
+                          </Expander.Header>
+                          <StackPanel Margin="0,8,0,0">
+                            <ProgressBar
+                              IsIndeterminate="True"
+                              Height="2"
+                              Margin="0,0,0,6"
+                              IsVisible="{Binding SnapshotsLoaded, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                            />
+
+                            <ItemsControl ItemsSource="{Binding Snapshots}">
+                              <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="models:VmSnapshot">
+                                  <Border
+                                    BorderThickness="0,1,0,0"
+                                    BorderBrush="{DynamicResource DividerBrush}"
+                                    Padding="0,6,0,6"
+                                  >
+                                    <Grid>
+                                      <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                      </Grid.ColumnDefinitions>
+                                      <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock
+                                          Text="{Binding Name}"
+                                          FontWeight="SemiBold"
+                                          FontSize="12"
+                                        />
+                                        <TextBlock
+                                          Text="{Binding CreationTime, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}"
+                                          FontSize="11"
+                                          Opacity="0.5"
+                                        />
+                                      </StackPanel>
+                                      <StackPanel
+                                        Grid.Column="1"
+                                        Orientation="Horizontal"
+                                        VerticalAlignment="Center"
+                                      >
+                                        <Button
+                                          Content="{x:Static props:Resources.MyVms_Restore}"
+                                          FontSize="11"
+                                          Padding="8,3"
+                                          Margin="0,0,4,0"
+                                          Command="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).RestoreSnapshotCommand}"
+                                          CommandParameter="{Binding}"
+                                          IsEnabled="True"
+                                        />
+                                        <Button
+                                          Content="{x:Static props:Resources.MyVms_Clone}"
+                                          FontSize="11"
+                                          Padding="8,3"
+                                          Margin="0,0,4,0"
+                                          IsVisible="{Binding IsNotBase}"
+                                          Command="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).CloneFromSnapshotCommand}"
+                                          CommandParameter="{Binding}"
+                                          IsEnabled="True"
+                                        />
+                                        <Button
+                                          Content="{x:Static props:Resources.MyVms_Push}"
+                                          FontSize="11"
+                                          Padding="8,3"
+                                          Margin="0,0,4,0"
+                                          IsVisible="{Binding IsNotBase}"
+                                          Command="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).PushSnapshotCommand}"
+                                          CommandParameter="{Binding}"
+                                          IsEnabled="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).IsPushing, Converter={StaticResource InverseBoolConverter}}"
+                                        />
+                                        <Button
+                                          Theme="{StaticResource DangerButtonStyle}"
+                                          ToolTip.Tip="{x:Static props:Resources.Tooltip_DeleteSnapshot}"
+                                          IsVisible="{Binding IsNotBase}"
+                                          Command="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).DeleteSnapshotCommand}"
+                                          CommandParameter="{Binding}"
+                                          IsEnabled="True"
+                                          FontSize="11"
+                                          Padding="8,3"
+                                        >
+                                          <ui:SymbolIcon
+                                            Symbol="Delete"
+                                            FontSize="11"
+                                            Foreground="White"
+                                          />
+                                        </Button>
+                                      </StackPanel>
+                                    </Grid>
+                                  </Border>
+                                </DataTemplate>
+                              </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <StackPanel
+                              Margin="0,4,0,4"
+                              IsVisible="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).IsPushing}"
+                            >
+                              <ProgressBar
+                                Value="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).PushProgress}"
+                                Minimum="0"
+                                Maximum="100"
+                                Height="4"
+                              />
+                              <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                <TextBlock
+                                  Text="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).PushStatusText}"
+                                  FontSize="11"
+                                  Opacity="0.7"
+                                />
+                                <TextBlock
+                                  Text="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).PushSpeedText}"
+                                  FontSize="11"
+                                  Opacity="0.5"
+                                  Margin="12,0,0,0"
+                                />
+                              </StackPanel>
+                            </StackPanel>
+
+                            <Border
+                              BorderThickness="0,1,0,0"
+                              BorderBrush="{DynamicResource DividerBrush}"
+                              Padding="0,8,0,0"
+                            >
+                              <Grid>
+                                <Grid.ColumnDefinitions>
+                                  <ColumnDefinition Width="*" />
+                                  <ColumnDefinition Width="Auto" />
+                                  <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox
+                                  Grid.Column="0"
+                                  Text="{Binding NewSnapshotName, UpdateSourceTrigger=PropertyChanged}"
+                                  Watermark="{x:Static props:Resources.MyVms_SnapshotNamePlaceholder}"
+                                  FontSize="12"
+                                  Padding="6,4"
+                                  Margin="0,0,6,0"
+                                />
+                                <Button
+                                  Grid.Column="1"
+                                  Content="{x:Static props:Resources.MyVms_Create}"
+                                  FontSize="11"
+                                  Padding="10,4"
+                                  Margin="0,0,6,0"
+                                  Theme="{StaticResource PrimaryButtonStyle}"
+                                  Command="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).CreateSnapshotForVmCommand}"
+                                  CommandParameter="{Binding}"
+                                  IsEnabled="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+                                />
+                                <Button
+                                  Grid.Column="2"
+                                  Content="{x:Static props:Resources.MyVms_ResetToBase}"
+                                  FontSize="13"
+                                  Padding="12,7"
+                                  Command="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).ResetToBaseCommand}"
+                                  CommandParameter="{Binding}"
+                                  IsEnabled="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+                                />
+                              </Grid>
+                            </Border>
+                          </StackPanel>
+                        </Expander>
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Expander>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+
+    <StackPanel
+      Grid.Row="4"
+      HorizontalAlignment="Center"
+      VerticalAlignment="Center"
+      IsVisible="{Binding IsLoading, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+    >
+      <StackPanel IsVisible="{Binding Vms.Count, Converter={StaticResource ZeroCountToVisibilityConverter}}">
+        <ui:SymbolIcon
+          Symbol="List"
+          FontSize="48"
+          Opacity="0.3"
+          HorizontalAlignment="Center"
+        />
+        <TextBlock
+          Text="{x:Static props:Resources.MyVms_NoVmsFound}"
+          FontSize="16"
+          Opacity="0.5"
+          Margin="0,12,0,4"
+          HorizontalAlignment="Center"
+        />
+        <TextBlock
+          Text="{x:Static props:Resources.MyVms_NoVmsHint}"
+          Foreground="{DynamicResource MutedBrush}"
+          HorizontalAlignment="Center"
+        />
+        <Button
+          Content="{x:Static props:Resources.MyVms_Troubleshoot}"
+          Margin="0,16,0,0"
+          HorizontalAlignment="Center"
+          IsVisible="{Binding NoVmsDetected}"
+          Command="{Binding RunTroubleshootCommand}"
+        />
+        <Border
+          Theme="{StaticResource CardStyle}"
+          Margin="0,12,0,0"
+          MaxWidth="600"
+          IsVisible="{Binding ShowTroubleshoot}"
+        >
+          <TextBox
+            Text="{Binding TroubleshootReport, Mode=OneWay}"
+            IsReadOnly="True"
+            FontFamily="Consolas"
+            FontSize="11"
+            TextWrapping="Wrap"
+            Background="Transparent"
+            BorderThickness="0"
+          />
+        </Border>
+      </StackPanel>
+    </StackPanel>
+
+    <Border Grid.Row="5" Theme="{StaticResource CardStyle}" Margin="0,8,0,0">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <TextBlock
+          Grid.Column="0"
+          Text="{x:Static props:Resources.MyVms_DefaultCredentials}"
+          FontSize="12"
+          FontWeight="SemiBold"
+          Opacity="0.55"
+          VerticalAlignment="Center"
+          Margin="0,0,20,0"
+        />
+
+        <StackPanel Grid.Column="1" Orientation="Horizontal">
+          <TextBlock
+            Text="{x:Static props:Resources.MyVms_User}"
+            FontSize="12"
+            Opacity="0.55"
+            VerticalAlignment="Center"
+            Margin="0,0,6,0"
+          />
+          <TextBlock
+            Text="{Binding DefaultUsername}"
+            FontSize="12"
+            FontFamily="Consolas"
+            FontWeight="SemiBold"
+            VerticalAlignment="Center"
+            Margin="0,0,4,0"
+          />
+          <Button
+            Padding="5,2"
+            Margin="0,0,20,0"
+            ToolTip.Tip="{x:Static props:Resources.Tooltip_CopyUsername}"
+            Tag="{Binding DefaultUsername}"
+            Click="CopyCredential_Click"
+            Background="Transparent"
+          >
+            <ui:SymbolIcon Symbol="Copy" FontSize="11" />
+          </Button>
+
+          <TextBlock
+            Text="{x:Static props:Resources.MyVms_Password}"
+            FontSize="12"
+            Opacity="0.55"
+            VerticalAlignment="Center"
+            Margin="0,0,6,0"
+          />
+          <TextBlock
+            Text="{Binding DefaultPassword}"
+            FontSize="12"
+            FontFamily="Consolas"
+            FontWeight="SemiBold"
+            VerticalAlignment="Center"
+            Margin="0,0,4,0"
+          />
+          <Button
+            Padding="5,2"
+            ToolTip.Tip="{x:Static props:Resources.Tooltip_CopyPassword}"
+            Tag="{Binding DefaultPassword}"
+            Click="CopyCredential_Click"
+            Background="Transparent"
+          >
+            <ui:SymbolIcon Symbol="Copy" FontSize="11" />
+          </Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

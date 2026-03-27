@@ -1,0 +1,350 @@
+<Window
+  x:Class="VmManager.Views.Dialogs.SetupWizardWindow"
+  xmlns="https://github.com/avaloniaui"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:contracts="clr-namespace:VmManager.Contracts.Models;assembly=VmManager.Contracts"
+  xmlns:ui="using:FluentAvalonia.UI.Controls"
+  xmlns:props="clr-namespace:VmManager.Properties"
+  xmlns:vm="clr-namespace:VmManager.ViewModels"
+  x:DataType="vm:SetupWizardViewModel"
+  Title="{x:Static props:Resources.AppSetupTitle}"
+  Width="700"
+  Height="500"
+  CanResize="False"
+  WindowStartupLocation="CenterScreen"
+  Background="White"
+>
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <TabControl
+      Grid.Row="0"
+      SelectedIndex="{Binding CurrentStep}"
+      Margin="32,24"
+      BorderThickness="0"
+      Background="Transparent"
+    >
+      <TabControl.Styles>
+        <Style Selector="TabItem">
+          <Setter Property="IsVisible" Value="False" />
+        </Style>
+      </TabControl.Styles>
+
+      <TabItem>
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="480">
+          <Image
+            Source="/Assets/app_256.png"
+            Width="80"
+            Height="80"
+            Margin="0,0,0,20"
+            HorizontalAlignment="Center"
+          />
+          <TextBlock
+            Text="{x:Static props:Resources.Wizard_WelcomeTitle}"
+            FontSize="24"
+            FontWeight="SemiBold"
+            HorizontalAlignment="Center"
+            Margin="0,0,0,8"
+          />
+          <TextBlock
+            Text="{x:Static props:Resources.Wizard_WelcomeSubtitle}"
+            FontSize="14"
+            Foreground="{DynamicResource MutedBrush}"
+            HorizontalAlignment="Center"
+            TextAlignment="Center"
+            TextWrapping="Wrap"
+            Margin="0,0,0,24"
+          />
+          <TextBlock
+            Text="{x:Static props:Resources.Wizard_WelcomeDescription}"
+            FontSize="13"
+            Foreground="{DynamicResource HintBrush}"
+            HorizontalAlignment="Center"
+            TextAlignment="Center"
+            TextWrapping="Wrap"
+          />
+        </StackPanel>
+      </TabItem>
+
+      <TabItem>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel MaxWidth="480">
+            <TextBlock
+              Text="{x:Static props:Resources.Wizard_VmDefaults}"
+              FontSize="20"
+              FontWeight="SemiBold"
+              Margin="0,0,0,4"
+            />
+            <TextBlock
+              Text="{x:Static props:Resources.Wizard_VmDefaultsDescription}"
+              FontSize="13"
+              Foreground="{DynamicResource MutedBrush}"
+              Margin="0,0,0,20"
+            />
+
+            <TextBlock Text="{x:Static props:Resources.Wizard_VmStoragePath}" Margin="0,0,0,4" />
+            <TextBox
+              Text="{Binding LocalVmPath, UpdateSourceTrigger=PropertyChanged}"
+              Watermark="{x:Static props:Resources.Settings_LocalVmPathSample}"
+              Margin="0,0,0,16"
+            />
+
+            <TextBlock Margin="0,0,0,4">
+              <Run Text="{x:Static props:Resources.Settings_Memory}" />
+              <Run
+                Text="{Binding ElementName=WizardMemorySlider, Path=Value, StringFormat={}{0:F0}}"
+                FontWeight="SemiBold"
+              />
+              <Run Text="{x:Static props:Resources.Settings_MemoryUnit}" />
+            </TextBlock>
+            <Slider
+              x:Name="WizardMemorySlider"
+              Minimum="512"
+              Maximum="32768"
+              Value="{Binding MemoryMb}"
+              TickFrequency="512"
+              IsSnapToTickEnabled="True"
+              Margin="0,0,0,16"
+            />
+
+            <TextBlock Margin="0,0,0,4">
+              <Run Text="{x:Static props:Resources.Settings_Cpu}" />
+              <Run
+                Text="{Binding ElementName=WizardCpuSlider, Path=Value, StringFormat={}{0:F0}}"
+                FontWeight="SemiBold"
+              />
+              <Run Text="{x:Static props:Resources.Settings_CpuUnit}" />
+            </TextBlock>
+            <Slider
+              x:Name="WizardCpuSlider"
+              Minimum="1"
+              Maximum="{Binding MaxCpuCount}"
+              Value="{Binding CpuCount}"
+              TickFrequency="1"
+              IsSnapToTickEnabled="True"
+              Margin="0,0,0,16"
+            />
+
+            <CheckBox
+              Content="{x:Static props:Resources.Wizard_ApplyLocale}"
+              IsChecked="{Binding ApplyLocale}"
+              Margin="0,0,0,8"
+            />
+
+            <Grid IsEnabled="{Binding ApplyLocale}">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0">
+                <TextBlock Text="{x:Static props:Resources.Wizard_Locale}" Margin="0,0,0,4" />
+                <ComboBox
+                  ItemsSource="{Binding LocaleNames}"
+                  SelectedItem="{Binding SelectedLocale}"
+                />
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock Text="{x:Static props:Resources.Wizard_Keyboard}" Margin="0,0,0,4" />
+                <ComboBox
+                  ItemsSource="{Binding KeyboardNames}"
+                  SelectedItem="{Binding SelectedKeyboard}"
+                />
+              </StackPanel>
+            </Grid>
+
+            <StackPanel Margin="0,10,0,0" IsEnabled="{Binding ApplyLocale}">
+              <TextBlock Text="Timezone" Margin="0,0,0,4" />
+              <ComboBox
+                ItemsSource="{Binding TimezoneNames}"
+                SelectedItem="{Binding SelectedTimezone}"
+                MaxDropDownHeight="300"
+              />
+            </StackPanel>
+
+            <TextBlock Text="VM Credentials" FontWeight="SemiBold" Margin="0,20,0,8" />
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0">
+                <TextBlock
+                  Text="{x:Static props:Resources.Settings_UsernamePlaceholder}"
+                  Margin="0,0,0,4"
+                />
+                <TextBox Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}" />
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock
+                  Text="{x:Static props:Resources.Settings_PasswordPlaceholder}"
+                  Margin="0,0,0,4"
+                />
+                <TextBox Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}" />
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel MaxWidth="520">
+            <TextBlock
+              Text="{x:Static props:Resources.Wizard_ImageSources}"
+              FontSize="20"
+              FontWeight="SemiBold"
+              Margin="0,0,0,4"
+            />
+            <TextBlock
+              Text="{x:Static props:Resources.Wizard_ImageSourcesDescription}"
+              FontSize="13"
+              Foreground="{DynamicResource MutedBrush}"
+              Margin="0,0,0,16"
+            />
+
+            <Button
+              Content="{x:Static props:Resources.Settings_AddFeed}"
+              Theme="{StaticResource PrimaryButtonStyle}"
+              Padding="12,5"
+              FontSize="12"
+              HorizontalAlignment="Left"
+              Margin="0,0,0,12"
+              Command="{Binding AddFeedCommand}"
+            />
+
+            <ItemsControl ItemsSource="{Binding Feeds}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:FeedEntryViewModel">
+                  <Border
+                    Background="#FAFAFA"
+                    BorderBrush="#E0E0E0"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="12"
+                    Margin="0,0,0,8"
+                  >
+                    <StackPanel>
+                      <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="Auto" />
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox
+                          Grid.Column="0"
+                          Width="90"
+                          Margin="0,0,8,0"
+                          SelectedItem="{Binding Type}"
+                        >
+                          <contracts:FeedType>OCI</contracts:FeedType>
+                          <contracts:FeedType>Nexus</contracts:FeedType>
+                          <contracts:FeedType>Local</contracts:FeedType>
+                        </ComboBox>
+                        <TextBox
+                          Grid.Column="1"
+                          Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                          Watermark="{x:Static props:Resources.Settings_FeedNamePlaceholder}"
+                          Margin="0,0,8,0"
+                        />
+                        <Button
+                          Grid.Column="2"
+                          Theme="{StaticResource DangerButtonStyle}"
+                          Padding="8,5"
+                          ToolTip.Tip="{x:Static props:Resources.Tooltip_RemoveFeed}"
+                          Command="{Binding $parent[Window].((vm:SetupWizardViewModel)DataContext).RemoveFeedCommand}"
+                          CommandParameter="{Binding}"
+                        >
+                          <ui:SymbolIcon
+                            Symbol="Delete"
+                            FontSize="12"
+                            Foreground="White"
+                          />
+                        </Button>
+                      </Grid>
+
+                      <TextBox
+                        Text="{Binding Url, UpdateSourceTrigger=PropertyChanged}"
+                        Watermark="{x:Static props:Resources.Settings_UrlPlaceholder}"
+                        Margin="0,0,0,8"
+                      />
+
+                      <TextBox
+                        Text="{Binding Repository, UpdateSourceTrigger=PropertyChanged}"
+                        Tag="Repository"
+                        Margin="0,0,0,8"
+                        IsVisible="{Binding IsOci}"
+                      />
+
+                      <Grid IsVisible="{Binding !IsLocal}">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="8" />
+                          <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox
+                          Grid.Column="0"
+                          Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
+                          Watermark="{x:Static props:Resources.Settings_UsernamePlaceholder}"
+                        />
+                        <TextBox
+                          Grid.Column="2"
+                          Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
+                          Watermark="{x:Static props:Resources.Settings_PasswordPlaceholder}"
+                        />
+                      </Grid>
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <TextBlock
+              Text="{x:Static props:Resources.Wizard_SkipHint}"
+              FontSize="12"
+              Foreground="{DynamicResource HintBrush}"
+              Margin="0,12,0,0"
+            />
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+
+    <Border
+      Grid.Row="1"
+      Background="#F5F5F5"
+      BorderBrush="#E0E0E0"
+      BorderThickness="0,1,0,0"
+      Padding="24,12"
+    >
+      <Grid>
+        <TextBlock
+          Text="{Binding StepIndicator}"
+          FontSize="12"
+          Foreground="#666666"
+          VerticalAlignment="Center"
+          HorizontalAlignment="Left"
+        />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button
+            Content="{x:Static props:Resources.Dialog_Back}"
+            Padding="16,7"
+            Margin="0,0,8,0"
+            Command="{Binding BackCommand}"
+            IsVisible="{Binding !IsFirstStep}"
+          />
+          <Button
+            Content="{Binding NextButtonText}"
+            Theme="{StaticResource FilledAccentButton}"
+            Padding="24,7"
+            Command="{Binding NextCommand}"
+          />
+        </StackPanel>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

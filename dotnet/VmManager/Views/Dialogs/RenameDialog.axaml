@@ -1,0 +1,37 @@
+<Window
+  x:Class="VmManager.Views.Dialogs.RenameDialog"
+  xmlns="https://github.com/avaloniaui"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:props="clr-namespace:VmManager.Properties"
+  Title="{x:Static props:Resources.Dialog_RenameVm}"
+  Width="340"
+  SizeToContent="Height"
+  CanResize="False"
+  WindowStartupLocation="CenterOwner"
+  Background="{DynamicResource BgBrush}"
+  ShowInTaskbar="False"
+>
+  <StackPanel Margin="20">
+    <TextBlock
+      Text="{x:Static props:Resources.Dialog_NewName}"
+      Margin="0,0,0,6"
+      Foreground="{DynamicResource TextBrush}"
+    />
+
+    <TextBox x:Name="NameBox" Margin="0,0,0,20" KeyDown="NameBox_KeyDown" />
+
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+      <Button
+        Content="{x:Static props:Resources.Dialog_Cancel}"
+        Margin="0,0,8,0"
+        Click="Cancel_Click"
+      />
+      <Button
+        x:Name="OkButton"
+        Content="{x:Static props:Resources.Dialog_Rename}"
+        Theme="{StaticResource PrimaryButtonStyle}"
+        Click="OK_Click"
+      />
+    </StackPanel>
+  </StackPanel>
+</Window>

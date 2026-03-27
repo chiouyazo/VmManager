@@ -1,0 +1,517 @@
+<UserControl
+  x:Class="VmManager.Views.Pages.SettingsPage"
+  xmlns="https://github.com/avaloniaui"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+  xmlns:contracts="clr-namespace:VmManager.Contracts.Models;assembly=VmManager.Contracts"
+  xmlns:ui="using:FluentAvalonia.UI.Controls"
+  xmlns:props="clr-namespace:VmManager.Properties"
+  xmlns:vm="clr-namespace:VmManager.ViewModels"
+  x:DataType="vm:SettingsViewModel"
+  mc:Ignorable="d"
+>
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+      <StackPanel Margin="24,20,24,16" MaxWidth="750">
+        <TextBlock
+          Text="{x:Static props:Resources.Settings_PageTitle}"
+          Classes="heading-large"
+          Margin="0,0,0,20"
+        />
+
+        <!-- Status bar -->
+        <Border
+          CornerRadius="6"
+          Padding="12,8"
+          Margin="0,0,0,12"
+          IsVisible="{Binding ShowStatus}"
+          Background="{Binding IsStatusError, Converter={StaticResource BoolToStatusBrushConverter}}"
+        >
+          <DockPanel>
+            <Button
+              DockPanel.Dock="Right"
+              ToolTip.Tip="{x:Static props:Resources.Tooltip_CopyToClipboard}"
+              Click="CopyStatus_Click"
+              Background="Transparent"
+              Padding="8,4"
+              VerticalAlignment="Center"
+            >
+              <ui:SymbolIcon
+                Symbol="Copy"
+                FontSize="14"
+                Foreground="White"
+              />
+            </Button>
+            <TextBlock
+              Text="{Binding StatusMessage, Mode=OneWay}"
+              Foreground="White"
+              TextWrapping="Wrap"
+              FontSize="13"
+              VerticalAlignment="Center"
+            />
+          </DockPanel>
+        </Border>
+
+        <!-- Environments / Agents -->
+        <Border Theme="{StaticResource CardStyle}" Margin="0,0,0,16">
+          <StackPanel>
+            <Grid Margin="0,0,0,12">
+              <TextBlock
+                Text="Environments"
+                Classes="heading-small"
+                VerticalAlignment="Center"
+              />
+              <Button
+                Content="Add Agent"
+                Theme="{StaticResource PrimaryButtonStyle}"
+                Padding="12,5"
+                FontSize="12"
+                HorizontalAlignment="Right"
+                Command="{Binding AddAgentCommand}"
+              />
+            </Grid>
+
+            <ItemsControl ItemsSource="{Binding Agents}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="contracts:AgentConfiguration">
+                  <Border
+                    Background="#FAFAFA"
+                    CornerRadius="6"
+                    BorderBrush="{DynamicResource DividerBrush}"
+                    BorderThickness="1"
+                    Padding="12"
+                    Margin="0,0,0,8"
+                  >
+                    <Grid>
+                      <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                      </Grid.ColumnDefinitions>
+                      <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                      </Grid.RowDefinitions>
+
+                      <TextBox
+                        Grid.Column="0"
+                        Grid.Row="0"
+                        Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                        IsReadOnly="{Binding IsLocal}"
+                        Watermark="Name"
+                        Margin="0,0,8,4"
+                      />
+                      <TextBox
+                        Grid.Column="1"
+                        Grid.Row="0"
+                        Text="{Binding Url, UpdateSourceTrigger=PropertyChanged}"
+                        IsReadOnly="{Binding IsLocal}"
+                        Watermark="API URL (e.g. https://man.server:8002)"
+                        Margin="0,0,8,4"
+                      />
+
+                      <TextBox
+                        Grid.Column="0"
+                        Grid.Row="1"
+                        Grid.ColumnSpan="2"
+                        Text="{Binding RdpProxyHost, UpdateSourceTrigger=PropertyChanged}"
+                        IsReadOnly="{Binding IsLocal}"
+                        Watermark="RDP Proxy Host (e.g. rdp.server:8002, optional)"
+                        Margin="0,0,8,4"
+                      />
+
+                      <TextBox
+                        Grid.Column="0"
+                        Grid.Row="2"
+                        Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
+                        IsReadOnly="{Binding IsLocal}"
+                        Watermark="Username (optional)"
+                        Margin="0,0,8,0"
+                      />
+                      <TextBox
+                        Grid.Column="1"
+                        Grid.Row="2"
+                        Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
+                        IsReadOnly="{Binding IsLocal}"
+                        Watermark="Password (optional)"
+                        Margin="0,0,8,0"
+                      />
+
+                      <StackPanel
+                        Grid.Column="2"
+                        Grid.Row="0"
+                        Grid.RowSpan="3"
+                        VerticalAlignment="Center"
+                      >
+                        <Button
+                          Width="32"
+                          Height="32"
+                          Padding="0"
+                          ToolTip.Tip="Test Connection"
+                          Margin="0,0,0,4"
+                          Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).TestAgentCommand}"
+                          CommandParameter="{Binding}"
+                        >
+                          <ui:SymbolIcon
+                            Symbol="Play"
+                            FontSize="14"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                          />
+                        </Button>
+                        <Border IsVisible="{Binding !IsLocal}">
+                          <Button
+                            Theme="{StaticResource DangerButtonStyle}"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            ToolTip.Tip="Remove"
+                            Command="{Binding $parent[ItemsControl].((vm:SettingsViewModel)DataContext).RemoveAgentCommand}"
+                            CommandParameter="{Binding}"
+                          >
+                            <ui:SymbolIcon
+                              Symbol="Delete"
+                              FontSize="12"
+                              Foreground="White"
+                            />
+                          </Button>
+                        </Border>
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <!-- Image Sources -->
+        <Border Theme="{StaticResource CardStyle}">
+          <StackPanel>
+            <Grid Margin="0,0,0,12">
+              <TextBlock
+                Text="{x:Static props:Resources.Settings_ImageSources}"
+                Classes="heading-small"
+                VerticalAlignment="Center"
+              />
+              <Button
+                Content="{x:Static props:Resources.Settings_AddFeed}"
+                Theme="{StaticResource PrimaryButtonStyle}"
+                Padding="12,5"
+                FontSize="12"
+                HorizontalAlignment="Right"
+                Command="{Binding AddFeedCommand}"
+              />
+            </Grid>
+
+            <ItemsControl ItemsSource="{Binding Feeds}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:FeedEntryViewModel">
+                  <Border
+                    Background="#FAFAFA"
+                    CornerRadius="6"
+                    BorderBrush="{DynamicResource DividerBrush}"
+                    BorderThickness="1"
+                    Padding="12"
+                    Margin="0,0,0,8"
+                  >
+                    <StackPanel>
+                      <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="Auto" />
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Type selector -->
+                        <ComboBox
+                          Grid.Column="0"
+                          Width="100"
+                          Margin="0,0,8,0"
+                          SelectedItem="{Binding Type}"
+                        >
+                          <contracts:FeedType>OCI</contracts:FeedType>
+                          <contracts:FeedType>Nexus</contracts:FeedType>
+                          <contracts:FeedType>Local</contracts:FeedType>
+                        </ComboBox>
+
+                        <!-- Name -->
+                        <TextBox
+                          Grid.Column="1"
+                          Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                          Watermark="{x:Static props:Resources.Settings_FeedNamePlaceholder}"
+                          Margin="0,0,8,0"
+                        />
+
+                        <!-- Remove button -->
+                        <Button
+                          Grid.Column="2"
+                          Theme="{StaticResource DangerButtonStyle}"
+                          Padding="8,5"
+                          ToolTip.Tip="{x:Static props:Resources.Tooltip_RemoveFeed}"
+                          Command="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).RemoveFeedCommand}"
+                          CommandParameter="{Binding}"
+                        >
+                          <ui:SymbolIcon
+                            Symbol="Delete"
+                            FontSize="12"
+                            Foreground="White"
+                          />
+                        </Button>
+                      </Grid>
+
+                      <!-- URL -->
+                      <TextBox
+                        Text="{Binding Url, UpdateSourceTrigger=PropertyChanged}"
+                        Watermark="{x:Static props:Resources.Settings_UrlPlaceholder}"
+                        Margin="0,0,0,8"
+                      />
+
+                      <!-- Repository (OCI only) -->
+                      <Grid Margin="0,0,0,8" IsVisible="{Binding IsOci}">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox
+                          Grid.Column="0"
+                          Text="{Binding Repository, UpdateSourceTrigger=PropertyChanged}"
+                          ItemsSource="{Binding DiscoveredRepos}"
+                          IsEditable="True"
+                          Margin="0,0,8,0"
+                        />
+                        <Button
+                          Grid.Column="1"
+                          Content="{x:Static props:Resources.Settings_Discover}"
+                          Padding="12,5"
+                          FontSize="12"
+                          Command="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).DiscoverReposCommand}"
+                          CommandParameter="{Binding}"
+                        />
+                      </Grid>
+
+                      <!-- Credentials (hidden for Local) -->
+                      <Grid Margin="0,0,0,8" IsVisible="{Binding !IsLocal}">
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="*" />
+                          <ColumnDefinition Width="8" />
+                          <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox
+                          Grid.Column="0"
+                          Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
+                          Watermark="{x:Static props:Resources.Settings_UsernamePlaceholder}"
+                        />
+                        <TextBox
+                          Grid.Column="2"
+                          Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
+                          Watermark="{x:Static props:Resources.Settings_PasswordPlaceholder}"
+                        />
+                      </Grid>
+
+                      <!-- Test connection -->
+                      <StackPanel Orientation="Horizontal">
+                        <Button
+                          Content="{x:Static props:Resources.Settings_TestConnection}"
+                          Padding="12,5"
+                          FontSize="12"
+                          Command="{Binding $parent[UserControl].((vm:SettingsViewModel)DataContext).TestConnectionCommand}"
+                          CommandParameter="{Binding}"
+                          IsEnabled="{Binding IsTesting, Converter={StaticResource InverseBoolConverter}}"
+                        />
+                        <TextBlock
+                          Text="{Binding ConnectionStatus}"
+                          FontSize="12"
+                          Margin="12,0,0,0"
+                          VerticalAlignment="Center"
+                          Foreground="{DynamicResource MutedBrush}"
+                        />
+                      </StackPanel>
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <!-- VM Defaults -->
+        <Border Theme="{StaticResource CardStyle}">
+          <StackPanel>
+            <TextBlock
+              Text="{x:Static props:Resources.Settings_VmDefaults}"
+              Classes="heading-small"
+              Margin="0,0,0,16"
+            />
+
+            <Grid Margin="0,0,0,12">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0">
+                <TextBlock Margin="0,0,0,4">
+                  <Run Text="{x:Static props:Resources.Settings_Memory}" />
+                  <Run
+                    Text="{Binding #MemorySlider.Value, StringFormat={}{0:F0}}"
+                    FontWeight="SemiBold"
+                  />
+                  <Run Text="{x:Static props:Resources.Settings_MemoryUnit}" />
+                </TextBlock>
+                <Slider
+                  x:Name="MemorySlider"
+                  Minimum="512"
+                  Maximum="32768"
+                  TickFrequency="512"
+                  IsSnapToTickEnabled="True"
+                  Value="{Binding MemoryMb}"
+                />
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock Margin="0,0,0,4">
+                  <Run Text="{x:Static props:Resources.Settings_Cpu}" />
+                  <Run
+                    Text="{Binding #CpuSlider.Value, StringFormat={}{0:F0}}"
+                    FontWeight="SemiBold"
+                  />
+                  <Run Text="{x:Static props:Resources.Settings_CpuUnit}" />
+                </TextBlock>
+                <Slider
+                  x:Name="CpuSlider"
+                  Minimum="1"
+                  Maximum="{Binding MaxCpuCount}"
+                  TickFrequency="1"
+                  IsSnapToTickEnabled="True"
+                  Value="{Binding CpuCount}"
+                />
+              </StackPanel>
+            </Grid>
+
+            <Grid Margin="0,0,0,12">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock
+                  Text="{x:Static props:Resources.Settings_DefaultUsername}"
+                  Margin="0,0,0,4"
+                />
+                <TextBox
+                  Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
+                  Watermark="{x:Static props:Resources.Settings_UsernameSample}"
+                />
+              </StackPanel>
+              <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                <TextBlock
+                  Text="{x:Static props:Resources.Settings_DefaultPassword}"
+                  Margin="0,0,0,4"
+                />
+                <TextBox
+                  Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
+                  Watermark="{x:Static props:Resources.Settings_PasswordSample}"
+                />
+              </StackPanel>
+            </Grid>
+
+            <TextBlock Text="{x:Static props:Resources.Settings_LocalVmStorage}" Margin="0,0,0,4" />
+            <Grid Margin="0,0,0,12">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <TextBox
+                Grid.Column="0"
+                Text="{Binding LocalVmPath, UpdateSourceTrigger=PropertyChanged}"
+                Margin="0,0,8,0"
+                Watermark="{x:Static props:Resources.Settings_LocalVmPathSample}"
+              />
+              <Button
+                Grid.Column="1"
+                Content="{x:Static props:Resources.Settings_Browse}"
+                Command="{Binding BrowseLocalVmPathCommand}"
+                IsVisible="{Binding IsLocalAgent}"
+                Padding="12,5"
+                FontSize="12"
+              />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Locale -->
+        <Border Theme="{StaticResource CardStyle}">
+          <StackPanel>
+            <TextBlock
+              Text="{x:Static props:Resources.Settings_LocaleSettings}"
+              Classes="heading-small"
+              Margin="0,0,0,12"
+            />
+            <CheckBox
+              Content="{x:Static props:Resources.Settings_ApplyLocale}"
+              IsChecked="{Binding ApplyLocale}"
+              Margin="0,0,0,12"
+            />
+            <Grid IsEnabled="{Binding ApplyLocale}">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0">
+                <TextBlock Text="{x:Static props:Resources.Settings_Locale}" Margin="0,0,0,4" />
+                <ComboBox
+                  ItemsSource="{Binding LocaleNames}"
+                  SelectedItem="{Binding SelectedLocale}"
+                />
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock
+                  Text="{x:Static props:Resources.Settings_KeyboardLayout}"
+                  Margin="0,0,0,4"
+                />
+                <ComboBox
+                  ItemsSource="{Binding KeyboardNames}"
+                  SelectedItem="{Binding SelectedKeyboard}"
+                />
+              </StackPanel>
+            </Grid>
+            <StackPanel Margin="0,10,0,0" IsEnabled="{Binding ApplyLocale}">
+              <TextBlock Text="Timezone" Margin="0,0,0,4" />
+              <ComboBox
+                ItemsSource="{Binding TimezoneNames}"
+                SelectedItem="{Binding SelectedTimezone}"
+                MaxDropDownHeight="300"
+              />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+
+    <!-- Sticky save bar -->
+    <Border
+      Grid.Row="1"
+      Background="{DynamicResource SurfaceBrush}"
+      BorderBrush="{DynamicResource DividerBrush}"
+      BorderThickness="0,1,0,0"
+      Padding="24,10"
+    >
+      <Button
+        Content="{x:Static props:Resources.Settings_Save}"
+        Theme="{StaticResource FilledAccentButton}"
+        Padding="24,10"
+        FontSize="14"
+        HorizontalAlignment="Left"
+        Command="{Binding SaveCommand}"
+      />
+    </Border>
+  </Grid>
+</UserControl>

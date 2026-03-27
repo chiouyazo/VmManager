@@ -1,42 +1,27 @@
 using System.Collections.ObjectModel;
-using System.IO;
-using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using VmManager.Models;
+using Microsoft.Extensions.Logging;
 using VmManager.Services;
 
 namespace VmManager.ViewModels;
 
-/// <summary>
-/// ViewModel for the My VMs page. Lists local Hyper-V VMs and exposes
-/// power-management, connection, rename and reset commands.
-/// </summary>
-public partial class MyVmsViewModel : ObservableObject
+public partial class MyVmsViewModel : ViewModelBase
 {
-    internal readonly HyperVService _hyperVService;
-    private readonly DockerService _dockerService;
-    private readonly VmBackendFactory _backendFactory;
-    private readonly SettingsService _settingsService;
-    private readonly PreflightService _preflightService;
+    private readonly ILogger<MyVmsViewModel> _logger;
 
-    public MyVmsViewModel(
-        HyperVService hyperVService,
-        DockerService dockerService,
-        VmBackendFactory backendFactory,
-        SettingsService settingsService,
-        PreflightService preflightService
-    )
+    private AgentClient _agentClient => App.AgentClient!;
+
+    public MyVmsViewModel(ILogger<MyVmsViewModel> logger)
     {
-        _hyperVService = hyperVService;
-        _dockerService = dockerService;
-        _backendFactory = backendFactory;
-        _settingsService = settingsService;
-        _preflightService = preflightService;
+        ArgumentNullException.ThrowIfNull(logger);
+        _logger = logger;
     }
 
     [ObservableProperty]
-    private ObservableCollection<VmInstance> _vms = [];
+    private ObservableCollection<VmInstanceViewModel> _vms = [];
+
+    public ObservableCollection<VmGroup> GroupedVms { get; } = new ObservableCollection<VmGroup>();
 
     [ObservableProperty]
     private bool _isLoading;
@@ -45,16 +30,7 @@ public partial class MyVmsViewModel : ObservableObject
     private bool _isBusy;
 
     [ObservableProperty]
-    private string _statusMessage = "";
-
-    [ObservableProperty]
-    private bool _showStatus;
-
-    [ObservableProperty]
-    private bool _isError;
-
-    [ObservableProperty]
-    private bool _hyperVUnavailable;
+    private bool _backendUnavailable;
 
     [ObservableProperty]
     private bool _noVmsDetected;
@@ -65,228 +41,100 @@ public partial class MyVmsViewModel : ObservableObject
     [ObservableProperty]
     private bool _showTroubleshoot;
 
-    /// <summary>
-    /// Set by the View to show confirmation dialogs.
-    /// Returns true if user confirms, false to cancel.
-    /// </summary>
     public Func<string, string, Task<bool>>? ConfirmAction { get; set; }
-
-    /// <summary>
-    /// Set by the View to request a name for new VMs.
-    /// Returns the name or null to cancel.
-    /// </summary>
     public Func<string, Task<string?>>? RequestVmName { get; set; }
-
-    /// <summary>Set by the View to navigate to a different page.</summary>
+    public Func<List<string>, Task<int>>? RequestPushFeed { get; set; }
+    public Func<List<string>, Task<int>>? RequestPushRepository { get; set; }
     public Action<string>? NavigateTo { get; set; }
+    public Action<string>? NavigateToMarketplaceImage { get; set; }
 
-    // ── Credentials ──────────────────────────────────────────────────────────
+    [ObservableProperty]
+    private string _credentialTooltip = "";
 
-    public string CredentialTooltip
-    {
-        get
-        {
-            var s = _settingsService.Load();
-            return $"User: {s.DefaultVmUsername}\nPassword: {s.DefaultVmPassword}";
-        }
-    }
+    [ObservableProperty]
+    private string _defaultUsername = "";
 
-    public string DefaultUsername => _settingsService.Load().DefaultVmUsername;
-    public string DefaultPassword => _settingsService.Load().DefaultVmPassword;
+    [ObservableProperty]
+    private string _defaultPassword = "";
 
-    // ── Managed VMs tracking ─────────────────────────────────────────────────
+    [ObservableProperty]
+    private bool _isPushing;
 
-    private static readonly string ManagedVmsPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "VmManager",
-        "managed-vms.json"
-    );
+    [ObservableProperty]
+    private double _pushProgress;
 
-    private HashSet<string> _managedVms = [];
+    [ObservableProperty]
+    private string _pushStatusText = "";
 
-    private void LoadManagedVms()
-    {
-        try
-        {
-            if (File.Exists(ManagedVmsPath))
-            {
-                var json = File.ReadAllText(ManagedVmsPath);
-                _managedVms = JsonSerializer.Deserialize<HashSet<string>>(json) ?? [];
-            }
-            else
-            {
-                // First run with tracking: seed from VMs that have notes
-                // (user interacted with them through the app → managed)
-                _managedVms = [];
-                if (File.Exists(NotesPath))
-                {
-                    var notesJson = File.ReadAllText(NotesPath);
-                    var notes = JsonSerializer.Deserialize<Dictionary<string, string>>(notesJson);
-                    if (notes != null)
-                        _managedVms = [.. notes.Keys];
-                }
-
-                // Persist so next load uses the file
-                Directory.CreateDirectory(Path.GetDirectoryName(ManagedVmsPath)!);
-                File.WriteAllText(
-                    ManagedVmsPath,
-                    JsonSerializer.Serialize(
-                        _managedVms,
-                        new JsonSerializerOptions { WriteIndented = true }
-                    )
-                );
-            }
-        }
-        catch
-        {
-            _managedVms = [];
-        }
-    }
-
-    public static void TrackManagedVm(string vmName)
-    {
-        try
-        {
-            var path = ManagedVmsPath;
-            HashSet<string> vms = [];
-            if (File.Exists(path))
-            {
-                var json = File.ReadAllText(path);
-                vms = JsonSerializer.Deserialize<HashSet<string>>(json) ?? [];
-            }
-
-            vms.Add(vmName);
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(
-                path,
-                JsonSerializer.Serialize(vms, new JsonSerializerOptions { WriteIndented = true })
-            );
-        }
-        catch
-        { /* non-fatal */
-        }
-    }
-
-    // ── Notes persistence ────────────────────────────────────────────────────
-
-    private static readonly string NotesPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "VmManager",
-        "vm-notes.json"
-    );
-
-    private Dictionary<string, string> _notes = [];
-
-    private void LoadNotes()
-    {
-        try
-        {
-            if (File.Exists(NotesPath))
-            {
-                var json = File.ReadAllText(NotesPath);
-                _notes = JsonSerializer.Deserialize<Dictionary<string, string>>(json) ?? [];
-            }
-        }
-        catch
-        {
-            _notes = [];
-        }
-    }
-
-    private void SaveNotes()
-    {
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(NotesPath)!);
-            File.WriteAllText(
-                NotesPath,
-                JsonSerializer.Serialize(_notes, new JsonSerializerOptions { WriteIndented = true })
-            );
-        }
-        catch
-        { /* non-fatal */
-        }
-    }
-
-    // ── Commands ─────────────────────────────────────────────────────────────
-
-    [RelayCommand]
-    public async Task RunTroubleshootAsync()
-    {
-        ShowTroubleshoot = false;
-        TroubleshootReport = "Running diagnostics…";
-        ShowTroubleshoot = true;
-
-        try
-        {
-            TroubleshootReport = await _hyperVService.TroubleshootVmListingAsync();
-        }
-        catch (Exception ex)
-        {
-            TroubleshootReport = $"Troubleshoot failed: {ex.Message}";
-        }
-    }
+    [ObservableProperty]
+    private string _pushSpeedText = "";
 
     [RelayCommand]
     public async Task RefreshAsync()
     {
+        if (App.AgentClient == null)
+        {
+            Vms.Clear();
+            GroupedVms.Clear();
+            return;
+        }
         IsLoading = true;
         ShowStatus = false;
-        HyperVUnavailable = false;
+        BackendUnavailable = false;
         NoVmsDetected = false;
         ShowTroubleshoot = false;
 
         try
         {
-            LoadNotes();
-            LoadManagedVms();
-            var allVms = new List<VmInstance>();
+            AppSettings settings = await _agentClient.GetSettingsAsync();
+            DefaultUsername = settings.DefaultVmUsername;
+            DefaultPassword = settings.DefaultVmPassword;
 
-            // Load Hyper-V VMs
-            try
+            List<VmInstance> allVms = await _agentClient.GetVmsAsync();
+
+            HashSet<string> seen = new HashSet<string>();
+            foreach (VmInstance vmData in allVms)
             {
-                var hyperVVms = await _hyperVService.GetVmsAsync();
-                allVms.AddRange(hyperVVms);
-            }
-            catch (Exception ex)
-            {
-                if (
-                    ex.Message.Contains("Hyper-V")
-                    || ex.Message.Contains("Get-VM")
-                    || ex.Message.Contains("not recognized")
-                    || ex.Message.Contains("cannot be loaded")
-                    || ex.Message.Contains("virtualization")
-                )
-                    HyperVUnavailable = true;
+                seen.Add(vmData.Name);
+                VmInstanceViewModel? existing = Vms.FirstOrDefault(v => v.Name == vmData.Name);
+                if (existing != null)
+                {
+                    existing.UpdateData(vmData);
+                }
                 else
-                    ShowError(ex.Message);
+                {
+                    Vms.Add(new VmInstanceViewModel(vmData));
+                }
             }
 
-            // Load Docker containers
-            try
+            for (int i = Vms.Count - 1; i >= 0; i--)
             {
-                var dockerVms = await _dockerService.GetVmsAsync();
-                allVms.AddRange(dockerVms);
+                if (!seen.Contains(Vms[i].Name))
+                    Vms.RemoveAt(i);
             }
-            catch
-            {
-                // Docker not available - silently skip
-            }
+            List<VmInstanceViewModel> wrapped = Vms.ToList();
+            RebuildGroups(wrapped);
+            NoVmsDetected = allVms.Count == 0;
 
-            // Attach notes and managed status to VMs
-            foreach (var vm in allVms)
-            {
-                if (_notes.TryGetValue(vm.Name, out var note))
-                    vm.Notes = note;
-                vm.IsManaged = vm.Backend != "HyperV" || _managedVms.Contains(vm.Name);
-            }
+            _ = LoadAllSnapshotCountsAsync(wrapped);
 
-            Vms = new ObservableCollection<VmInstance>(allVms);
-            NoVmsDetected = allVms.Count == 0 && !HyperVUnavailable;
+            foreach (VmInstanceViewModel vm in wrapped)
+            {
+                if (vm.Data.IsRunning && !vm.IsBusy)
+                    _ = CheckRdpReadinessAsync(vm);
+            }
         }
         catch (Exception ex)
         {
-            ShowError(ex.Message);
+            _logger.LogError(ex, "Failed to refresh VMs");
+            if (
+                ex.Message.Contains("Hyper-V")
+                || ex.Message.Contains("libvirt")
+                || ex.Message.Contains("not recognized")
+            )
+                BackendUnavailable = true;
+            else
+                ShowError(ex.Message);
         }
         finally
         {
@@ -294,246 +142,636 @@ public partial class MyVmsViewModel : ObservableObject
         }
     }
 
-    /// <summary>Resolves the correct backend for a VM based on its Backend property.</summary>
-    private IVmBackend BackendFor(VmInstance vm) => _backendFactory.GetBackendByName(vm.Backend);
-
     [RelayCommand]
-    public async Task StartVmAsync(VmInstance vm)
+    public async Task RunTroubleshootAsync()
     {
-        if (vm.Backend == "HyperV")
+        ShowTroubleshoot = false;
+        TroubleshootReport = Resources.Status_RunningDiagnostics;
+        ShowTroubleshoot = true;
+
+        try
         {
-            IsBusy = true;
-            ShowStatus = false;
-            StatusMessage = $"Checking available RAM for {vm.Name}…";
-
-            try
-            {
-                var ramError = await _preflightService.CheckRamForVmAsync(vm.Name);
-                if (ramError != null)
-                {
-                    ShowError(ramError);
-                    return;
-                }
-            }
-            catch
-            { /* proceed anyway */
-            }
-            finally
-            {
-                IsBusy = false;
-            }
+            TroubleshootReport = await _agentClient.TroubleshootAsync();
         }
-
-        await RunOperationAsync(
-            $"Starting {vm.Name}…",
-            () => BackendFor(vm).StartVmAsync(vm.Name),
-            $"{vm.Name} started."
-        );
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Troubleshoot failed");
+            TroubleshootReport = "Troubleshoot failed: " + ex.Message;
+        }
     }
 
     [RelayCommand]
-    public async Task StopVmAsync(VmInstance vm) =>
-        await RunOperationAsync(
-            $"Stopping {vm.Name}…",
-            () => BackendFor(vm).StopVmAsync(vm.Name),
-            $"{vm.Name} stopped."
-        );
+    public void StartVm(VmInstanceViewModel vm)
+    {
+        if (vm.IsBusy)
+            return;
+        _ = StartVmBackgroundAsync(vm);
+    }
+
+    private async Task StartVmBackgroundAsync(VmInstanceViewModel vm)
+    {
+        vm.IsBusy = true;
+        vm.SetStateOverride("Starting");
+        vm.StatusMessage = "Starting...";
+        try
+        {
+            await _agentClient.StartVmAsync(vm.Name);
+            vm.StatusMessage = "Booting...";
+            await PollVmStateAsync(vm, "Running", TimeSpan.FromMinutes(3));
+            vm.StatusMessage = "Waiting for RDP...";
+            await PollRdpReadyAsync(vm, TimeSpan.FromMinutes(3));
+            vm.SetStateOverride(null);
+            await RefreshAsync();
+            ShowSuccess(string.Format(Resources.Status_StartedFormat, vm.Name));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to start VM {VmName}", vm.Name);
+            ShowError(ex.Message);
+        }
+        finally
+        {
+            vm.IsBusy = false;
+            vm.StatusMessage = "";
+            vm.SetStateOverride(null);
+        }
+    }
 
     [RelayCommand]
-    public async Task DeleteVmAsync(VmInstance vm)
+    public void StopVm(VmInstanceViewModel vm)
     {
+        if (vm.IsBusy)
+            return;
+        _ = StopVmBackgroundAsync(vm);
+    }
+
+    private async Task StopVmBackgroundAsync(VmInstanceViewModel vm)
+    {
+        vm.IsBusy = true;
+        vm.SetStateOverride("Stopping");
+        vm.StatusMessage = "Stopping...";
+        try
+        {
+            await _agentClient.StopVmAsync(vm.Name);
+            vm.StatusMessage = "Shutting down...";
+            await PollVmStateAsync(vm, "Off", TimeSpan.FromMinutes(2));
+            vm.SetStateOverride(null);
+            await RefreshAsync();
+            ShowSuccess(string.Format(Resources.Status_StoppedFormat, vm.Name));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to stop VM {VmName}", vm.Name);
+            ShowError(ex.Message);
+        }
+        finally
+        {
+            vm.IsBusy = false;
+            vm.StatusMessage = "";
+            vm.SetStateOverride(null);
+        }
+    }
+
+    [RelayCommand]
+    public async Task DeleteVmAsync(VmInstanceViewModel vm)
+    {
+        if (vm.IsBusy)
+            return;
         if (ConfirmAction != null)
         {
-            var typeLabel = vm.Backend == "Docker" ? "container" : "VM";
-            var confirmed = await ConfirmAction(
-                $"Delete \"{vm.Name}\"?",
-                $"This will permanently remove the {typeLabel}."
+            bool confirmed = await ConfirmAction(
+                string.Format(Resources.Confirm_DeleteTitleFormat, vm.Name),
+                string.Format(Resources.Confirm_DeleteVmFormat, Resources.Confirm_DeleteVmType)
             );
             if (!confirmed)
                 return;
         }
 
-        await RunOperationAsync(
-            $"Deleting {vm.Name}…",
-            () => BackendFor(vm).DeleteVmAsync(vm.Name),
-            $"{vm.Name} deleted."
-        );
-
-        // Clean up notes
-        _notes.Remove(vm.Name);
-        SaveNotes();
+        _ = DeleteVmBackgroundAsync(vm);
     }
 
-    [RelayCommand]
-    public async Task ConnectVmAsync(VmInstance vm)
+    private async Task DeleteVmBackgroundAsync(VmInstanceViewModel vm)
     {
+        vm.IsBusy = true;
+        vm.StatusMessage = "Deleting...";
         try
         {
-            var s = _settingsService.Load();
-            await BackendFor(vm)
-                .ConnectToVmAsync(vm.Name, s.DefaultVmUsername, s.DefaultVmPassword);
-        }
-        catch (Exception ex)
-        {
-            ShowError($"Failed to connect: {ex.Message}");
-        }
-    }
-
-    [RelayCommand]
-    public async Task RenameVmAsync(VmInstance vm)
-    {
-        if (string.IsNullOrWhiteSpace(vm.PendingRename) || vm.PendingRename == vm.Name)
-            return;
-
-        // Move notes to new name
-        var oldName = vm.Name;
-        await RunOperationAsync(
-            $"Renaming {vm.Name}…",
-            () => BackendFor(vm).RenameVmAsync(vm.Name, vm.PendingRename),
-            $"Renamed to {vm.PendingRename}."
-        );
-
-        if (_notes.TryGetValue(oldName, out var note))
-        {
-            _notes.Remove(oldName);
-            _notes[vm.PendingRename] = note;
-            SaveNotes();
-        }
-    }
-
-    /// <summary>Set by the View to navigate to snapshots page with a VM pre-selected.</summary>
-    public Action<string>? NavigateToSnapshots { get; set; }
-
-    [RelayCommand]
-    public async Task QuickSnapshotAsync(VmInstance vm)
-    {
-        var defaultName = $"Snapshot {DateTime.Now:yyyy-MM-dd HH:mm}";
-        var snapshotName = RequestVmName != null ? await RequestVmName(defaultName) : defaultName;
-        if (string.IsNullOrWhiteSpace(snapshotName))
-            return;
-
-        IsBusy = true;
-        ShowStatus = false;
-        StatusMessage = $"Creating snapshot of {vm.Name}…";
-
-        try
-        {
-            if (vm.Backend == "HyperV")
-                await _hyperVService.CreateSnapshotAsync(vm.Name, snapshotName);
-            else
-                await BackendFor(vm).CreateSnapshotAsync(vm.Name, snapshotName);
-
-            ShowSuccess($"Snapshot \"{snapshotName}\" of {vm.Name} created.");
-            NavigateToSnapshots?.Invoke(vm.Name);
-        }
-        catch (Exception ex)
-        {
-            ShowError($"Snapshot failed: {ex.Message}");
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    /// <summary>Set by the View to let user pick a snapshot to restore.</summary>
-    public Func<VmInstance, Task<string?>>? PickSnapshotForRestore { get; set; }
-
-    [RelayCommand]
-    public async Task ResetVmAsync(VmInstance vm)
-    {
-        // Let user choose: pick a specific snapshot or reset to base
-        string? choice = null;
-        if (PickSnapshotForRestore != null)
-        {
-            choice = await PickSnapshotForRestore(vm);
-            if (choice == null)
-                return; // cancelled
-        }
-
-        IsBusy = true;
-        ShowStatus = false;
-        StatusMessage = $"Restoring {vm.Name}…";
-
-        try
-        {
-            if (choice == "__base__")
-            {
-                // Reset to base image
-                var backend = BackendFor(vm);
-                var restored = await backend.ResetVmAsync(vm.Name);
-                if (!restored && vm.Backend == "HyperV")
-                    await _hyperVService.ResetDiskAsync(vm.Name);
-                ShowSuccess($"{vm.Name} reset to base image.");
-            }
-            else if (!string.IsNullOrEmpty(choice))
-            {
-                // Restore to specific snapshot
-                await _hyperVService.RestoreSnapshotAsync(vm.Name, choice);
-                ShowSuccess($"{vm.Name} restored to snapshot.");
-            }
-
+            await _agentClient.DeleteVmAsync(vm.Name);
             await RefreshAsync();
+            ShowSuccess(string.Format(Resources.Status_DeletedFormat, vm.Name));
         }
         catch (Exception ex)
         {
-            ShowError($"Restore failed: {ex.Message}");
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
-    [RelayCommand]
-    public void SaveNoteForVm(VmInstance vm)
-    {
-        if (string.IsNullOrWhiteSpace(vm.Notes))
-            _notes.Remove(vm.Name);
-        else
-            _notes[vm.Name] = vm.Notes;
-        SaveNotes();
-    }
-
-    // ── Helpers ──────────────────────────────────────────────────────────────
-
-    private async Task RunOperationAsync(
-        string busyMessage,
-        Func<Task> operation,
-        string successMessage
-    )
-    {
-        IsBusy = true;
-        ShowStatus = false;
-        StatusMessage = busyMessage;
-
-        try
-        {
-            await operation();
-            ShowSuccess(successMessage);
-            await RefreshAsync();
-        }
-        catch (Exception ex)
-        {
+            _logger.LogError(ex, "Failed to delete VM {VmName}", vm.Name);
             ShowError(ex.Message);
         }
         finally
         {
-            IsBusy = false;
+            vm.IsBusy = false;
+            vm.StatusMessage = "";
         }
     }
 
-    private void ShowSuccess(string message)
+    [RelayCommand]
+    public async Task ConnectVmAsync(VmInstanceViewModel vm)
     {
-        IsError = false;
-        StatusMessage = message;
-        ShowStatus = true;
+        try
+        {
+            await _agentClient.ConnectToVmAsync(vm.Name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to connect to VM {VmName}", vm.Name);
+            ShowError(string.Format(Resources.Error_ConnectFailedFormat, ex.Message));
+        }
     }
 
-    private void ShowError(string message)
+    [RelayCommand]
+    public void RenameVm(VmInstanceViewModel vm)
     {
-        IsError = true;
-        StatusMessage = message;
-        ShowStatus = true;
+        if (vm.IsBusy || string.IsNullOrWhiteSpace(vm.PendingRename) || vm.PendingRename == vm.Name)
+            return;
+        _ = RenameVmBackgroundAsync(vm);
+    }
+
+    private async Task RenameVmBackgroundAsync(VmInstanceViewModel vm)
+    {
+        vm.IsBusy = true;
+        vm.StatusMessage = "Renaming...";
+        try
+        {
+            await _agentClient.RenameVmAsync(vm.Name, vm.PendingRename);
+            await RefreshAsync();
+            ShowSuccess(string.Format(Resources.Status_RenamedFormat, vm.PendingRename));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to rename VM {VmName}", vm.Name);
+            ShowError(ex.Message);
+        }
+        finally
+        {
+            vm.IsBusy = false;
+            vm.StatusMessage = "";
+        }
+    }
+
+    [RelayCommand]
+    public void GoToOriginImage(VmInstanceViewModel vm)
+    {
+        if (vm.Origin != null && !string.IsNullOrEmpty(vm.Origin.ImageId))
+            NavigateToMarketplaceImage?.Invoke(vm.Origin.ImageId);
+    }
+
+    [RelayCommand]
+    public async Task LoadSnapshotsForVmAsync(VmInstanceViewModel vm)
+    {
+        if (vm.Backend is not "HyperV" and not "KVM")
+            return;
+
+        try
+        {
+            List<VmSnapshot> snapshots = await _agentClient.GetSnapshotsAsync(vm.Name);
+            vm.Snapshots.Clear();
+            foreach (VmSnapshot snapshot in snapshots)
+                vm.Snapshots.Add(snapshot);
+            vm.SnapshotCount = snapshots.Count;
+            vm.SnapshotsLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load snapshots for VM {VmName}", vm.Name);
+            ShowError(string.Format(Resources.Error_SnapshotsFailedFormat, ex.Message));
+        }
+    }
+
+    [RelayCommand]
+    public async Task CreateSnapshotForVmAsync(VmInstanceViewModel vm)
+    {
+        if (string.IsNullOrWhiteSpace(vm.NewSnapshotName))
+            return;
+
+        if (string.Equals(vm.NewSnapshotName.Trim(), "Base", StringComparison.OrdinalIgnoreCase))
+        {
+            ShowError(Resources.Error_BaseNameReserved);
+            return;
+        }
+
+        vm.IsBusy = true;
+        vm.StatusMessage = "Creating snapshot...";
+
+        try
+        {
+            await _agentClient.CreateSnapshotAsync(vm.Name, vm.NewSnapshotName.Trim());
+            ShowSuccess(
+                string.Format(Resources.Status_SnapshotCreatedFormat, vm.NewSnapshotName.Trim())
+            );
+            vm.NewSnapshotName = "";
+            await LoadSnapshotsForVmAsync(vm);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to create snapshot for VM {VmName}", vm.Name);
+            ShowError(string.Format(Resources.Error_SnapshotFailedFormat, ex.Message));
+        }
+        finally
+        {
+            vm.IsBusy = false;
+            vm.StatusMessage = "";
+        }
+    }
+
+    [RelayCommand]
+    public async Task RestoreSnapshotAsync(VmSnapshot snapshot)
+    {
+        if (ConfirmAction != null)
+        {
+            bool confirmed = await ConfirmAction(
+                string.Format(Resources.Confirm_RestoreTitleFormat, snapshot.Name),
+                Resources.Confirm_RestoreMessage
+            );
+            if (!confirmed)
+                return;
+        }
+
+        VmInstanceViewModel? vm = Vms.FirstOrDefault(v => v.Name == snapshot.VmName);
+        if (vm != null)
+        {
+            vm.IsBusy = true;
+            vm.StatusMessage = "Restoring snapshot...";
+        }
+
+        try
+        {
+            await _agentClient.RestoreSnapshotAsync(snapshot.VmName, snapshot.Id);
+            await RefreshAsync();
+            ShowSuccess(string.Format(Resources.Status_RestoredFormat, snapshot.Name));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to restore snapshot {SnapshotName} for VM {VmName}",
+                snapshot.Name,
+                snapshot.VmName
+            );
+            ShowError(string.Format(Resources.Error_RestoreFailedFormat, ex.Message));
+        }
+        finally
+        {
+            if (vm != null)
+            {
+                vm.IsBusy = false;
+                vm.StatusMessage = "";
+            }
+        }
+    }
+
+    [RelayCommand]
+    public async Task ResetToBaseAsync(VmInstanceViewModel vm)
+    {
+        if (vm.IsBusy)
+            return;
+        if (ConfirmAction != null)
+        {
+            bool confirmed = await ConfirmAction(
+                string.Format(Resources.Confirm_ResetTitleFormat, vm.Name),
+                Resources.Confirm_ResetMessage
+            );
+            if (!confirmed)
+                return;
+        }
+        _ = ResetToBaseBackgroundAsync(vm);
+    }
+
+    private async Task ResetToBaseBackgroundAsync(VmInstanceViewModel vm)
+    {
+        vm.IsBusy = true;
+        vm.StatusMessage = "Resetting to base...";
+        try
+        {
+            await _agentClient.ResetVmAsync(vm.Name);
+            await RefreshAsync();
+            ShowSuccess(string.Format(Resources.Status_ResetCompleteFormat, vm.Name));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to reset VM {VmName}", vm.Name);
+            ShowError(ex.Message);
+        }
+        finally
+        {
+            vm.IsBusy = false;
+            vm.StatusMessage = "";
+        }
+    }
+
+    [RelayCommand]
+    public void ApplyLocale(VmInstanceViewModel vm)
+    {
+        if (vm.IsBusy)
+            return;
+        _ = ApplyLocaleBackgroundAsync(vm);
+    }
+
+    private async Task ApplyLocaleBackgroundAsync(VmInstanceViewModel vm)
+    {
+        vm.IsBusy = true;
+        vm.StatusMessage = "Applying locale...";
+
+        try
+        {
+            (TaskCompletionSource<(bool, string?)> completion, CancellationTokenSource timeoutCts) =
+                await ConnectProgressHubAsync(status =>
+                {
+                    vm.StatusMessage = status;
+                });
+            using CancellationTokenSource _ = timeoutCts;
+
+            string? taskId = await _agentClient.ApplyLocaleAsync(vm.Name);
+            if (taskId == null)
+            {
+                await _agentClient.DisconnectProgressHubAsync();
+                ShowError("Failed to start locale task");
+                return;
+            }
+
+            (bool success, string? error) = await completion.Task;
+            await _agentClient.DisconnectProgressHubAsync();
+
+            if (success)
+                ShowSuccess("Locale applied to " + vm.Name);
+            else
+                ShowError("Locale application failed: " + (error ?? "unknown error"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to apply locale to {VmName}", vm.Name);
+            ShowError("Failed to apply locale: " + ex.Message);
+        }
+        finally
+        {
+            vm.IsBusy = false;
+            vm.StatusMessage = "";
+        }
+    }
+
+    private async Task<(
+        TaskCompletionSource<(bool, string?)> Completion,
+        CancellationTokenSource Timeout
+    )> ConnectProgressHubAsync(Action<string>? onStatus = null)
+    {
+        TaskCompletionSource<(bool, string?)> completion =
+            new TaskCompletionSource<(bool, string?)>();
+        CancellationTokenSource timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(30));
+        timeoutCts.Token.Register(() => completion.TrySetResult((false, "Operation timed out")));
+
+        await _agentClient.ConnectToProgressHubAsync(
+            (_, _, status) =>
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    onStatus?.Invoke(status);
+                });
+            },
+            (_, success, error) =>
+            {
+                completion.TrySetResult((success, error));
+            },
+            _ =>
+            {
+                completion.TrySetResult((false, "Lost connection to agent"));
+                return Task.CompletedTask;
+            }
+        );
+
+        return (completion, timeoutCts);
+    }
+
+    [RelayCommand]
+    public async Task CloneFromSnapshotAsync(VmSnapshot snapshot)
+    {
+        string defaultName = (snapshot.VmName + "-" + snapshot.Name).Replace(" ", "-");
+        string? newName = RequestVmName != null ? await RequestVmName(defaultName) : defaultName;
+        if (string.IsNullOrWhiteSpace(newName))
+            return;
+
+        VmInstanceViewModel? vm = Vms.FirstOrDefault(v => v.Name == snapshot.VmName);
+        if (vm != null)
+        {
+            vm.IsBusy = true;
+            vm.StatusMessage = "Cloning...";
+        }
+
+        try
+        {
+            await _agentClient.CloneFromSnapshotAsync(snapshot.VmName, snapshot.Id, newName);
+            await RefreshAsync();
+            ShowSuccess(string.Format(Resources.Status_ClonedFormat, newName, snapshot.Name));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to clone from snapshot {SnapshotName} on VM {VmName}",
+                snapshot.Name,
+                snapshot.VmName
+            );
+            ShowError(string.Format(Resources.Error_CloneFailedFormat, ex.Message));
+        }
+        finally
+        {
+            if (vm != null)
+            {
+                vm.IsBusy = false;
+                vm.StatusMessage = "";
+            }
+        }
+    }
+
+    [RelayCommand]
+    public async Task PushSnapshotAsync(VmSnapshot snapshot)
+    {
+        VmInstanceViewModel? vm = Vms.FirstOrDefault(v => v.Name == snapshot.VmName);
+        if (vm != null)
+        {
+            vm.IsBusy = true;
+            vm.StatusMessage = "Pushing snapshot...";
+        }
+
+        try
+        {
+            await _agentClient.PushSnapshotAsync(snapshot.VmName, snapshot.Id);
+            ShowSuccess("Push started for " + snapshot.Name);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to push snapshot {SnapshotName} for VM {VmName}",
+                snapshot.Name,
+                snapshot.VmName
+            );
+            ShowError("Push failed: " + ex.Message);
+        }
+        finally
+        {
+            if (vm != null)
+            {
+                vm.IsBusy = false;
+                vm.StatusMessage = "";
+            }
+        }
+    }
+
+    [RelayCommand]
+    public async Task DeleteSnapshotAsync(VmSnapshot snapshot)
+    {
+        if (ConfirmAction != null)
+        {
+            bool confirmed = await ConfirmAction(
+                string.Format(Resources.Confirm_DeleteSnapshotTitleFormat, snapshot.Name),
+                Resources.Confirm_DeleteSnapshotMessage
+            );
+            if (!confirmed)
+                return;
+        }
+
+        VmInstanceViewModel? vm = Vms.FirstOrDefault(v => v.Name == snapshot.VmName);
+        if (vm != null)
+        {
+            vm.IsBusy = true;
+            vm.StatusMessage = "Deleting snapshot...";
+        }
+
+        try
+        {
+            await _agentClient.DeleteSnapshotAsync(snapshot.VmName, snapshot.Id);
+            ShowSuccess(string.Format(Resources.Status_SnapshotDeletedFormat, snapshot.Name));
+
+            VmInstanceViewModel? parentVm = Vms.FirstOrDefault(v => v.Name == snapshot.VmName);
+            if (parentVm != null)
+                await LoadSnapshotsForVmAsync(parentVm);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Failed to delete snapshot {SnapshotName} for VM {VmName}",
+                snapshot.Name,
+                snapshot.VmName
+            );
+            ShowError(string.Format(Resources.Error_DeleteFailedFormat, ex.Message));
+        }
+        finally
+        {
+            if (vm != null)
+            {
+                vm.IsBusy = false;
+                vm.StatusMessage = "";
+            }
+        }
+    }
+
+    private async Task CheckRdpReadinessAsync(VmInstanceViewModel vm)
+    {
+        try
+        {
+            bool ready = await _agentClient.IsRdpReadyAsync(vm.Name);
+            if (ready)
+                return;
+
+            vm.IsBusy = true;
+            vm.SetStateOverride("Starting");
+            vm.StatusMessage = "Waiting for RDP...";
+            await PollRdpReadyAsync(vm, TimeSpan.FromMinutes(5));
+            vm.SetStateOverride(null);
+        }
+        catch { }
+        finally
+        {
+            vm.IsBusy = false;
+            vm.StatusMessage = "";
+            vm.SetStateOverride(null);
+        }
+    }
+
+    internal FeedConfiguration? ResolvePushFeed(VmOrigin? origin, AppSettings settings) => null;
+
+    [RelayCommand]
+    public void SaveNoteForVm(VmInstanceViewModel vm)
+    {
+        _ = _agentClient.SaveNotesAsync(vm.Name, vm.Notes ?? "");
+    }
+
+    private async Task PollVmStateAsync(
+        VmInstanceViewModel vm,
+        string targetState,
+        TimeSpan timeout
+    )
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            List<VmInstance> vms = await _agentClient.GetVmsAsync();
+            VmInstance? updated = vms.FirstOrDefault(v => v.Name == vm.Name);
+            if (updated?.State == targetState)
+                return;
+            await Task.Delay(3000);
+        }
+    }
+
+    private async Task PollRdpReadyAsync(VmInstanceViewModel vm, TimeSpan timeout)
+    {
+        DateTime deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                bool ready = await _agentClient.IsRdpReadyAsync(vm.Name);
+                if (ready)
+                    return;
+            }
+            catch { }
+            await Task.Delay(2000);
+        }
+    }
+
+    private void RebuildGroups(List<VmInstanceViewModel> vms)
+    {
+        GroupedVms.Clear();
+        foreach (IGrouping<string, VmInstanceViewModel> group in vms.GroupBy(v => v.GroupKey))
+        {
+            string displayName = group.Key switch
+            {
+                "HyperV" => "Hyper-V",
+                "HyperV_External" => "Hyper-V (External)",
+                "KVM" => "KVM",
+                "KVM_External" => "KVM (External)",
+                _ => group.Key,
+            };
+            GroupedVms.Add(
+                new VmGroup
+                {
+                    Name = $"{displayName} ({group.Count()})",
+                    IsExpanded = group.Key is "HyperV" or "KVM",
+                    Items = new ObservableCollection<VmInstanceViewModel>(group),
+                }
+            );
+        }
+    }
+
+    private async Task LoadAllSnapshotCountsAsync(List<VmInstanceViewModel> vms)
+    {
+        foreach (VmInstanceViewModel vm in vms.Where(v => v.Backend is "HyperV" or "KVM"))
+        {
+            try
+            {
+                List<VmSnapshot> snapshots = await _agentClient.GetSnapshotsAsync(vm.Name);
+                vm.SnapshotCount = snapshots.Count;
+                vm.SnapshotCountLoaded = true;
+            }
+            catch { }
+        }
     }
 }

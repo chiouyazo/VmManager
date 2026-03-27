@@ -1,0 +1,649 @@
+<UserControl
+  x:Class="VmManager.Views.Pages.ImagesPage"
+  xmlns="https://github.com/avaloniaui"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+  xmlns:vm="clr-namespace:VmManager.ViewModels"
+  xmlns:models="clr-namespace:VmManager.Contracts.Models;assembly=VmManager.Contracts"
+  xmlns:local="clr-namespace:VmManager.Contracts.Models;assembly=VmManager.Contracts"
+  xmlns:ui="using:FluentAvalonia.UI.Controls"
+  xmlns:props="clr-namespace:VmManager.Properties"
+  x:DataType="vm:ImagesViewModel"
+  d:DataContext="{d:DesignInstance Type=vm:ImagesViewModel}"
+  mc:Ignorable="d"
+>
+  <Grid Margin="24,20,24,16">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" MaxHeight="200" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <!-- Header -->
+    <Grid Grid.Row="0" Margin="0,0,0,12">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+      <TextBlock
+        Text="{x:Static props:Resources.Images_PageTitle}"
+        Classes="heading-large"
+      />
+      <Button
+        Grid.Column="1"
+        Background="Transparent"
+        BorderThickness="0"
+        Cursor="Hand"
+        ToolTip.Tip="{x:Static props:Resources.Tooltip_Refresh}"
+        Command="{Binding LoadCatalogCommand}"
+        IsEnabled="{Binding IsLoading, Converter={StaticResource InverseBoolConverter}}"
+      >
+        <ui:SymbolIcon
+          Symbol="Sync"
+          FontSize="16"
+          Foreground="#666666"
+        />
+      </Button>
+    </Grid>
+
+    <!-- Search + filters -->
+    <StackPanel Grid.Row="1" Margin="0,0,0,12">
+      <Border
+        BorderBrush="{DynamicResource DividerBrush}"
+        BorderThickness="1"
+        CornerRadius="6"
+        Background="White"
+        Margin="0,0,0,8"
+      >
+        <Grid>
+          <ui:SymbolIcon
+            Symbol="Find"
+            FontSize="14"
+            Foreground="#999999"
+            Margin="10,0,0,0"
+            VerticalAlignment="Center"
+            HorizontalAlignment="Left"
+            IsHitTestVisible="False"
+          />
+          <TextBox
+            Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
+            Watermark="{x:Static props:Resources.Images_SearchPlaceholder}"
+            Padding="32,7,8,7"
+            BorderThickness="0"
+            Background="Transparent"
+            FontSize="13"
+          />
+        </Grid>
+      </Border>
+
+      <DockPanel>
+        <ComboBox
+          DockPanel.Dock="Left"
+          ItemsSource="{Binding AvailableSources}"
+          SelectedItem="{Binding SelectedSourceFilter, Mode=TwoWay}"
+          SelectedIndex="0"
+          Width="140"
+          Margin="0,0,8,0"
+          FontSize="12"
+          VerticalAlignment="Top"
+        />
+        <ItemsControl ItemsSource="{Binding AllFeatures}" VerticalAlignment="Center">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Border
+                Margin="0,0,4,0"
+                Padding="8,4"
+                CornerRadius="4"
+                Cursor="Hand"
+                PointerPressed="FeatureTag_Click"
+              >
+                <Border.Styles>
+                  <Style Selector="Border">
+                    <Setter Property="Background" Value="#F0F0F0" />
+                  </Style>
+                  <Style Selector="Border:pointerover">
+                    <Setter Property="Background" Value="#E0E0E0" />
+                  </Style>
+                </Border.Styles>
+                <TextBlock
+                  Text="{Binding}"
+                  FontSize="11"
+                  Foreground="{DynamicResource MutedBrush}"
+                />
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </DockPanel>
+
+      <ItemsControl ItemsSource="{Binding ActiveFeatureFilters}" Margin="0,4,0,0">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <WrapPanel Orientation="Horizontal" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <Border
+              Background="{DynamicResource AccentLightBrush}"
+              CornerRadius="4"
+              Padding="8,3"
+              Margin="0,0,4,0"
+              Cursor="Hand"
+              PointerPressed="ActiveFilter_Click"
+            >
+              <StackPanel Orientation="Horizontal">
+                <TextBlock
+                  Text="{Binding}"
+                  FontSize="11"
+                  Foreground="{DynamicResource AccentDarkBrush}"
+                  Margin="0,0,4,0"
+                />
+                <ui:SymbolIcon
+                  Symbol="Dismiss"
+                  FontSize="8"
+                  Foreground="{DynamicResource AccentDarkBrush}"
+                  VerticalAlignment="Center"
+                />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+
+    <!-- Status bar -->
+    <Border
+      Grid.Row="2"
+      Background="{Binding IsError, Converter={StaticResource BoolToStatusBrushConverter}}"
+      CornerRadius="6"
+      Padding="12,8"
+      Margin="0,0,0,8"
+      IsVisible="{Binding ShowStatus}"
+    >
+      <DockPanel>
+        <Button
+          DockPanel.Dock="Right"
+          ToolTip.Tip="{x:Static props:Resources.Tooltip_CopyToClipboard}"
+          Click="CopyStatus_Click"
+          Background="Transparent"
+          Padding="8,4"
+          VerticalAlignment="Center"
+        >
+          <ui:SymbolIcon
+            Symbol="Copy"
+            FontSize="14"
+            Foreground="White"
+          />
+        </Button>
+        <TextBlock
+          Text="{Binding StatusMessage, Mode=OneWay}"
+          Foreground="White"
+          TextWrapping="Wrap"
+          FontSize="13"
+          VerticalAlignment="Center"
+        />
+      </DockPanel>
+    </Border>
+
+    <!-- Import progress -->
+    <Border
+      Grid.Row="3"
+      Theme="{StaticResource CardStyle}"
+      IsVisible="{Binding IsImporting}"
+    >
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid Grid.Row="0" Margin="0,0,0,8">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <TextBlock Text="{Binding ImportStatusText}" FontWeight="SemiBold" />
+          <Button
+            Grid.Column="1"
+            Theme="{StaticResource DangerButtonStyle}"
+            Padding="12,4"
+            FontSize="11"
+            Command="{Binding CancelImportCommand}"
+          >
+            <TextBlock Text="{x:Static props:Resources.Images_Cancel}" Foreground="White" />
+          </Button>
+        </Grid>
+        <ProgressBar
+          Grid.Row="1"
+          Value="{Binding ImportProgress}"
+          Minimum="0"
+          Maximum="100"
+          Height="4"
+          Margin="0,0,0,4"
+        />
+        <TextBlock Grid.Row="2" FontSize="11" Foreground="{DynamicResource MutedBrush}">
+          <Run Text="{Binding ImportProgress, StringFormat={}{0:F0}%, Mode=OneWay}" />
+          <Run Text="  " />
+          <Run Text="{Binding ImportSpeedText, Mode=OneWay}" />
+        </TextBlock>
+      </Grid>
+    </Border>
+
+    <!-- Create-VM progress -->
+    <Border
+      Grid.Row="3"
+      Theme="{StaticResource CardStyle}"
+      Margin="0,0,0,8"
+      IsVisible="{Binding IsCreatingVm}"
+    >
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid Grid.Row="0" Margin="0,0,0,6">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <TextBlock Text="{Binding CreateVmStatusMessage}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+          <Button
+            Grid.Column="1"
+            Theme="{StaticResource DangerButtonStyle}"
+            Padding="12,4"
+            FontSize="11"
+            Command="{Binding CancelCreateVmCommand}"
+          >
+            <TextBlock Text="{x:Static props:Resources.Images_Cancel}" Foreground="White" />
+          </Button>
+        </Grid>
+        <ProgressBar Grid.Row="1" IsIndeterminate="True" Height="3" />
+      </Grid>
+    </Border>
+
+    <!-- Local Images -->
+    <Border
+      Grid.Row="4"
+      Theme="{StaticResource CardStyle}"
+      Margin="0,0,0,8"
+      IsVisible="{Binding HasLocalImages}"
+    >
+      <StackPanel>
+        <TextBlock
+          Text="{x:Static props:Resources.Images_LocalImages}"
+          FontWeight="SemiBold"
+          FontSize="14"
+          Margin="0,0,0,8"
+        />
+        <ScrollViewer MaxHeight="160" VerticalScrollBarVisibility="Auto">
+          <ItemsControl ItemsSource="{Binding LocalImages}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate DataType="local:LocalImage">
+                <Border
+                  BorderThickness="0,1,0,0"
+                  BorderBrush="{DynamicResource DividerBrush}"
+                  Padding="0,8"
+                >
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" FontSize="13" />
+                      <TextBlock Classes="muted">
+                        <Run Text="{Binding SizeGb, StringFormat={}{0:F1} GB, Mode=OneWay}" />
+                        <Run Text=" " />
+                        <Run Text="{Binding ExtractedAt, StringFormat='Imported {0:yyyy-MM-dd}', Mode=OneWay}" />
+                      </TextBlock>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                      <Button
+                        Content="{x:Static props:Resources.Images_CreateVm}"
+                        Theme="{StaticResource PrimaryButtonStyle}"
+                        Padding="12,5"
+                        FontSize="12"
+                        Margin="0,0,6,0"
+                        Command="{Binding $parent[UserControl].((vm:ImagesViewModel)DataContext).CreateVmFromLocalCommand}"
+                        CommandParameter="{Binding}"
+                      />
+                      <Button
+                        Theme="{StaticResource DangerButtonStyle}"
+                        Padding="8,5"
+                        ToolTip.Tip="{x:Static props:Resources.Tooltip_Delete}"
+                        Command="{Binding $parent[UserControl].((vm:ImagesViewModel)DataContext).DeleteLocalImageCommand}"
+                        CommandParameter="{Binding}"
+                      >
+                        <ui:SymbolIcon
+                          Symbol="Delete"
+                          FontSize="12"
+                          Foreground="White"
+                        />
+                      </Button>
+                    </StackPanel>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </StackPanel>
+    </Border>
+
+    <!-- Loading overlay -->
+    <Border
+      Grid.Row="5"
+      Background="#80FFFFFF"
+      IsVisible="{Binding IsLoading}"
+    >
+      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+        <ProgressBar IsIndeterminate="True" Width="200" Height="4" />
+        <TextBlock
+          Text="{x:Static props:Resources.Images_LoadingCatalog}"
+          Margin="0,12,0,0"
+          HorizontalAlignment="Center"
+          Foreground="{DynamicResource MutedBrush}"
+        />
+      </StackPanel>
+    </Border>
+
+    <!-- Not configured -->
+    <StackPanel
+      Grid.Row="5"
+      HorizontalAlignment="Center"
+      VerticalAlignment="Center"
+      IsVisible="{Binding RegistryNotConfigured}"
+    >
+      <ui:SymbolIcon
+        Symbol="Settings"
+        FontSize="48"
+        Foreground="#666666"
+        Opacity="0.3"
+        HorizontalAlignment="Center"
+      />
+      <TextBlock
+        Text="{x:Static props:Resources.Images_NoSourcesConfigured}"
+        FontSize="16"
+        Foreground="{DynamicResource MutedBrush}"
+        Margin="0,12,0,4"
+        HorizontalAlignment="Center"
+      />
+      <TextBlock
+        Text="{x:Static props:Resources.Images_NoSourcesHint}"
+        Foreground="{DynamicResource HintBrush}"
+        HorizontalAlignment="Center"
+        TextAlignment="Center"
+      />
+    </StackPanel>
+
+    <!-- Image list -->
+    <ScrollViewer
+      Grid.Row="5"
+      VerticalScrollBarVisibility="Auto"
+      IsVisible="{Binding IsLoading, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+    >
+      <ItemsControl ItemsSource="{Binding FilteredImages}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate DataType="models:VmImage">
+            <Border Theme="{StaticResource CardStyle}" Padding="16,14,16,6">
+              <StackPanel>
+                <!-- Name + source badge -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                  <TextBlock Text="{Binding Name}" Classes="heading-small" />
+                  <Border
+                    Background="#F0F0F0"
+                    CornerRadius="4"
+                    Padding="8,2"
+                    Margin="10,0,0,0"
+                    VerticalAlignment="Center"
+                  >
+                    <TextBlock
+                      Text="{Binding SourceLabel}"
+                      FontSize="10"
+                      FontWeight="SemiBold"
+                      Foreground="{DynamicResource MutedBrush}"
+                    />
+                  </Border>
+                </StackPanel>
+
+                <!-- Description -->
+                <TextBlock
+                  Text="{Binding Description}"
+                  Foreground="{DynamicResource MutedBrush}"
+                  TextWrapping="Wrap"
+                  FontSize="13"
+                  Margin="0,0,0,8"
+                />
+
+                <!-- Feature tags -->
+                <ItemsControl ItemsSource="{Binding Features}" Margin="0,0,0,8">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                      <Border Background="#F5F5F5" CornerRadius="4" Padding="8,3" Margin="0,0,6,4">
+                        <TextBlock
+                          Text="{Binding}"
+                          FontSize="11"
+                          Foreground="{DynamicResource MutedBrush}"
+                        />
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Versions -->
+                <ItemsControl ItemsSource="{Binding Versions}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="models:VmImageVersion">
+                      <Border
+                        BorderThickness="0,1,0,0"
+                        BorderBrush="{DynamicResource DividerBrush}"
+                        Padding="0,8"
+                      >
+                        <DockPanel>
+                          <StackPanel
+                            DockPanel.Dock="Right"
+                            Orientation="Horizontal"
+                            VerticalAlignment="Center"
+                            Margin="12,0,0,0"
+                          >
+                            <Button
+                              Content="{x:Static props:Resources.Images_Import}"
+                              Padding="10,4"
+                              FontSize="12"
+                              IsVisible="{Binding IsLocallyAvailable, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                              Command="{Binding $parent[UserControl].((vm:ImagesViewModel)DataContext).ImportVersionCommand}"
+                              CommandParameter="{Binding}"
+                              IsEnabled="{Binding $parent[UserControl].((vm:ImagesViewModel)DataContext).IsImporting, Converter={StaticResource InverseBoolConverter}}"
+                            />
+                            <StackPanel
+                              Orientation="Horizontal"
+                              IsVisible="{Binding IsLocallyAvailable}"
+                            >
+                              <Button
+                                Content="{x:Static props:Resources.Images_CreateVm}"
+                                Theme="{StaticResource PrimaryButtonStyle}"
+                                Padding="10,4"
+                                FontSize="12"
+                                Command="{Binding $parent[UserControl].((vm:ImagesViewModel)DataContext).CreateVmCommand}"
+                                CommandParameter="{Binding}"
+                              />
+                              <Button
+                                Content="{x:Static props:Resources.Images_ReImport}"
+                                Padding="10,4"
+                                FontSize="12"
+                                Margin="6,0,0,0"
+                                Command="{Binding $parent[UserControl].((vm:ImagesViewModel)DataContext).ImportVersionCommand}"
+                                CommandParameter="{Binding}"
+                                IsEnabled="{Binding $parent[UserControl].((vm:ImagesViewModel)DataContext).IsImporting, Converter={StaticResource InverseBoolConverter}}"
+                              />
+                            </StackPanel>
+                          </StackPanel>
+                          <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border
+                              Background="#F5F5F5"
+                              CornerRadius="4"
+                              Padding="8,3"
+                              Margin="0,0,10,0"
+                            >
+                              <TextBlock FontFamily="Consolas" FontSize="12">
+                                <Run Text="v" Foreground="{DynamicResource HintBrush}" />
+                                <Run Text="{Binding Version, Mode=OneWay}" />
+                              </TextBlock>
+                            </Border>
+                            <TextBlock
+                              Text="{Binding SizeGb, StringFormat={}{0:F1} GB}"
+                              Foreground="{DynamicResource MutedBrush}"
+                              FontSize="12"
+                              VerticalAlignment="Center"
+                              Margin="0,0,10,0"
+                            />
+                            <TextBlock
+                              Text="{Binding Notes}"
+                              Foreground="{DynamicResource HintBrush}"
+                              FontSize="12"
+                              VerticalAlignment="Center"
+                              IsVisible="{Binding Notes, Converter={StaticResource StringToVisibilityConverter}}"
+                            />
+                          </StackPanel>
+                        </DockPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Shared Snapshots -->
+                <StackPanel IsVisible="{Binding UserSnapshots.Count, Converter={StaticResource NonZeroCountToVisibilityConverter}}">
+                  <TextBlock
+                    Text="{x:Static props:Resources.Images_SharedSnapshots}"
+                    FontWeight="SemiBold"
+                    FontSize="12"
+                    Foreground="{DynamicResource MutedBrush}"
+                    Margin="0,8,0,4"
+                  />
+                  <ItemsControl ItemsSource="{Binding UserSnapshots}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate DataType="models:VmImageVersion">
+                        <Border
+                          BorderThickness="0,1,0,0"
+                          BorderBrush="{DynamicResource DividerBrush}"
+                          Padding="0,8"
+                        >
+                          <Grid>
+                            <Grid.ColumnDefinitions>
+                              <ColumnDefinition Width="Auto" />
+                              <ColumnDefinition Width="*" />
+                              <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border
+                              Grid.Column="0"
+                              Background="{DynamicResource AccentLightBrush}"
+                              CornerRadius="4"
+                              Padding="8,3"
+                              Margin="0,0,12,0"
+                              VerticalAlignment="Center"
+                            >
+                              <TextBlock
+                                Text="{x:Static props:Resources.Images_SnapshotBadge}"
+                                FontSize="10"
+                                FontWeight="SemiBold"
+                                Foreground="{DynamicResource AccentDarkBrush}"
+                              />
+                            </Border>
+                            <StackPanel
+                              Grid.Column="1"
+                              Orientation="Horizontal"
+                              VerticalAlignment="Center"
+                            >
+                              <TextBlock Text="{Binding Notes}" FontSize="12" Margin="0,0,8,0" />
+                              <TextBlock
+                                Text="{Binding PushedBy, StringFormat='by {0}'}"
+                                Foreground="{DynamicResource HintBrush}"
+                                FontSize="11"
+                                Margin="0,0,8,0"
+                              />
+                              <TextBlock
+                                Text="{Binding Date, StringFormat='{}{0:yyyy-MM-dd}'}"
+                                Foreground="{DynamicResource HintBrush}"
+                                FontSize="11"
+                              />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                              <Button
+                                Content="{x:Static props:Resources.Images_Import}"
+                                Padding="10,4"
+                                FontSize="11"
+                                IsVisible="{Binding IsLocallyAvailable, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                                Command="{Binding $parent[UserControl].((vm:ImagesViewModel)DataContext).ImportVersionCommand}"
+                                CommandParameter="{Binding}"
+                                IsEnabled="{Binding $parent[UserControl].((vm:ImagesViewModel)DataContext).IsImporting, Converter={StaticResource InverseBoolConverter}}"
+                              />
+                              <Button
+                                Content="{x:Static props:Resources.Images_CreateVm}"
+                                Theme="{StaticResource PrimaryButtonStyle}"
+                                Padding="10,4"
+                                FontSize="11"
+                                IsVisible="{Binding IsLocallyAvailable}"
+                                Command="{Binding $parent[UserControl].((vm:ImagesViewModel)DataContext).CreateVmCommand}"
+                                CommandParameter="{Binding}"
+                              />
+                            </StackPanel>
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+
+    <!-- Empty state (only when feeds are configured but no images match) -->
+    <StackPanel
+      Grid.Row="5"
+      HorizontalAlignment="Center"
+      VerticalAlignment="Center"
+      IsVisible="{Binding IsLoading, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+    >
+      <StackPanel IsVisible="{Binding ShowEmptyState}">
+        <ui:SymbolIcon
+          Symbol="Shop"
+          FontSize="48"
+          Foreground="#666666"
+          Opacity="0.3"
+          HorizontalAlignment="Center"
+        />
+        <TextBlock
+          Text="{x:Static props:Resources.Images_NoImagesFound}"
+          FontSize="16"
+          Foreground="{DynamicResource MutedBrush}"
+          Margin="0,12,0,4"
+          HorizontalAlignment="Center"
+        />
+        <TextBlock
+          Text="{x:Static props:Resources.Images_NoImagesHint}"
+          Foreground="{DynamicResource HintBrush}"
+          HorizontalAlignment="Center"
+          TextAlignment="Center"
+        />
+      </StackPanel>
+    </StackPanel>
+  </Grid>
+</UserControl>

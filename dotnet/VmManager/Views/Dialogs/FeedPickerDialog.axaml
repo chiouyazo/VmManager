@@ -1,0 +1,39 @@
+<Window
+  x:Class="VmManager.Views.Dialogs.FeedPickerDialog"
+  xmlns="https://github.com/avaloniaui"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:props="clr-namespace:VmManager.Properties"
+  Title="{x:Static props:Resources.Dialog_SelectPushTarget}"
+  Width="380"
+  SizeToContent="Height"
+  CanResize="False"
+  WindowStartupLocation="CenterOwner"
+  Background="{DynamicResource BgBrush}"
+  ShowInTaskbar="False"
+>
+  <StackPanel Margin="20">
+    <TextBlock
+      x:Name="MessageText"
+      Text="{x:Static props:Resources.Dialog_NoPushFeedMessage}"
+      Foreground="{DynamicResource TextBrush}"
+      TextWrapping="Wrap"
+      Margin="0,0,0,12"
+    />
+
+    <ComboBox x:Name="FeedCombo" Margin="0,0,0,20" />
+
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+      <Button
+        Content="{x:Static props:Resources.Dialog_Cancel}"
+        Margin="0,0,8,0"
+        Click="Cancel_Click"
+      />
+      <Button
+        x:Name="OkButton"
+        Content="{x:Static props:Resources.Dialog_Push}"
+        Theme="{StaticResource PrimaryButtonStyle}"
+        Click="OK_Click"
+      />
+    </StackPanel>
+  </StackPanel>
+</Window>
