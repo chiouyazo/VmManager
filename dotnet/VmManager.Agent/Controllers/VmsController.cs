@@ -240,6 +240,14 @@ public class VmsController : ControllerBase
         )
             return BadRequest(new { error = "No locale or timezone configured" });
 
+        if (
+            string.IsNullOrWhiteSpace(settings.DefaultVmUsername)
+            || string.IsNullOrWhiteSpace(settings.DefaultVmPassword)
+        )
+            return BadRequest(
+                new { error = "VM username and password must be configured in settings" }
+            );
+
         IBackgroundTask task = _backgroundTaskManager.StartTask(
             "Applying locale to " + name,
             async ctx =>

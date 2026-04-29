@@ -54,6 +54,14 @@ sudo systemctl status vmmanager-agent
 curl http://localhost:18275/health
 ```
 
+## VM Image Requirements
+
+All VM images managed by VmManager must share the same local administrator credentials. Configure these in Settings > VM Credentials (default: `Administrator` / `Admin123!`).
+
+This is required because VmManager connects to VMs after creation to apply locale, keyboard, and timezone settings. On Hyper-V this uses PowerShell Direct, on KVM it uses WinRM. Both require valid guest credentials.
+
+If your images use different credentials, either standardize them before packaging, or disable "Apply locale on create" in settings and configure locale manually after creation.
+
 ## macOS (Client Only)
 
 - Download `VmManager-Client-{version}-osx-arm64.dmg` (Apple Silicon) or `osx-x64.dmg` (Intel)

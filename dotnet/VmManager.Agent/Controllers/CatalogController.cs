@@ -413,6 +413,8 @@ public class CatalogController : ControllerBase
                 if (
                     settings.ApplyLocaleOnCreate
                     && !string.IsNullOrWhiteSpace(settings.DefaultLocale)
+                    && !string.IsNullOrWhiteSpace(settings.DefaultVmUsername)
+                    && !string.IsNullOrWhiteSpace(settings.DefaultVmPassword)
                 )
                 {
                     try
@@ -444,6 +446,7 @@ public class CatalogController : ControllerBase
                             "Locale application failed for VM {VmName}",
                             request.Name
                         );
+                        ctx.ReportProgress(-1, "Locale failed: " + localeEx.Message);
                         ctx.Log("Locale failed: " + localeEx.Message);
                     }
                 }
