@@ -192,111 +192,100 @@ public class HyperVImportService
             $inputTip = {{PowerShellRunner.Q(inputMethodTip)}}
             $tz = {{PowerShellRunner.Q(timezone)}}
 
-            # Start VM with retries (may fail briefly after snapshot creation)
-            $vm = Get-VM -Name $vmName
-            if ($vm.State -ne 'Running') {
-                $startTries = 0
-                while ($startTries -lt 5) {
-                    try {
-                        Start-VM -Name $vmName -ErrorAction Stop
-                        break
-                    } catch {
-                        $startTries++
-                        if ($startTries -ge 5) { throw }
-                        Start-Sleep -Seconds 2
+            try {
+                $vm = Get-VM -Name $vmName
+                if ($vm.State -ne 'Running') {
+                    $startTries = 0
+                    while ($startTries -lt 5) {
+                        try {
+                            Start-VM -Name $vmName -ErrorAction Stop
+                            break
+                        } catch {
+                            $startTries++
+                            if ($startTries -ge 5) { throw }
+                            Start-Sleep -Seconds 2
+                        }
                     }
                 }
-            }
 
-            $cred = New-Object PSCredential($username, (ConvertTo-SecureString $password -AsPlainText -Force))
-            $session = $null
-            $tries = 0
-            while ($tries -lt 40 -and -not $session) {
-                try {
-                    $session = New-PSSession -VMName $vmName -Credential $cred -ErrorAction Stop
-                } catch {
-                    Start-Sleep -Seconds 2
-                    $tries++
+                $cred = New-Object PSCredential($username, (ConvertTo-SecureString $password -AsPlainText -Force))
+                $session = $null
+                $tries = 0
+                while ($tries -lt 40 -and -not $session) {
+                    try {
+                        $session = New-PSSession -VMName $vmName -Credential $cred -ErrorAction Stop
+                    } catch {
+                        Start-Sleep -Seconds 2
+                        $tries++
+                    }
                 }
-            }
-            if (-not $session) { throw "VM '$vmName' did not become responsive within 80 seconds." }
+                if (-not $session) { throw "VM '$vmName' did not become responsive within 80 seconds." }
 
-            Invoke-Command -Session $session -ScriptBlock {
-                param($loc, $kbLayout, $inputTip, $tzId)
+                Invoke-Command -Session $session -ScriptBlock {
+                    param($loc, $kbLayout, $inputTip, $tzId)
 
-                # ---- Language list (adds the language + keyboard as a proper input method) ----
-                $langList = New-WinUserLanguageList $loc
-                $langList[0].InputMethodTips.Clear()
-                $langList[0].InputMethodTips.Add($inputTip)
-                Set-WinUserLanguageList $langList -Force
-
-                # Set this keyboard as the default input method
-                Set-WinDefaultInputMethodOverride -InputTip $inputTip -ErrorAction SilentlyContinue
-
-                # Set display language override
-                Set-WinUILanguageOverride -Language $loc -ErrorAction SilentlyContinue
-
-                # ---- Registry: also set for Default user hive (new user profiles) ----
-                reg load 'HKU\TempDefault' 'C:\Users\Default\NTUSER.DAT' 2>$null
-
-                $lcid = [System.Globalization.CultureInfo]::new($loc).LCID
-                $lcidHex = '{0:x8}' -f $lcid
-
-                foreach ($hive in @('HKU\TempDefault')) {
-                    reg add "$hive\Keyboard Layout\Preload" /v 1 /t REG_SZ /d $kbLayout /f 2>$null
-                    reg delete "$hive\Keyboard Layout\Preload" /v 2 /f 2>$null
-                    reg add "$hive\Control Panel\International" /v Locale /t REG_SZ /d $lcidHex /f 2>$null
-                    reg add "$hive\Control Panel\International" /v LocaleName /t REG_SZ /d $loc /f 2>$null
-                }
-
-                reg unload 'HKU\TempDefault' 2>$null
-
-                # Explorer: show file extensions and hidden files (current user)
-                $curSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
-                reg add "HKU\$curSid\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v HideFileExt /t REG_DWORD /d 0 /f 2>$null
-                reg add "HKU\$curSid\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v Hidden /t REG_DWORD /d 1 /f 2>$null
-
-                # System-wide locale (requires reboot to take effect)
-                Set-WinSystemLocale -SystemLocale $loc
-
-                # Copy current user's international settings to system account and new users
-                Copy-UserInternationalSettingsToSystem -WelcomeScreen $true -NewUser $true
-
-                # Timezone
-                if ($tzId) { Set-TimeZone -Id $tzId }
-            } -ArgumentList $locale, $kbLayout, $inputTip, $tz
-
-            # Restart to apply locale changes
-            Invoke-Command -Session $session -ScriptBlock { Restart-Computer -Force }
-            Remove-PSSession $session
-
-            Start-Sleep -Seconds 5
-            $session2 = $null
-            $tries2 = 0
-            while ($tries2 -lt 40 -and -not $session2) {
-                try {
-                    $session2 = New-PSSession -VMName $vmName -Credential $cred -ErrorAction Stop
-                } catch {
-                    Start-Sleep -Seconds 2
-                    $tries2++
-                }
-            }
-            if ($session2) {
-                # Re-apply keyboard after restart (Windows can reset it during OOBE/first-boot)
-                Invoke-Command -Session $session2 -ScriptBlock {
-                    param($loc, $inputTip)
                     $langList = New-WinUserLanguageList $loc
                     $langList[0].InputMethodTips.Clear()
                     $langList[0].InputMethodTips.Add($inputTip)
                     Set-WinUserLanguageList $langList -Force
+
                     Set-WinDefaultInputMethodOverride -InputTip $inputTip -ErrorAction SilentlyContinue
                     Set-WinUILanguageOverride -Language $loc -ErrorAction SilentlyContinue
-                    Copy-UserInternationalSettingsToSystem -WelcomeScreen $true -NewUser $true
-                } -ArgumentList $locale, $inputTip
-                Remove-PSSession $session2
-            }
 
-            Stop-VM -Name $vmName -Force
+                    reg load 'HKU\TempDefault' 'C:\Users\Default\NTUSER.DAT' 2>$null
+                    $lcid = [System.Globalization.CultureInfo]::new($loc).LCID
+                    $lcidHex = '{0:x8}' -f $lcid
+                    foreach ($hive in @('HKU\TempDefault')) {
+                        reg add "$hive\Keyboard Layout\Preload" /v 1 /t REG_SZ /d $kbLayout /f 2>$null
+                        reg delete "$hive\Keyboard Layout\Preload" /v 2 /f 2>$null
+                        reg add "$hive\Control Panel\International" /v Locale /t REG_SZ /d $lcidHex /f 2>$null
+                        reg add "$hive\Control Panel\International" /v LocaleName /t REG_SZ /d $loc /f 2>$null
+                    }
+                    reg unload 'HKU\TempDefault' 2>$null
+
+                    $curSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
+                    reg add "HKU\$curSid\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v HideFileExt /t REG_DWORD /d 0 /f 2>$null
+                    reg add "HKU\$curSid\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v Hidden /t REG_DWORD /d 1 /f 2>$null
+
+                    Set-WinSystemLocale -SystemLocale $loc
+                    Copy-UserInternationalSettingsToSystem -WelcomeScreen $true -NewUser $true
+
+                    if ($tzId) { Set-TimeZone -Id $tzId }
+                } -ArgumentList $locale, $kbLayout, $inputTip, $tz
+
+                Invoke-Command -Session $session -ScriptBlock { Restart-Computer -Force }
+                Remove-PSSession $session
+
+                Start-Sleep -Seconds 5
+                $session2 = $null
+                $tries2 = 0
+                while ($tries2 -lt 40 -and -not $session2) {
+                    try {
+                        $session2 = New-PSSession -VMName $vmName -Credential $cred -ErrorAction Stop
+                    } catch {
+                        Start-Sleep -Seconds 2
+                        $tries2++
+                    }
+                }
+                if ($session2) {
+                    Invoke-Command -Session $session2 -ScriptBlock {
+                        param($loc, $inputTip)
+                        $langList = New-WinUserLanguageList $loc
+                        $langList[0].InputMethodTips.Clear()
+                        $langList[0].InputMethodTips.Add($inputTip)
+                        Set-WinUserLanguageList $langList -Force
+                        Set-WinDefaultInputMethodOverride -InputTip $inputTip -ErrorAction SilentlyContinue
+                        Set-WinUILanguageOverride -Language $loc -ErrorAction SilentlyContinue
+                        Copy-UserInternationalSettingsToSystem -WelcomeScreen $true -NewUser $true
+                    } -ArgumentList $locale, $inputTip
+                    Remove-PSSession $session2
+                }
+            } finally {
+                $vm = Get-VM -Name $vmName -ErrorAction SilentlyContinue
+                if ($vm -and $vm.State -ne 'Off') {
+                    Stop-VM -Name $vmName -Force -ErrorAction SilentlyContinue
+                }
+            }
             """;
         await _ps.RunPsAsync(script);
     }

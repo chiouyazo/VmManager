@@ -47,7 +47,16 @@ public class PowerShellRunner
             {
                 Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
                 Task<string> stderrTask = process.StandardError.ReadToEndAsync();
-                await process.WaitForExitAsync();
+                using CancellationTokenSource cts = new(TimeSpan.FromMinutes(10));
+                try
+                {
+                    await process.WaitForExitAsync(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    process.Kill(true);
+                    throw new TimeoutException("PowerShell script timed out after 10 minutes");
+                }
                 string stdout = await stdoutTask;
                 string stderr = await stderrTask;
                 if (process.ExitCode != 0)
