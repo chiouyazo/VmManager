@@ -120,7 +120,7 @@ public partial class MyVmsViewModel : ViewModelBase
 
             foreach (VmInstanceViewModel vm in wrapped)
             {
-                if (vm.Data.IsRunning && !vm.IsBusy)
+                if (vm.Data.IsRunning && !vm.IsBusy && vm.IsManaged)
                     _ = CheckRdpReadinessAsync(vm);
             }
         }
@@ -178,8 +178,11 @@ public partial class MyVmsViewModel : ViewModelBase
             await _agentClient.StartVmAsync(vm.Name);
             vm.StatusMessage = "Booting...";
             await PollVmStateAsync(vm, "Running", TimeSpan.FromMinutes(3));
-            vm.StatusMessage = "Waiting for RDP...";
-            await PollRdpReadyAsync(vm, TimeSpan.FromMinutes(3));
+            if (vm.IsManaged)
+            {
+                vm.StatusMessage = "Waiting for RDP...";
+                await PollRdpReadyAsync(vm, TimeSpan.FromMinutes(5));
+            }
             vm.SetStateOverride(null);
             await RefreshAsync();
             ShowSuccess(string.Format(Resources.Status_StartedFormat, vm.Name));

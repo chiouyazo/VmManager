@@ -19,7 +19,6 @@ public partial class VmInstanceViewModel : ObservableObject
     // Pass-through properties from Data
     public string Name => Data.Name;
 
-    // State can be overridden during transitions (Starting, Stopping)
     private string? _stateOverride;
     public string State => _stateOverride ?? Data.State;
     public bool IsRunning => State == "Running";

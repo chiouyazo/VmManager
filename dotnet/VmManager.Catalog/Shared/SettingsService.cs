@@ -8,6 +8,7 @@ namespace VmManager.Catalog.Shared;
 public class SettingsService
 {
     private readonly string _settingsPath;
+    private static readonly object _fileLock = new();
 
     private static readonly JsonSerializerOptions WriteOptions = new JsonSerializerOptions
     {
@@ -27,50 +28,57 @@ public class SettingsService
 
     public AppSettings Load()
     {
-        if (!File.Exists(_settingsPath))
+        lock (_fileLock)
         {
-            // First run - write defaults so the file exists for future loads.
-            AppSettings defaults = new AppSettings();
-            Save(defaults);
-            return defaults;
-        }
-
-        try
-        {
-            string json = File.ReadAllText(_settingsPath);
-            AppSettings settings =
-                JsonSerializer.Deserialize<AppSettings>(json, ReadOptions) ?? new AppSettings();
-
-            // Migrate feeds to deterministic IDs if needed
-            bool migrated = false;
-            foreach (FeedConfiguration feed in settings.Feeds)
+            if (!File.Exists(_settingsPath))
             {
-                string deterministicId = FeedConfiguration.ComputeId(
-                    feed.Type,
-                    feed.Url,
-                    feed.Repository
-                );
-                if (feed.Id != deterministicId)
-                {
-                    feed.Id = deterministicId;
-                    migrated = true;
-                }
+                AppSettings defaults = new AppSettings();
+                Save(defaults);
+                return defaults;
             }
-            if (migrated)
-                Save(settings);
 
-            return settings;
-        }
-        catch
-        {
-            return new AppSettings();
+            try
+            {
+                string json = File.ReadAllText(_settingsPath);
+                AppSettings settings =
+                    JsonSerializer.Deserialize<AppSettings>(json, ReadOptions) ?? new AppSettings();
+
+                bool migrated = false;
+                foreach (FeedConfiguration feed in settings.Feeds)
+                {
+                    string deterministicId = FeedConfiguration.ComputeId(
+                        feed.Type,
+                        feed.Url,
+                        feed.Repository
+                    );
+                    if (feed.Id != deterministicId)
+                    {
+                        feed.Id = deterministicId;
+                        migrated = true;
+                    }
+                }
+                if (migrated)
+                    Save(settings);
+
+                return settings;
+            }
+            catch
+            {
+                return new AppSettings();
+            }
         }
     }
 
     public void Save(AppSettings settings)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_settingsPath)!);
-        File.WriteAllText(_settingsPath, JsonSerializer.Serialize(settings, WriteOptions));
+        lock (_fileLock)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_settingsPath)!);
+            string json = JsonSerializer.Serialize(settings, WriteOptions);
+            string tempPath = _settingsPath + ".tmp";
+            File.WriteAllText(tempPath, json);
+            File.Move(tempPath, _settingsPath, true);
+        }
     }
 
     // Async wrappers kept for compatibility with pages that use await
