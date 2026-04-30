@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "releaseDate": "2026-03-24",
   "installType": "Suite",
-  "description": "Hyper-V virtual machine management tool. Create, import, manage and snapshot VMs from OCI image catalogs.",
+  "description": "Virtual machine management with integrated agent. Supports Hyper-V and KVM. Create, import, manage and snapshot VMs from image catalogs.",
   "releaseNotes": "# VM Manager 1.0.0\n\n- Hyper-V VM lifecycle management\n- OCI registry and local catalog support\n- Snapshot management\n- WMI-based operations for fast performance",
   "recommendedInstallPath": "C:\\Program Files\\VmManager",
   "downloadSizeBytes": 0,
@@ -13,6 +13,8 @@
     "Hyper-V enabled",
     "Administrator privileges"
   ],
+  "badgeText": "Full",
+  "badgeColor": "#1565C0",
   "cleanup": {
     "registryKeys": [],
     "dataLocations": [

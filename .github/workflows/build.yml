@@ -107,12 +107,14 @@ jobs:
           if (-not $notes) { $notes = "Release ${{ steps.version.outputs.version }}" }
           $notesEscaped = $notes -replace '\\', '\\\\' -replace '"', '\"' -replace "`n", '\n' -replace "`r", ''
 
-          $manifest = Get-Content stork-manifest.json -Raw
-          $manifest = $manifest -replace '"version":\s*"[^"]*"', "`"version`": `"${{ steps.version.outputs.version }}`""
-          $manifest = $manifest -replace '"downloadSizeBytes":\s*\d+', "`"downloadSizeBytes`": $size"
-          $manifest = $manifest -replace '"releaseDate":\s*"[^"]*"', "`"releaseDate`": `"$today`""
-          $manifest = $manifest -replace '"releaseNotes":\s*"[^"]*"', "`"releaseNotes`": `"$notesEscaped`""
-          $manifest | Set-Content stork-manifest.json -NoNewline
+          foreach ($file in @("stork-manifest.json", "stork-manifest-client.json")) {
+            $manifest = Get-Content $file -Raw
+            $manifest = $manifest -replace '"version":\s*"[^"]*"', "`"version`": `"${{ steps.version.outputs.version }}`""
+            $manifest = $manifest -replace '"downloadSizeBytes":\s*\d+', "`"downloadSizeBytes`": $size"
+            $manifest = $manifest -replace '"releaseDate":\s*"[^"]*"', "`"releaseDate`": `"$today`""
+            $manifest = $manifest -replace '"releaseNotes":\s*"[^"]*"', "`"releaseNotes`": `"$notesEscaped`""
+            $manifest | Set-Content $file -NoNewline
+          }
 
       - name: Package standalone zips
         shell: pwsh
@@ -153,6 +155,7 @@ jobs:
             dotnet/VmManager.Agent/Output/*.exe
             vm-manager-*.zip
             stork-manifest.json
+            stork-manifest-client.json
 
   build-macos:
     runs-on: macos-latest
@@ -364,28 +367,52 @@ jobs:
           name: build-linux-agent
           path: artifacts-linux/
 
-      - name: Publish to Nexus
+      - name: Publish Full to Nexus
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
           VERSION=${{ steps.version.outputs.version }}
 
           curl -fSk -u "${{ secrets.NEXUS_USERNAME }}:${{ secrets.NEXUS_PASSWORD }}" \
-            -X POST "${{ secrets.NEXUS_URL }}/service/rest/v1/components?repository=Intern" \
+            -X POST "${{ secrets.NEXUS_URL }}/service/rest/v1/components?repository=EXT_VmManager_Full" \
             -F "raw.directory=vm-manager" \
             -F "raw.asset1=@artifacts/stork-manifest.json" \
             -F "raw.asset1.filename=manifest.json"
 
           curl -fSk -u "${{ secrets.NEXUS_USERNAME }}:${{ secrets.NEXUS_PASSWORD }}" \
-            -X POST "${{ secrets.NEXUS_URL }}/service/rest/v1/components?repository=Intern" \
+            -X POST "${{ secrets.NEXUS_URL }}/service/rest/v1/components?repository=EXT_VmManager_Full" \
             -F "raw.directory=vm-manager/versions/${VERSION}" \
             -F "raw.asset1=@artifacts/stork-manifest.json" \
             -F "raw.asset1.filename=manifest.json"
 
           curl -fSk -u "${{ secrets.NEXUS_USERNAME }}:${{ secrets.NEXUS_PASSWORD }}" \
-            -X POST "${{ secrets.NEXUS_URL }}/service/rest/v1/components?repository=Intern" \
+            -X POST "${{ secrets.NEXUS_URL }}/service/rest/v1/components?repository=EXT_VmManager_Full" \
             -F "raw.directory=vm-manager/versions/${VERSION}" \
             -F "raw.asset1=@artifacts/vm-manager-${VERSION}.zip" \
+            -F "raw.asset1.filename=vm-manager-${VERSION}.zip"
+
+      - name: Publish Client to Nexus
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+
+          curl -fSk -u "${{ secrets.NEXUS_USERNAME }}:${{ secrets.NEXUS_PASSWORD }}" \
+            -X POST "${{ secrets.NEXUS_URL }}/service/rest/v1/components?repository=EXT_VmManager_Client" \
+            -F "raw.directory=vm-manager" \
+            -F "raw.asset1=@artifacts/stork-manifest-client.json" \
+            -F "raw.asset1.filename=manifest.json"
+
+          curl -fSk -u "${{ secrets.NEXUS_USERNAME }}:${{ secrets.NEXUS_PASSWORD }}" \
+            -X POST "${{ secrets.NEXUS_URL }}/service/rest/v1/components?repository=EXT_VmManager_Client" \
+            -F "raw.directory=vm-manager/versions/${VERSION}" \
+            -F "raw.asset1=@artifacts/stork-manifest-client.json" \
+            -F "raw.asset1.filename=manifest.json"
+
+          curl -fSk -u "${{ secrets.NEXUS_USERNAME }}:${{ secrets.NEXUS_PASSWORD }}" \
+            -X POST "${{ secrets.NEXUS_URL }}/service/rest/v1/components?repository=EXT_VmManager_Client" \
+            -F "raw.directory=vm-manager/versions/${VERSION}" \
+            -F "raw.asset1=@artifacts/publish-client/VmManager-Client-${VERSION}-win-x64.zip" \
             -F "raw.asset1.filename=vm-manager-${VERSION}.zip"
 
       - name: Generate release notes

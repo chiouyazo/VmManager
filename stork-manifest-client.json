@@ -1,0 +1,28 @@
+{
+  "productId": "vm-manager",
+  "title": "VM Manager",
+  "version": "1.0.0",
+  "releaseDate": "2026-03-24",
+  "installType": "Suite",
+  "description": "VM Manager client for connecting to remote agents. No local VM management.",
+  "releaseNotes": "",
+  "recommendedInstallPath": "C:\\Program Files\\VmManager",
+  "downloadSizeBytes": 0,
+  "requirements": [
+    "Windows 10/11"
+  ],
+  "badgeText": "Client",
+  "badgeColor": "#7B1FA2",
+  "cleanup": {
+    "registryKeys": [],
+    "dataLocations": [
+      "%LOCALAPPDATA%\\VmManager"
+    ]
+  },
+  "shortcuts": [
+    {
+      "exeName": "VmManager.exe",
+      "displayName": "VM Manager"
+    }
+  ]
+}
