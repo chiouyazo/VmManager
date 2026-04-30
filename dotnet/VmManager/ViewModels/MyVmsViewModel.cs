@@ -43,6 +43,9 @@ public partial class MyVmsViewModel : ViewModelBase
 
     public Func<string, string, Task<bool>>? ConfirmAction { get; set; }
     public Func<string, Task<string?>>? RequestVmName { get; set; }
+    public Func<VmInstanceViewModel, Task>? ShowAccessDialog { get; set; }
+    public Func<VmInstanceViewModel, Task>? ShowPortForwardDialog { get; set; }
+    public PortForwardService PortForwards { get; } = new();
     public Func<List<string>, Task<int>>? RequestPushFeed { get; set; }
     public Func<List<string>, Task<int>>? RequestPushRepository { get; set; }
     public Action<string>? NavigateTo { get; set; }
@@ -123,6 +126,9 @@ public partial class MyVmsViewModel : ViewModelBase
                 if (vm.Data.IsRunning && !vm.IsBusy && vm.IsManaged)
                     _ = CheckRdpReadinessAsync(vm);
             }
+
+            if (PortForwards.ActiveForwards.Count == 0)
+                _ = PortForwards.RestoreForwardsAsync(_agentClient);
         }
         catch (Exception ex)
         {
@@ -697,6 +703,26 @@ public partial class MyVmsViewModel : ViewModelBase
             vm.StatusMessage = "";
             vm.SetStateOverride(null);
         }
+    }
+
+    [RelayCommand]
+    public async Task ManageAccessAsync(VmInstanceViewModel vm)
+    {
+        if (ShowAccessDialog != null)
+            await ShowAccessDialog(vm);
+    }
+
+    [RelayCommand]
+    public async Task ForwardPortAsync(VmInstanceViewModel vm)
+    {
+        if (ShowPortForwardDialog != null)
+            await ShowPortForwardDialog(vm);
+    }
+
+    [RelayCommand]
+    public void StopForward(PortForward forward)
+    {
+        PortForwards.StopForward(forward);
     }
 
     internal FeedConfiguration? ResolvePushFeed(VmOrigin? origin, AppSettings settings) => null;

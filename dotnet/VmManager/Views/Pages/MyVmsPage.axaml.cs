@@ -33,6 +33,41 @@ public partial class MyVmsPage : UserControl
             return result == true ? dlg.NewName : null;
         };
 
+        _viewModel.ShowAccessDialog = async vm =>
+        {
+            if (App.AgentClient == null)
+                return;
+            VmAccessEntry entry = await App.AgentClient.GetVmAccessAsync(vm.Name);
+            Dialogs.VmAccessDialog dlg = new(App.AgentClient, vm.Name, entry);
+            await dlg.ShowDialog<bool?>(GetOwnerWindow());
+        };
+
+        _viewModel.ShowPortForwardDialog = async vm =>
+        {
+            if (App.AgentClient == null)
+                return;
+            Dialogs.PortForwardDialog dlg = new();
+            bool? result = await dlg.ShowDialog<bool?>(GetOwnerWindow());
+            if (result == true)
+            {
+                try
+                {
+                    await _viewModel.PortForwards.StartForwardAsync(
+                        App.AgentClient,
+                        vm.Name,
+                        dlg.RemotePort,
+                        dlg.LocalPort
+                    );
+                }
+                catch (Exception ex)
+                {
+                    _viewModel.StatusMessage = "Port forward failed: " + ex.Message;
+                    _viewModel.ShowStatus = true;
+                    _viewModel.IsError = true;
+                }
+            }
+        };
+
         _viewModel.RequestPushFeed = async feedNames =>
         {
             FeedPickerDialog dlg = new FeedPickerDialog(feedNames);

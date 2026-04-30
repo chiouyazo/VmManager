@@ -1,0 +1,29 @@
+<Window
+  xmlns="https://github.com/avaloniaui"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  x:Class="VmManager.Views.Dialogs.PortForwardDialog"
+  Title="Forward Port"
+  Width="350"
+  SizeToContent="Height"
+  WindowStartupLocation="CenterOwner"
+  CanResize="False"
+>
+  <StackPanel Margin="20" Spacing="12">
+    <TextBlock Text="Forward a port from the VM to your local machine." FontSize="12" Opacity="0.7" TextWrapping="Wrap" />
+
+    <StackPanel>
+      <TextBlock Text="Remote port (on VM)" Margin="0,0,0,4" />
+      <TextBox x:Name="RemotePortBox" Watermark="e.g. 1433" />
+    </StackPanel>
+
+    <StackPanel>
+      <TextBlock Text="Local port (on your machine)" Margin="0,0,0,4" />
+      <TextBox x:Name="LocalPortBox" Watermark="same as remote" />
+    </StackPanel>
+
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,8,0,0">
+      <Button Content="Forward" Click="Forward_Click" Classes="accent" Padding="20,8" />
+      <Button Content="Cancel" Click="Cancel_Click" Padding="20,8" />
+    </StackPanel>
+  </StackPanel>
+</Window>

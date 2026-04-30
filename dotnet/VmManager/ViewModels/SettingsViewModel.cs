@@ -81,6 +81,12 @@ public partial class SettingsViewModel : ObservableObject
     private bool _applyLocale;
 
     [ObservableProperty]
+    private bool _accessControlEnabled;
+
+    [ObservableProperty]
+    private string _adminUser = "";
+
+    [ObservableProperty]
     private string? _selectedLocale;
 
     [ObservableProperty]
@@ -190,6 +196,8 @@ public partial class SettingsViewModel : ObservableObject
         Username = settings.DefaultVmUsername;
         Password = settings.DefaultVmPassword;
         ApplyLocale = settings.ApplyLocaleOnCreate;
+        AccessControlEnabled = settings.AccessControlEnabled;
+        AdminUser = settings.AdminUser;
         SelectedLocale = LocaleMap.FirstOrDefault(kv => kv.Value == settings.DefaultLocale).Key;
         SelectedKeyboard = KeyboardMap
             .FirstOrDefault(kv => kv.Value == settings.DefaultKeyboardLayout)
@@ -337,6 +345,8 @@ public partial class SettingsViewModel : ObservableObject
                     DefaultLocale = localeId,
                     DefaultKeyboardLayout = keyboardId,
                     DefaultTimezone = timezoneId,
+                    AccessControlEnabled = AccessControlEnabled,
+                    AdminUser = AdminUser.Trim(),
                 };
 
                 await _agentClient.SaveSettingsAsync(settings);

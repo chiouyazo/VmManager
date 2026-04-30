@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using VmManager.Agent.Middleware;
+using VmManager.Agent.Services;
 
 namespace VmManager.Agent.Controllers;
 
@@ -8,19 +10,23 @@ public class SettingsController : ControllerBase
 {
     private readonly SettingsService _settingsService;
     private readonly IEnumerable<ICatalogAdapter> _catalogAdapters;
+    private readonly VmAuthorizationService _authService;
     private readonly ILogger<SettingsController> _logger;
 
     public SettingsController(
         SettingsService settingsService,
         IEnumerable<ICatalogAdapter> catalogAdapters,
+        VmAuthorizationService authService,
         ILogger<SettingsController> logger
     )
     {
         ArgumentNullException.ThrowIfNull(settingsService);
         ArgumentNullException.ThrowIfNull(catalogAdapters);
+        ArgumentNullException.ThrowIfNull(authService);
         ArgumentNullException.ThrowIfNull(logger);
         _settingsService = settingsService;
         _catalogAdapters = catalogAdapters;
+        _authService = authService;
         _logger = logger;
     }
 
@@ -38,6 +44,8 @@ public class SettingsController : ControllerBase
     [ProducesResponseType(204)]
     public IActionResult SaveSettings([FromBody] AppSettings settings)
     {
+        if (!_authService.IsAdmin(HttpContext.GetVmUser()))
+            return Forbid();
         _logger.LogInformation("Saving settings");
         _settingsService.Save(settings);
         return NoContent();

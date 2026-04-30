@@ -9,4 +9,5 @@ public interface IAppPaths
     string LogDir { get; }
     string PendingCleanupPath { get; }
     string ManagedNetworksPath { get; }
+    string VmAccessPath { get; }
 }

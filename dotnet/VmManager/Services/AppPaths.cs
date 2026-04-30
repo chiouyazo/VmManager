@@ -15,4 +15,5 @@ public class AppPaths : IAppPaths
     public string LogDir => Path.Combine(AppDataDir, "Logs");
     public string PendingCleanupPath => Path.Combine(AppDataDir, "pending-cleanup.json");
     public string ManagedNetworksPath => Path.Combine(AppDataDir, "managed-networks.json");
+    public string VmAccessPath => Path.Combine(AppDataDir, "vm-access.json");
 }

@@ -1,5 +1,7 @@
 using System.Net.Sockets;
+using VmManager.Agent.Middleware;
 using VmManager.Agent.Services;
+using VmManager.Contracts.Models;
 
 namespace VmManager.Agent.Endpoints;
 
@@ -15,9 +17,13 @@ public static class RdpEndpoints
                     string vmName,
                     IVmIpResolver resolver,
                     RdpSessionStore sessionStore,
+                    VmAuthorizationService authService,
                     IConfiguration config
                 ) =>
                 {
+                    if (!authService.CanPerform(context.GetVmUser(), vmName, VmPermission.Connect))
+                        return Results.Forbid();
+
                     string? ip = await resolver.ResolveIpAsync(vmName, context.RequestAborted);
                     if (ip == null)
                     {

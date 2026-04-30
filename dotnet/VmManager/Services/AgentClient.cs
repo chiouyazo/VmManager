@@ -140,6 +140,42 @@ public sealed class AgentClient : IDisposable
             && el.GetBoolean();
     }
 
+    public async Task<VmAccessEntry> GetVmAccessAsync(string name)
+    {
+        return await GetJsonAsync<VmAccessEntry>(
+            "/api/vms/" + Uri.EscapeDataString(name) + "/access"
+        );
+    }
+
+    public async Task SetVmAccessAsync(string name, string username, VmPermission permission)
+    {
+        await PutAsync(
+            "/api/vms/" + Uri.EscapeDataString(name) + "/access/" + Uri.EscapeDataString(username),
+            new { permission }
+        );
+    }
+
+    public async Task RemoveVmAccessAsync(string name, string username)
+    {
+        await DeleteAsync(
+            "/api/vms/" + Uri.EscapeDataString(name) + "/access/" + Uri.EscapeDataString(username)
+        );
+    }
+
+    public async Task<TunnelSessionResponse> CreateTunnelSessionAsync(string vmName, int remotePort)
+    {
+        return await PostJsonAsync<TunnelSessionResponse>(
+                "/api/tunnel-sessions/" + Uri.EscapeDataString(vmName) + "?remotePort=" + remotePort
+            ) ?? throw new InvalidOperationException("Failed to create tunnel session");
+    }
+
+    public string GetTunnelWebSocketUrl(string token)
+    {
+        Uri uri = new(_baseUrl);
+        string wsScheme = uri.Scheme == "https" ? "wss" : "ws";
+        return $"{wsScheme}://{uri.Authority}/api/tunnel-sessions/{Uri.EscapeDataString(token)}/connect";
+    }
+
     public async Task RenameVmAsync(string name, string newName)
     {
         await PutAsync("/api/vms/" + Uri.EscapeDataString(name) + "/rename", new { newName });

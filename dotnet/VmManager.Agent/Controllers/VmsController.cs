@@ -1,6 +1,8 @@
 using System.Net.Sockets;
 using Microsoft.AspNetCore.Mvc;
+using VmManager.Agent.Middleware;
 using VmManager.Agent.Services;
+using VmManager.Contracts.Models;
 
 namespace VmManager.Agent.Controllers;
 
@@ -16,6 +18,8 @@ public class VmsController : ControllerBase
     private readonly IBackgroundTaskManager _backgroundTaskManager;
     private readonly PreflightService _preflightService;
     private readonly IVmIpResolver _ipResolver;
+    private readonly VmAuthorizationService _authService;
+    private readonly VmAccessStore _accessStore;
     private readonly ILogger<VmsController> _logger;
 
     public VmsController(
@@ -27,6 +31,8 @@ public class VmsController : ControllerBase
         IBackgroundTaskManager backgroundTaskManager,
         PreflightService preflightService,
         IVmIpResolver ipResolver,
+        VmAuthorizationService authService,
+        VmAccessStore accessStore,
         ILogger<VmsController> logger
     )
     {
@@ -38,6 +44,8 @@ public class VmsController : ControllerBase
         ArgumentNullException.ThrowIfNull(backgroundTaskManager);
         ArgumentNullException.ThrowIfNull(preflightService);
         ArgumentNullException.ThrowIfNull(ipResolver);
+        ArgumentNullException.ThrowIfNull(authService);
+        ArgumentNullException.ThrowIfNull(accessStore);
         ArgumentNullException.ThrowIfNull(logger);
         _backend = backend;
         _networkService = networkService;
@@ -47,6 +55,8 @@ public class VmsController : ControllerBase
         _backgroundTaskManager = backgroundTaskManager;
         _preflightService = preflightService;
         _ipResolver = ipResolver;
+        _authService = authService;
+        _accessStore = accessStore;
         _logger = logger;
     }
 
@@ -69,6 +79,8 @@ public class VmsController : ControllerBase
         Dictionary<string, VmOrigin?> managedVms = _vmTrackingService.LoadAll();
         Dictionary<string, string> notes = _vmTrackingService.LoadNotes();
 
+        string? user = HttpContext.GetVmUser();
+
         foreach (VmInstance vm in allVms)
         {
             if (notes.TryGetValue(vm.Name, out string? note))
@@ -76,7 +88,12 @@ public class VmsController : ControllerBase
             vm.IsManaged = managedVms.ContainsKey(vm.Name);
             if (managedVms.TryGetValue(vm.Name, out VmOrigin? vmOrigin))
                 vm.Origin = vmOrigin;
+            vm.Owner = _accessStore.GetOwner(vm.Name);
+            vm.CurrentUserPermission = _authService.GetEffectivePermission(user, vm.Name);
         }
+
+        if (_authService.IsAccessControlEnabled() && !_authService.IsAdmin(user))
+            allVms = allVms.Where(vm => vm.CurrentUserPermission != null).ToList();
 
         return Ok(allVms);
     }
@@ -87,6 +104,8 @@ public class VmsController : ControllerBase
     [ProducesResponseType(typeof(object), 500)]
     public async Task<IActionResult> StartVm(string name)
     {
+        if (!_authService.CanPerform(HttpContext.GetVmUser(), name, VmPermission.Operate))
+            return Forbid();
         _logger.LogInformation("Starting VM {VmName}", name);
 
         try
@@ -123,6 +142,8 @@ public class VmsController : ControllerBase
     [ProducesResponseType(204)]
     public async Task<IActionResult> StopVm(string name)
     {
+        if (!_authService.CanPerform(HttpContext.GetVmUser(), name, VmPermission.Operate))
+            return Forbid();
         _logger.LogInformation("Stopping VM {VmName}", name);
         await _backend.StopVmAsync(name);
         return NoContent();
@@ -154,10 +175,13 @@ public class VmsController : ControllerBase
     [ProducesResponseType(204)]
     public async Task<IActionResult> DeleteVm(string name)
     {
+        if (!_authService.CanDelete(HttpContext.GetVmUser(), name))
+            return Forbid();
         _logger.LogInformation("Deleting VM {VmName}", name);
         await _backend.DeleteVmAsync(name);
         _vmTrackingService.UntrackVm(name);
         _vmTrackingService.RemoveNote(name);
+        _accessStore.RemoveVm(name);
 
         AppSettings settings = _settingsService.Load();
         List<string> emptyNetworks = _networkTrackingService.DecrementReferences(name);
@@ -185,6 +209,8 @@ public class VmsController : ControllerBase
     [ProducesResponseType(204)]
     public async Task<IActionResult> RenameVm(string name, [FromBody] RenameRequest request)
     {
+        if (!_authService.CanPerform(HttpContext.GetVmUser(), name, VmPermission.Manage))
+            return Forbid();
         _logger.LogInformation("Renaming VM {VmName} to {NewName}", name, request.NewName);
         await _backend.RenameVmAsync(name, request.NewName);
 
@@ -202,6 +228,7 @@ public class VmsController : ControllerBase
             _vmTrackingService.SaveNote(request.NewName, note);
         }
 
+        _accessStore.RenameVm(name, request.NewName);
         return NoContent();
     }
 
@@ -209,6 +236,8 @@ public class VmsController : ControllerBase
     [ProducesResponseType(204)]
     public async Task<IActionResult> ResetVm(string name)
     {
+        if (!_authService.CanPerform(HttpContext.GetVmUser(), name, VmPermission.Manage))
+            return Forbid();
         _logger.LogInformation("Resetting VM {VmName} to base", name);
         bool restored = await _backend.ResetVmAsync(name);
         if (!restored)
@@ -267,5 +296,39 @@ public class VmsController : ControllerBase
         );
 
         return Accepted(new { taskId = task.Id, title = task.Title });
+    }
+
+    [HttpGet("{name}/access")]
+    [ProducesResponseType(typeof(VmAccessEntry), 200)]
+    public IActionResult GetVmAccess(string name)
+    {
+        if (!_authService.CanManageAccess(HttpContext.GetVmUser(), name))
+            return Forbid();
+        VmAccessEntry? entry = _accessStore.GetEntry(name);
+        return Ok(entry ?? new VmAccessEntry { VmName = name });
+    }
+
+    [HttpPut("{name}/access/{username}")]
+    [ProducesResponseType(204)]
+    public IActionResult SetVmAccess(
+        string name,
+        string username,
+        [FromBody] VmAccessGrantRequest request
+    )
+    {
+        if (!_authService.CanManageAccess(HttpContext.GetVmUser(), name))
+            return Forbid();
+        _accessStore.SetGrant(name, username, request.Permission);
+        return NoContent();
+    }
+
+    [HttpDelete("{name}/access/{username}")]
+    [ProducesResponseType(204)]
+    public IActionResult RemoveVmAccess(string name, string username)
+    {
+        if (!_authService.CanManageAccess(HttpContext.GetVmUser(), name))
+            return Forbid();
+        _accessStore.RemoveGrant(name, username);
+        return NoContent();
     }
 }

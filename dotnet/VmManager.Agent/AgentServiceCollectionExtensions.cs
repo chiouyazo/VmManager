@@ -35,6 +35,9 @@ public static class AgentServiceCollectionExtensions
         services.AddSingleton<RdpProxyListener>();
         services.AddSingleton<NetworkTrackingService>();
         services.AddSingleton<NetworkProvisioningService>();
+        services.AddSingleton<VmAccessStore>();
+        services.AddSingleton<VmAuthorizationService>();
+        services.AddSingleton<TunnelSessionStore>();
         return services;
     }
 }

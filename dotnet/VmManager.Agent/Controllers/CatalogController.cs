@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using VmManager.Agent.Middleware;
 using VmManager.Agent.Services;
 
 namespace VmManager.Agent.Controllers;
@@ -18,6 +19,7 @@ public class CatalogController : ControllerBase
     private readonly IVmTrackingService _vmTrackingService;
     private readonly ILocalImageMetadataService _localImageMetadataService;
     private readonly IBackgroundTaskManager _backgroundTaskManager;
+    private readonly VmAccessStore _accessStore;
     private readonly ILogger<CatalogController> _logger;
 
     public CatalogController(
@@ -31,6 +33,7 @@ public class CatalogController : ControllerBase
         IVmTrackingService vmTrackingService,
         ILocalImageMetadataService localImageMetadataService,
         IBackgroundTaskManager backgroundTaskManager,
+        VmAccessStore accessStore,
         ILogger<CatalogController> logger
     )
     {
@@ -44,6 +47,7 @@ public class CatalogController : ControllerBase
         ArgumentNullException.ThrowIfNull(vmTrackingService);
         ArgumentNullException.ThrowIfNull(localImageMetadataService);
         ArgumentNullException.ThrowIfNull(backgroundTaskManager);
+        ArgumentNullException.ThrowIfNull(accessStore);
         ArgumentNullException.ThrowIfNull(logger);
         _catalogAggregator = catalogAggregator;
         _importService = importService;
@@ -55,6 +59,7 @@ public class CatalogController : ControllerBase
         _vmTrackingService = vmTrackingService;
         _localImageMetadataService = localImageMetadataService;
         _backgroundTaskManager = backgroundTaskManager;
+        _accessStore = accessStore;
         _logger = logger;
     }
 
@@ -365,6 +370,7 @@ public class CatalogController : ControllerBase
         );
 
         AppSettings settings = _settingsService.Load();
+        string? creatingUser = HttpContext.GetVmUser();
 
         IBackgroundTask task = _backgroundTaskManager.StartTask(
             "Creating VM " + request.Name,
@@ -403,6 +409,8 @@ public class CatalogController : ControllerBase
                 }
 
                 _vmTrackingService.TrackVm(request.Name, request.Origin);
+                if (creatingUser != null)
+                    _accessStore.SetOwner(request.Name, creatingUser);
 
                 if (networkMappings != null && networkMappings.Count > 0)
                 {

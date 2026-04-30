@@ -25,4 +25,7 @@ public class VmInstance
 
     public bool IsRunning => string.Equals(State, "Running", StringComparison.OrdinalIgnoreCase);
     public bool IsOff => string.Equals(State, "Off", StringComparison.OrdinalIgnoreCase);
+
+    public string? Owner { get; set; }
+    public VmPermission? CurrentUserPermission { get; set; }
 }

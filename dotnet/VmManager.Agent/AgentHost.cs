@@ -93,12 +93,15 @@ public static class AgentHost
         rdpHandler = app.Services.GetRequiredService<RdpConnectionHandler>();
 
         app.UseCors();
+        app.UseWebSockets();
+        app.UseMiddleware<Middleware.ForwardedUserMiddleware>();
         app.UseSwagger();
         app.UseSwaggerUI();
         app.MapControllers();
         app.MapHub<ProgressHub>("/hubs/progress");
         app.MapHealthChecks("/health");
         app.MapRdpEndpoints();
+        app.MapTunnelEndpoints();
 
         int rdpProxyPort = builder.Configuration.GetValue("VmManager:RdpProxyPort", 13389);
         if (rdpProxyPort > 0)

@@ -8,6 +8,7 @@
   xmlns:models="clr-namespace:VmManager.Contracts.Models;assembly=VmManager.Contracts"
   xmlns:ui="using:FluentAvalonia.UI.Controls"
   xmlns:props="clr-namespace:VmManager.Properties"
+  xmlns:services="clr-namespace:VmManager.Services"
   x:DataType="vm:MyVmsViewModel"
   d:DataContext="{d:DesignInstance Type=vm:MyVmsViewModel}"
   mc:Ignorable="d"
@@ -306,6 +307,28 @@
                             IsEnabled="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
                           >
                             <ui:SymbolIcon Symbol="Globe" FontSize="14" />
+                          </Button>
+
+                          <Button
+                            Margin="0,0,4,0"
+                            Padding="12,7"
+                            ToolTip.Tip="Forward port"
+                            Command="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).ForwardPortCommand}"
+                            CommandParameter="{Binding}"
+                            IsEnabled="{Binding State, Converter={StaticResource VmStateIsRunningConverter}}"
+                          >
+                            <ui:SymbolIcon Symbol="Link" FontSize="14" />
+                          </Button>
+
+                          <Button
+                            Margin="0,0,4,0"
+                            Padding="12,7"
+                            ToolTip.Tip="Manage access"
+                            Command="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).ManageAccessCommand}"
+                            CommandParameter="{Binding}"
+                            IsVisible="{Binding CanManageAccess}"
+                          >
+                            <ui:SymbolIcon Symbol="People" FontSize="14" />
                           </Button>
 
                           <Button
@@ -640,6 +663,46 @@
           </Button>
         </StackPanel>
       </Grid>
+    </Border>
+    <Border
+      Grid.Row="5"
+      Theme="{StaticResource CardStyle}"
+      Margin="0,8,0,0"
+      IsVisible="{Binding PortForwards.ActiveForwards.Count, Converter={StaticResource NonZeroCountToVisibilityConverter}}"
+    >
+      <StackPanel>
+        <TextBlock Text="Active Port Forwards" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,8" />
+        <ItemsControl ItemsSource="{Binding PortForwards.ActiveForwards}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="services:PortForward">
+              <Grid Margin="0,2">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                  <TextBlock FontWeight="SemiBold" FontSize="12" Margin="0,0,8,0">
+                    <Run Text="{Binding VmName}" />
+                  </TextBlock>
+                  <TextBlock FontSize="12" Opacity="0.7">
+                    <Run Text="localhost:" /><Run Text="{Binding LocalPort}" />
+                    <Run Text=" -> " />
+                    <Run Text="{Binding VmName}" /><Run Text=":" /><Run Text="{Binding RemotePort}" />
+                  </TextBlock>
+                </StackPanel>
+                <Button
+                  Grid.Column="1"
+                  Content="Stop"
+                  Padding="8,4"
+                  FontSize="11"
+                  Command="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).StopForwardCommand}"
+                  CommandParameter="{Binding}"
+                />
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
     </Border>
   </Grid>
 </UserControl>

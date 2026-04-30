@@ -40,6 +40,13 @@ public partial class VmInstanceViewModel : ObservableObject
     public string GroupKey => Data.GroupKey;
     public string MemoryDisplay => Data.MemoryDisplay;
     public string? OriginDisplay => Data.OriginDisplay;
+    public string? Owner => Data.Owner;
+    public VmPermission? CurrentUserPermission => Data.CurrentUserPermission;
+    public bool CanConnect => CurrentUserPermission >= VmPermission.Connect;
+    public bool CanOperate => CurrentUserPermission >= VmPermission.Operate;
+    public bool CanManage => CurrentUserPermission >= VmPermission.Manage;
+    public bool CanDelete => CurrentUserPermission == VmPermission.Manage;
+    public bool CanManageAccess => CurrentUserPermission == VmPermission.Manage;
 
     public void UpdateData(VmInstance newData)
     {
@@ -50,6 +57,8 @@ public partial class VmInstanceViewModel : ObservableObject
         Data.IsManaged = newData.IsManaged;
         Data.Origin = newData.Origin;
         Data.Notes = newData.Notes;
+        Data.Owner = newData.Owner;
+        Data.CurrentUserPermission = newData.CurrentUserPermission;
         if (stateChanged)
         {
             if (_stateOverride == null)
