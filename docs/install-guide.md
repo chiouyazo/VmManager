@@ -26,15 +26,8 @@
 ### Prerequisites
 
 ```bash
-# Core KVM/libvirt
 sudo apt install qemu-kvm libvirt-daemon-system virt-install qemu-utils
-
-# For locale configuration (applies Windows language/keyboard/timezone via WinRM)
-sudo apt install python3-pip gss-ntlmssp
-pip3 install pywinrm
 ```
-
-**Note:** `pywinrm` and `gss-ntlmssp` are only needed if you want automatic locale configuration during VM creation. Without them, VMs are created normally but locale must be configured manually.
 
 ### Install
 
@@ -54,11 +47,35 @@ sudo systemctl status vmmanager-agent
 curl http://localhost:18275/health
 ```
 
+## Linux (Agent -- Proxmox VE)
+
+See [Proxmox Setup Guide](proxmox-setup.md) for the full walkthrough including user creation, API token, resource pool, and storage isolation.
+
+### Quick Install
+
+```bash
+# Prerequisites
+apt install qemu-utils ntfs-3g
+
+# Agent
+mkdir -p /opt/vmmanager-agent
+tar xzf VmManager-Agent-{version}-linux-x64.tar.gz -C /opt/vmmanager-agent/
+cp /opt/vmmanager-agent/vmmanager-agent.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable vmmanager-agent
+```
+
+Configure `/root/.config/VmManager/settings.json` with `"VmBackend": "Proxmox"` and Proxmox API credentials, then start the service.
+
+```bash
+systemctl start vmmanager-agent
+```
+
 ## VM Image Requirements
 
 All VM images managed by VmManager must share the same local administrator credentials. Configure these in Settings > VM Credentials (default: `Administrator` / `Admin123!`).
 
-This is required because VmManager connects to VMs after creation to apply locale, keyboard, and timezone settings. On Hyper-V this uses PowerShell Direct, on KVM it uses WinRM. Both require valid guest credentials.
+This is required because VmManager connects to VMs after creation to apply locale, keyboard, and timezone settings. On Hyper-V this uses PowerShell Direct, on KVM and Proxmox it uses WinRM. All methods require valid guest credentials.
 
 If your images use different credentials, either standardize them before packaging, or disable "Apply locale on create" in settings and configure locale manually after creation.
 

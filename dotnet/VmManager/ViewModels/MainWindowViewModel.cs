@@ -85,6 +85,7 @@ public partial class MainWindowViewModel : ObservableObject
         {
             "HyperV" => "Hyper-V",
             "KVM" => "KVM",
+            "Proxmox" => "Proxmox VE",
             _ => backendType,
         };
     }

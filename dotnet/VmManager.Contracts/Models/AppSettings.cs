@@ -21,4 +21,7 @@ public class AppSettings
     public string VmBackend { get; set; } = "HyperV";
 
     public bool AutoCleanupUnusedNetworks { get; set; } = true;
+
+    public bool SecureApi { get; set; }
+    public ProxmoxSettings? Proxmox { get; set; }
 }

@@ -12,6 +12,8 @@ public class BackendDisplayNameConverter : IValueConverter
             "HyperV_External" => "Hyper-V (External)",
             "KVM" => "KVM",
             "KVM_External" => "KVM (External)",
+            "Proxmox" => "Proxmox VE",
+            "Proxmox_External" => "Proxmox VE (External)",
             _ => value?.ToString() ?? "",
         };
 

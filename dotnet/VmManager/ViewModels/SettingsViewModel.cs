@@ -324,22 +324,20 @@ public partial class SettingsViewModel : ObservableObject
                         ? tzid
                         : "";
 
-                AppSettings settings = new AppSettings
-                {
-                    Feeds = feedConfigs,
-                    HasCompletedSetup = true,
-                    LocalVmPath = LocalVmPath.Trim(),
-                    DefaultMemoryMb = MemoryMb,
-                    DefaultCpuCount = CpuCount,
-                    DefaultVmUsername = Username.Trim(),
-                    DefaultVmPassword = Password,
-                    ApplyLocaleOnCreate = ApplyLocale,
-                    DefaultLocale = localeId,
-                    DefaultKeyboardLayout = keyboardId,
-                    DefaultTimezone = timezoneId,
-                };
+                AppSettings existing = await _agentClient.GetSettingsAsync();
+                existing.Feeds = feedConfigs;
+                existing.HasCompletedSetup = true;
+                existing.LocalVmPath = LocalVmPath.Trim();
+                existing.DefaultMemoryMb = MemoryMb;
+                existing.DefaultCpuCount = CpuCount;
+                existing.DefaultVmUsername = Username.Trim();
+                existing.DefaultVmPassword = Password;
+                existing.ApplyLocaleOnCreate = ApplyLocale;
+                existing.DefaultLocale = localeId;
+                existing.DefaultKeyboardLayout = keyboardId;
+                existing.DefaultTimezone = timezoneId;
 
-                await _agentClient.SaveSettingsAsync(settings);
+                await _agentClient.SaveSettingsAsync(existing);
                 OnSettingsSaved?.Invoke();
             }
 

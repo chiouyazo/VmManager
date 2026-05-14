@@ -239,18 +239,6 @@ public class KvmImportService
             timezone
         );
 
-        try
-        {
-            await _sh.RunBashAsync("python3 -c 'import winrm' 2>/dev/null");
-        }
-        catch
-        {
-            throw new InvalidOperationException(
-                "pywinrm is not installed. Locale configuration requires it. "
-                    + "Install: pip3 install pywinrm"
-            );
-        }
-
         if (string.IsNullOrWhiteSpace(keyboardLayout))
             keyboardLayout = "00000409";
 
@@ -279,19 +267,31 @@ public class KvmImportService
         _logger.LogInformation("VM {VmName} has IP {Ip}, applying locale via WinRM", vmName, ip);
 
         onStatus?.Invoke("Applying language and keyboard settings...");
-        string localeScript = BuildLocalePs1(locale, keyboardLayout, inputMethodTip, timezone);
-        await RunWinRmPowerShellAsync(ip, username, password, localeScript);
+        string localeScript = Shared.WinRmLocaleHelper.BuildLocaleScript(
+            locale,
+            keyboardLayout,
+            inputMethodTip,
+            timezone
+        );
+        await Shared.WinRmLocaleHelper.RunWinRmPowerShellAsync(
+            ip,
+            username,
+            password,
+            localeScript
+        );
         _logger.LogInformation("Locale applied to VM {VmName}, rebooting", vmName);
 
         onStatus?.Invoke("Rebooting VM to apply changes...");
         try
         {
-            await RunWinRmPowerShellAsync(ip, username, password, "Restart-Computer -Force");
+            await Shared.WinRmLocaleHelper.RunWinRmPowerShellAsync(
+                ip,
+                username,
+                password,
+                "Restart-Computer -Force"
+            );
         }
-        catch
-        {
-            // Connection drops during reboot
-        }
+        catch { }
 
         onStatus?.Invoke("Re-applying keyboard after reboot...");
         await Task.Delay(TimeSpan.FromSeconds(15));
@@ -299,10 +299,19 @@ public class KvmImportService
         if (ip != null)
         {
             await Task.Delay(TimeSpan.FromSeconds(10));
-            string reapplyScript = BuildReapplyPs1(locale, keyboardLayout, inputMethodTip);
+            string reapplyScript = Shared.WinRmLocaleHelper.BuildReapplyScript(
+                locale,
+                keyboardLayout,
+                inputMethodTip
+            );
             try
             {
-                await RunWinRmPowerShellAsync(ip, username, password, reapplyScript);
+                await Shared.WinRmLocaleHelper.RunWinRmPowerShellAsync(
+                    ip,
+                    username,
+                    password,
+                    reapplyScript
+                );
                 _logger.LogInformation("Keyboard re-applied after reboot for VM {VmName}", vmName);
             }
             catch (Exception ex)
@@ -318,96 +327,6 @@ public class KvmImportService
         onStatus?.Invoke("Shutting down VM...");
         _logger.LogInformation("Shutting down VM {VmName} after locale configuration", vmName);
         await ForceStopVmAsync(vmName);
-    }
-
-    private async Task RunWinRmPowerShellAsync(
-        string ip,
-        string username,
-        string password,
-        string psScript
-    )
-    {
-        string pyIp = ip.Replace("'", "\\'");
-        string pyUser = username.Replace("'", "\\'").Replace("\\", "\\\\");
-        string pyPass = password.Replace("'", "\\'").Replace("\\", "\\\\");
-        string pyScript = psScript.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\n", "\\n");
-
-        string pythonCode = $"""
-            import winrm, sys
-            s = winrm.Session('http://{pyIp}:5985/wsman', auth=('{pyUser}', '{pyPass}'), transport='ntlm')
-            r = s.run_ps('{pyScript}')
-            if r.std_err:
-                print(r.std_err.decode(), file=sys.stderr)
-            if r.status_code != 0:
-                sys.exit(r.status_code)
-            """;
-
-        string tempFile = Path.Combine(Path.GetTempPath(), $"vmm-winrm-{Guid.NewGuid():N}.py");
-        try
-        {
-            await File.WriteAllTextAsync(tempFile, pythonCode);
-            await _sh.RunBashAsync($"python3 {Q(tempFile)}");
-        }
-        finally
-        {
-            try
-            {
-                File.Delete(tempFile);
-            }
-            catch { }
-        }
-    }
-
-    private static string BuildLocalePs1(
-        string locale,
-        string keyboardLayout,
-        string inputMethodTip,
-        string timezone
-    )
-    {
-        string tzLine = string.IsNullOrWhiteSpace(timezone)
-            ? ""
-            : $"Set-TimeZone -Id '{Esc(timezone)}'";
-
-        return @$"
-$langList = New-WinUserLanguageList '{Esc(locale)}'
-$langList[0].InputMethodTips.Clear()
-$langList[0].InputMethodTips.Add('{Esc(inputMethodTip)}')
-Set-WinUserLanguageList $langList -Force
-Set-WinDefaultInputMethodOverride -InputTip '{Esc(inputMethodTip)}' -ErrorAction SilentlyContinue
-Set-WinUILanguageOverride -Language '{Esc(locale)}' -ErrorAction SilentlyContinue
-reg load 'HKU\TempDefault' 'C:\Users\Default\NTUSER.DAT' 2>$null
-$lcid = [System.Globalization.CultureInfo]::new('{Esc(locale)}').LCID
-$lcidHex = '{{0:x8}}' -f $lcid
-reg add 'HKU\TempDefault\Keyboard Layout\Preload' /v 1 /t REG_SZ /d '{Esc(keyboardLayout)}' /f 2>$null
-reg delete 'HKU\TempDefault\Keyboard Layout\Preload' /v 2 /f 2>$null
-reg add 'HKU\TempDefault\Control Panel\International' /v Locale /t REG_SZ /d $lcidHex /f 2>$null
-reg add 'HKU\TempDefault\Control Panel\International' /v LocaleName /t REG_SZ /d '{Esc(locale)}' /f 2>$null
-reg unload 'HKU\TempDefault' 2>$null
-$curSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
-reg add ""HKU\$curSid\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"" /v HideFileExt /t REG_DWORD /d 0 /f 2>$null
-reg add ""HKU\$curSid\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"" /v Hidden /t REG_DWORD /d 1 /f 2>$null
-Set-WinSystemLocale -SystemLocale '{Esc(locale)}'
-Copy-UserInternationalSettingsToSystem -WelcomeScreen $true -NewUser $true
-{tzLine}
-";
-    }
-
-    private static string BuildReapplyPs1(
-        string locale,
-        string keyboardLayout,
-        string inputMethodTip
-    )
-    {
-        return @$"
-$langList = New-WinUserLanguageList '{Esc(locale)}'
-$langList[0].InputMethodTips.Clear()
-$langList[0].InputMethodTips.Add('{Esc(inputMethodTip)}')
-Set-WinUserLanguageList $langList -Force
-Set-WinDefaultInputMethodOverride -InputTip '{Esc(inputMethodTip)}' -ErrorAction SilentlyContinue
-Set-WinUILanguageOverride -Language '{Esc(locale)}' -ErrorAction SilentlyContinue
-Copy-UserInternationalSettingsToSystem -WelcomeScreen $true -NewUser $true
-";
     }
 
     private async Task<string?> WaitForIpAsync(string vmName, TimeSpan timeout)
@@ -497,8 +416,6 @@ Copy-UserInternationalSettingsToSystem -WelcomeScreen $true -NewUser $true
             }
         }
     }
-
-    private static string Esc(string value) => value.Replace("'", "''");
 
     private static string Q(string value) => ShellRunner.Q(value);
 }

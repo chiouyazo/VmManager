@@ -14,7 +14,7 @@ public class VmsController : ControllerBase
     private readonly NetworkTrackingService _networkTrackingService;
     private readonly SettingsService _settingsService;
     private readonly IBackgroundTaskManager _backgroundTaskManager;
-    private readonly PreflightService _preflightService;
+    private readonly IPreflightService _preflightService;
     private readonly IVmIpResolver _ipResolver;
     private readonly ILogger<VmsController> _logger;
 
@@ -25,7 +25,7 @@ public class VmsController : ControllerBase
         NetworkTrackingService networkTrackingService,
         SettingsService settingsService,
         IBackgroundTaskManager backgroundTaskManager,
-        PreflightService preflightService,
+        IPreflightService preflightService,
         IVmIpResolver ipResolver,
         ILogger<VmsController> logger
     )

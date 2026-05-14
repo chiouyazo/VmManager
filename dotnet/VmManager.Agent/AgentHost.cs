@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Serilog;
 using VmManager.Agent.Endpoints;
 using VmManager.Agent.Hubs;
@@ -61,9 +62,10 @@ public static class AgentHost
             builder.Services.AddWindowsService();
         else if (OperatingSystem.IsLinux())
             builder.Host.UseSystemd();
-        builder.Services.AddBackendServices();
+        string? vmBackend = ReadVmBackendFromSettings();
+        builder.Services.AddBackendServices(vmBackend);
         builder.Services.AddCatalogServices();
-        builder.Services.AddAgentServices();
+        builder.Services.AddAgentServices(vmBackend);
 
         builder.Services.AddControllers().AddApplicationPart(typeof(AgentHost).Assembly);
         builder.Services.AddSignalR();
@@ -93,6 +95,7 @@ public static class AgentHost
         rdpHandler = app.Services.GetRequiredService<RdpConnectionHandler>();
 
         app.UseCors();
+        app.UseMiddleware<Middleware.BasicAuthMiddleware>();
         app.UseSwagger();
         app.UseSwaggerUI();
         app.MapControllers();
@@ -128,5 +131,29 @@ public static class AgentHost
         Task runTask = app.RunAsync();
         cancellationToken.Register(() => app.StopAsync().GetAwaiter().GetResult());
         await runTask;
+    }
+
+    private static string? ReadVmBackendFromSettings()
+    {
+        string settingsPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "VmManager",
+            "settings.json"
+        );
+        if (!File.Exists(settingsPath))
+            return null;
+
+        try
+        {
+            string json = File.ReadAllText(settingsPath);
+            JsonDocument doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty("VmBackend", out JsonElement val))
+                return val.GetString();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Failed to read VmBackend from settings");
+        }
+        return null;
     }
 }

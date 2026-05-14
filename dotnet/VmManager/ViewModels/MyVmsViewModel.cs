@@ -329,7 +329,7 @@ public partial class MyVmsViewModel : ViewModelBase
     [RelayCommand]
     public async Task LoadSnapshotsForVmAsync(VmInstanceViewModel vm)
     {
-        if (vm.Backend is not "HyperV" and not "KVM")
+        if (vm.Backend is not "HyperV" and not "KVM" and not "Proxmox")
             return;
 
         try
@@ -751,13 +751,15 @@ public partial class MyVmsViewModel : ViewModelBase
                 "HyperV_External" => "Hyper-V (External)",
                 "KVM" => "KVM",
                 "KVM_External" => "KVM (External)",
+                "Proxmox" => "Proxmox VE",
+                "Proxmox_External" => "Proxmox VE (External)",
                 _ => group.Key,
             };
             GroupedVms.Add(
                 new VmGroup
                 {
                     Name = $"{displayName} ({group.Count()})",
-                    IsExpanded = group.Key is "HyperV" or "KVM",
+                    IsExpanded = group.Key is "HyperV" or "KVM" or "Proxmox",
                     Items = new ObservableCollection<VmInstanceViewModel>(group),
                 }
             );
@@ -766,7 +768,9 @@ public partial class MyVmsViewModel : ViewModelBase
 
     private async Task LoadAllSnapshotCountsAsync(List<VmInstanceViewModel> vms)
     {
-        foreach (VmInstanceViewModel vm in vms.Where(v => v.Backend is "HyperV" or "KVM"))
+        foreach (
+            VmInstanceViewModel vm in vms.Where(v => v.Backend is "HyperV" or "KVM" or "Proxmox")
+        )
         {
             try
             {
