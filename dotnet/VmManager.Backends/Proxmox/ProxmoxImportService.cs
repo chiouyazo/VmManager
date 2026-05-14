@@ -285,6 +285,57 @@ public class ProxmoxImportService
         await StopVmAsync(vmid);
     }
 
+    public async Task RunPostCreationAsync(
+        string vmName,
+        string username,
+        string password,
+        bool renameComputer,
+        string? postCreationScript = null,
+        Action<string>? onStatus = null
+    )
+    {
+        if (!renameComputer && string.IsNullOrWhiteSpace(postCreationScript))
+            return;
+
+        int vmid = await _vms.ResolveVmIdAsync(vmName);
+        JsonElement status = await _api.GetAsync<JsonElement>(
+            $"{_api.VmPath(vmid)}/status/current"
+        );
+        if (status.GetProperty("status").GetString() != "running")
+        {
+            string upid = await PostForUpidAsync($"{_api.VmPath(vmid)}/status/start");
+            await _api.PollTaskAsync(upid);
+        }
+
+        onStatus?.Invoke("Waiting for VM to get IP address...");
+        string? ip = await WaitForIpAsync(vmName, TimeSpan.FromMinutes(5));
+        if (ip == null)
+        {
+            await StopVmAsync(vmid);
+            throw new TimeoutException($"VM '{vmName}' did not receive an IP within 5 minutes.");
+        }
+
+        try
+        {
+            onStatus?.Invoke("Running post-creation tasks...");
+            await Shared.WinRmLocaleHelper.RunPostCreationAsync(
+                ip,
+                username,
+                password,
+                vmName,
+                renameComputer,
+                postCreationScript
+            );
+            await Task.Delay(TimeSpan.FromSeconds(15));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Post-creation tasks failed for VM {VmName}", vmName);
+        }
+
+        await StopVmAsync(vmid);
+    }
+
     private async Task StopVmAsync(int vmid)
     {
         try

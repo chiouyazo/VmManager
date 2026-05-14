@@ -35,6 +35,14 @@ public interface IVmBackend
         string timezone = "",
         Action<string>? onStatus = null
     );
+    Task RunPostCreationAsync(
+        string vmName,
+        string username,
+        string password,
+        bool renameComputer,
+        string? postCreationScript = null,
+        Action<string>? onStatus = null
+    );
     Task CloneVmFromSnapshotAsync(string vmName, string snapshotName, string newVmName);
     Task ResetDiskAsync(string name);
     Task<string?> TroubleshootAsync();

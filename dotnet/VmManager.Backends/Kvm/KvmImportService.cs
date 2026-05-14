@@ -329,6 +329,49 @@ public class KvmImportService
         await ForceStopVmAsync(vmName);
     }
 
+    public async Task RunPostCreationViaWinRmAsync(
+        string vmName,
+        string username,
+        string password,
+        bool renameComputer,
+        string? postCreationScript,
+        Action<string>? onStatus = null
+    )
+    {
+        string state = await GetVmStateAsync(vmName);
+        if (state != "running")
+        {
+            await _sh.RunBashAsync($"virsh start {Q(vmName)}");
+        }
+
+        onStatus?.Invoke("Waiting for VM to get IP address...");
+        string? ip = await WaitForIpAsync(vmName, TimeSpan.FromMinutes(5));
+        if (ip == null)
+        {
+            await ForceStopVmAsync(vmName);
+            throw new TimeoutException($"VM '{vmName}' did not receive an IP within 5 minutes.");
+        }
+
+        try
+        {
+            await Shared.WinRmLocaleHelper.RunPostCreationAsync(
+                ip,
+                username,
+                password,
+                vmName,
+                renameComputer,
+                postCreationScript
+            );
+            await Task.Delay(TimeSpan.FromSeconds(15));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Post-creation tasks failed for VM {VmName}", vmName);
+        }
+
+        await ForceStopVmAsync(vmName);
+    }
+
     private async Task<string?> WaitForIpAsync(string vmName, TimeSpan timeout)
     {
         DateTime deadline = DateTime.UtcNow + timeout;

@@ -72,5 +72,27 @@ Copy-UserInternationalSettingsToSystem -WelcomeScreen $true -NewUser $true
         }
     }
 
+    public static async Task RunPostCreationAsync(
+        string ip,
+        string username,
+        string password,
+        string vmName,
+        bool renameComputer,
+        string? postCreationScript
+    )
+    {
+        if (renameComputer)
+        {
+            string renameScript = $"Rename-Computer -NewName '{Esc(vmName)}' -Force";
+            await RunWinRmPowerShellAsync(ip, username, password, renameScript);
+        }
+
+        if (!string.IsNullOrWhiteSpace(postCreationScript))
+            await RunWinRmPowerShellAsync(ip, username, password, postCreationScript);
+
+        if (renameComputer || !string.IsNullOrWhiteSpace(postCreationScript))
+            await RunWinRmPowerShellAsync(ip, username, password, "Restart-Computer -Force");
+    }
+
     private static string Esc(string value) => value.Replace("'", "''");
 }

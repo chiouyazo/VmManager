@@ -289,4 +289,73 @@ public class HyperVImportService
             """;
         await _ps.RunPsAsync(script);
     }
+
+    public async Task RunPostCreationAsync(
+        string vmName,
+        string username,
+        string password,
+        bool renameComputer,
+        string? postCreationScript = null,
+        Action<string>? onStatus = null
+    )
+    {
+        if (!renameComputer && string.IsNullOrWhiteSpace(postCreationScript))
+            return;
+
+        onStatus?.Invoke("Running post-creation tasks...");
+
+        string renameBlock = renameComputer
+            ? $"Invoke-Command -Session $session -ScriptBlock {{ Rename-Computer -NewName {PowerShellRunner.Q(vmName)} -Force }} -ErrorAction SilentlyContinue"
+            : "";
+
+        string scriptBlock = !string.IsNullOrWhiteSpace(postCreationScript)
+            ? $"Invoke-Command -Session $session -ScriptBlock {{ {postCreationScript} }}"
+            : "";
+
+        string ps = $$"""
+            $vmName = {{PowerShellRunner.Q(vmName)}}
+            $username = {{PowerShellRunner.Q(username)}}
+            $password = {{PowerShellRunner.Q(password)}}
+
+            try {
+                $vm = Get-VM -Name $vmName
+                if ($vm.State -ne 'Running') {
+                    Start-VM -Name $vmName -ErrorAction Stop
+                }
+
+                $cred = New-Object PSCredential($username, (ConvertTo-SecureString $password -AsPlainText -Force))
+                $session = $null
+                $tries = 0
+                while ($tries -lt 40 -and -not $session) {
+                    try {
+                        $session = New-PSSession -VMName $vmName -Credential $cred -ErrorAction Stop
+                    } catch {
+                        Start-Sleep -Seconds 2
+                        $tries++
+                    }
+                }
+                if (-not $session) { throw "VM did not become responsive within 80 seconds." }
+
+                {{renameBlock}}
+                {{scriptBlock}}
+
+                Remove-PSSession $session
+
+                Invoke-Command -Session (New-PSSession -VMName $vmName -Credential $cred) -ScriptBlock { Restart-Computer -Force }
+                Start-Sleep -Seconds 10
+            } finally {
+                $tries3 = 0
+                while ($tries3 -lt 30) {
+                    $vm = Get-VM -Name $vmName -ErrorAction SilentlyContinue
+                    if ($vm -and $vm.State -eq 'Off') { break }
+                    if ($vm -and $vm.State -ne 'Off' -and $tries3 -ge 25) {
+                        Stop-VM -Name $vmName -Force -ErrorAction SilentlyContinue
+                    }
+                    Start-Sleep -Seconds 2
+                    $tries3++
+                }
+            }
+            """;
+        await _ps.RunPsAsync(ps);
+    }
 }

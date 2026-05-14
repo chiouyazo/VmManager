@@ -774,6 +774,42 @@ namespace VmManager.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Post-Creation.
+        /// </summary>
+        public static string Settings_PostCreation {
+            get {
+                return ResourceManager.GetString("Settings_PostCreation", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Rename computer to VM name after creation.
+        /// </summary>
+        public static string Settings_RenameComputer {
+            get {
+                return ResourceManager.GetString("Settings_RenameComputer", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to PowerShell script to run after VM creation.
+        /// </summary>
+        public static string Settings_PostCreationScript {
+            get {
+                return ResourceManager.GetString("Settings_PostCreationScript", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to e.g. winget install TeamViewer.TeamViewer.Host --silent.
+        /// </summary>
+        public static string Settings_PostCreationScriptPlaceholder {
+            get {
+                return ResourceManager.GetString("Settings_PostCreationScriptPlaceholder", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Save Settings.
         /// </summary>
         public static string Settings_Save {

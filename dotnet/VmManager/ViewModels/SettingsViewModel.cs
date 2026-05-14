@@ -90,6 +90,12 @@ public partial class SettingsViewModel : ObservableObject
     private string? _selectedTimezone;
 
     [ObservableProperty]
+    private bool _renameComputerToVmName = true;
+
+    [ObservableProperty]
+    private string _postCreationScript = "";
+
+    [ObservableProperty]
     private string _statusMessage = "";
 
     [ObservableProperty]
@@ -197,6 +203,8 @@ public partial class SettingsViewModel : ObservableObject
         SelectedTimezone = TimezoneMap
             .FirstOrDefault(kv => kv.Value == settings.DefaultTimezone)
             .Key;
+        RenameComputerToVmName = settings.RenameComputerToVmName;
+        PostCreationScript = settings.PostCreationScript;
     }
 
     [RelayCommand]
@@ -336,6 +344,8 @@ public partial class SettingsViewModel : ObservableObject
                 existing.DefaultLocale = localeId;
                 existing.DefaultKeyboardLayout = keyboardId;
                 existing.DefaultTimezone = timezoneId;
+                existing.RenameComputerToVmName = RenameComputerToVmName;
+                existing.PostCreationScript = PostCreationScript;
 
                 await _agentClient.SaveSettingsAsync(existing);
                 OnSettingsSaved?.Invoke();

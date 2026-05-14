@@ -123,6 +123,10 @@
   <data name="Settings_ApplyLocale" xml:space="preserve"><value>Apply locale and keyboard layout after VM creation</value></data>
   <data name="Settings_Locale" xml:space="preserve"><value>Locale</value></data>
   <data name="Settings_KeyboardLayout" xml:space="preserve"><value>Keyboard Layout</value></data>
+  <data name="Settings_PostCreation" xml:space="preserve"><value>Post-Creation</value></data>
+  <data name="Settings_RenameComputer" xml:space="preserve"><value>Rename computer to VM name after creation</value></data>
+  <data name="Settings_PostCreationScript" xml:space="preserve"><value>PowerShell script to run after VM creation</value></data>
+  <data name="Settings_PostCreationScriptPlaceholder" xml:space="preserve"><value>e.g. winget install TeamViewer.TeamViewer.Host --silent</value></data>
   <data name="Settings_Save" xml:space="preserve"><value>Save Settings</value></data>
   <data name="Settings_Saved" xml:space="preserve"><value>Settings saved.</value></data>
   <data name="Settings_SaveFailedFormat" xml:space="preserve"><value>Failed to save: {0}</value></data>

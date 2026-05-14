@@ -20,6 +20,9 @@ public class AppSettings
 
     public string VmBackend { get; set; } = "HyperV";
 
+    public bool RenameComputerToVmName { get; set; } = true;
+    public string PostCreationScript { get; set; } = "";
+
     public bool AutoCleanupUnusedNetworks { get; set; } = true;
 
     public bool SecureApi { get; set; }

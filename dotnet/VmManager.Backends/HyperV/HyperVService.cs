@@ -99,6 +99,23 @@ public class HyperVService : IVmBackend
         string networkShareRoot
     ) => Snapshots.UploadSnapshotAsync(vmName, snapshotName, snapshotId, networkShareRoot);
 
+    public Task RunPostCreationAsync(
+        string vmName,
+        string username,
+        string password,
+        bool renameComputer,
+        string? postCreationScript = null,
+        Action<string>? onStatus = null
+    ) =>
+        Import.RunPostCreationAsync(
+            vmName,
+            username,
+            password,
+            renameComputer,
+            postCreationScript,
+            onStatus
+        );
+
     public Task CloneVmFromSnapshotAsync(string vmName, string snapshotName, string newVmName) =>
         Import.CloneVmFromSnapshotAsync(vmName, snapshotName, newVmName);
 

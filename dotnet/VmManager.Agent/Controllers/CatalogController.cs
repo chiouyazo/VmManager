@@ -451,6 +451,37 @@ public class CatalogController : ControllerBase
                     }
                 }
 
+                bool needsPostCreation =
+                    settings.RenameComputerToVmName
+                    || !string.IsNullOrWhiteSpace(settings.PostCreationScript);
+                if (
+                    needsPostCreation
+                    && !string.IsNullOrWhiteSpace(settings.DefaultVmUsername)
+                    && !string.IsNullOrWhiteSpace(settings.DefaultVmPassword)
+                )
+                {
+                    try
+                    {
+                        await _backend.RunPostCreationAsync(
+                            request.Name,
+                            settings.DefaultVmUsername,
+                            settings.DefaultVmPassword,
+                            settings.RenameComputerToVmName,
+                            settings.PostCreationScript,
+                            onStatus: status => ctx.ReportProgress(-1, status)
+                        );
+                    }
+                    catch (Exception postEx)
+                    {
+                        _logger.LogError(
+                            postEx,
+                            "Post-creation tasks failed for VM {VmName}",
+                            request.Name
+                        );
+                        ctx.Log("Post-creation tasks failed: " + postEx.Message);
+                    }
+                }
+
                 List<VmNetworkAdapter> staticIpAdapters =
                     request.Networks?.Where(a => !string.IsNullOrEmpty(a.StaticIp)).ToList() ?? [];
                 if (staticIpAdapters.Count > 0)
