@@ -22,6 +22,7 @@ public class AppSettings
 
     public bool RenameComputerToVmName { get; set; } = true;
     public string PostCreationScript { get; set; } = "";
+    public string PostStartupScript { get; set; } = "";
 
     public bool AutoCleanupUnusedNetworks { get; set; } = true;
 

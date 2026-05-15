@@ -127,6 +127,8 @@
   <data name="Settings_RenameComputer" xml:space="preserve"><value>Rename computer to VM name after creation</value></data>
   <data name="Settings_PostCreationScript" xml:space="preserve"><value>PowerShell script to run after VM creation</value></data>
   <data name="Settings_PostCreationScriptPlaceholder" xml:space="preserve"><value>e.g. winget install TeamViewer.TeamViewer.Host --silent</value></data>
+  <data name="Settings_PostStartupScript" xml:space="preserve"><value>PowerShell script to run on every VM startup</value></data>
+  <data name="Settings_PostStartupScriptPlaceholder" xml:space="preserve"><value>e.g. register TeamViewer device, sync config, etc.</value></data>
   <data name="Settings_Save" xml:space="preserve"><value>Save Settings</value></data>
   <data name="Settings_Saved" xml:space="preserve"><value>Settings saved.</value></data>
   <data name="Settings_SaveFailedFormat" xml:space="preserve"><value>Failed to save: {0}</value></data>

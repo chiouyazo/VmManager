@@ -110,6 +110,7 @@ public class VmsController : ControllerBase
         try
         {
             await _backend.StartVmAsync(name);
+            RunPostStartupScriptInBackground(name);
             return NoContent();
         }
         catch (Exception ex)
@@ -267,5 +268,62 @@ public class VmsController : ControllerBase
         );
 
         return Accepted(new { taskId = task.Id, title = task.Title });
+    }
+
+    private void RunPostStartupScriptInBackground(string vmName)
+    {
+        AppSettings settings = _settingsService.Load();
+        if (string.IsNullOrWhiteSpace(settings.PostStartupScript))
+            return;
+        if (
+            string.IsNullOrWhiteSpace(settings.DefaultVmUsername)
+            || string.IsNullOrWhiteSpace(settings.DefaultVmPassword)
+        )
+            return;
+
+        string script = settings.PostStartupScript;
+        string username = settings.DefaultVmUsername;
+        string password = settings.DefaultVmPassword;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                string? ip = null;
+                for (int i = 0; i < 60; i++)
+                {
+                    ip = await _ipResolver.ResolveIpAsync(vmName);
+                    if (ip != null)
+                        break;
+                    await Task.Delay(5000);
+                }
+                if (ip == null)
+                {
+                    _logger.LogWarning(
+                        "Post-startup script skipped for {VmName}: no IP found",
+                        vmName
+                    );
+                    return;
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(15));
+                _logger.LogInformation(
+                    "Running post-startup script on {VmName} ({Ip})",
+                    vmName,
+                    ip
+                );
+                await Backends.Shared.WinRmLocaleHelper.RunWinRmPowerShellAsync(
+                    ip,
+                    username,
+                    password,
+                    script
+                );
+                _logger.LogInformation("Post-startup script completed for {VmName}", vmName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Post-startup script failed for {VmName}", vmName);
+            }
+        });
     }
 }

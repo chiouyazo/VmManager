@@ -513,6 +513,17 @@
                 MaxHeight="200"
               />
             </StackPanel>
+            <StackPanel Margin="0,12,0,0">
+              <TextBlock Text="{x:Static props:Resources.Settings_PostStartupScript}" Margin="0,0,0,4" />
+              <TextBox
+                Text="{Binding PostStartupScript}"
+                Watermark="{x:Static props:Resources.Settings_PostStartupScriptPlaceholder}"
+                AcceptsReturn="True"
+                TextWrapping="Wrap"
+                MinHeight="80"
+                MaxHeight="200"
+              />
+            </StackPanel>
           </StackPanel>
         </Border>
       </StackPanel>

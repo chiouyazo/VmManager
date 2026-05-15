@@ -96,6 +96,9 @@ public partial class SettingsViewModel : ObservableObject
     private string _postCreationScript = "";
 
     [ObservableProperty]
+    private string _postStartupScript = "";
+
+    [ObservableProperty]
     private string _statusMessage = "";
 
     [ObservableProperty]
@@ -205,6 +208,7 @@ public partial class SettingsViewModel : ObservableObject
             .Key;
         RenameComputerToVmName = settings.RenameComputerToVmName;
         PostCreationScript = settings.PostCreationScript;
+        PostStartupScript = settings.PostStartupScript;
     }
 
     [RelayCommand]
@@ -346,6 +350,7 @@ public partial class SettingsViewModel : ObservableObject
                 existing.DefaultTimezone = timezoneId;
                 existing.RenameComputerToVmName = RenameComputerToVmName;
                 existing.PostCreationScript = PostCreationScript;
+                existing.PostStartupScript = PostStartupScript;
 
                 await _agentClient.SaveSettingsAsync(existing);
                 OnSettingsSaved?.Invoke();

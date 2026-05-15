@@ -810,6 +810,24 @@ namespace VmManager.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to PowerShell script to run on every VM startup.
+        /// </summary>
+        public static string Settings_PostStartupScript {
+            get {
+                return ResourceManager.GetString("Settings_PostStartupScript", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to e.g. register TeamViewer device, sync config, etc..
+        /// </summary>
+        public static string Settings_PostStartupScriptPlaceholder {
+            get {
+                return ResourceManager.GetString("Settings_PostStartupScriptPlaceholder", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Save Settings.
         /// </summary>
         public static string Settings_Save {
