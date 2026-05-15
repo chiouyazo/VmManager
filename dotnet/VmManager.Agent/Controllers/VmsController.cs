@@ -306,7 +306,30 @@ public class VmsController : ControllerBase
                     return;
                 }
 
-                await Task.Delay(TimeSpan.FromSeconds(15));
+                bool winrmReady = false;
+                for (int j = 0; j < 60; j++)
+                {
+                    try
+                    {
+                        using System.Net.Sockets.TcpClient tcp = new System.Net.Sockets.TcpClient();
+                        await tcp.ConnectAsync(ip, 5985).WaitAsync(TimeSpan.FromSeconds(2));
+                        winrmReady = true;
+                        break;
+                    }
+                    catch
+                    {
+                        await Task.Delay(3000);
+                    }
+                }
+                if (!winrmReady)
+                {
+                    _logger.LogWarning(
+                        "Post-startup script skipped for {VmName}: WinRM not available",
+                        vmName
+                    );
+                    return;
+                }
+
                 _logger.LogInformation(
                     "Running post-startup script on {VmName} ({Ip})",
                     vmName,

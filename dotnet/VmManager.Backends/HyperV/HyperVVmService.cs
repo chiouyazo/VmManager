@@ -44,10 +44,11 @@ public class HyperVVmService
                 );
                 List<VmInstance> result = new List<VmInstance>();
 
+                string hostName = Environment.MachineName;
                 foreach (ManagementObject vm in searcher.Get())
                 {
-                    // Skip the host management OS entry
-                    if ((string?)vm["Description"] == "Microsoft Hosting Computer System")
+                    string? elementName = (string?)vm["ElementName"];
+                    if (string.Equals(elementName, hostName, StringComparison.OrdinalIgnoreCase))
                     {
                         vm.Dispose();
                         continue;
