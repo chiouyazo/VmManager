@@ -18,10 +18,12 @@ public partial class MainWindow : Window
     private readonly AgentConnection _agentConnection;
     private readonly AgentSettingsService _agentSettings;
     private readonly TrayIconService _trayIconService;
+    private readonly PermissionService _permissionService;
     private readonly ILogger<MainWindow> _logger;
     private readonly ImagesPage _imagesPage;
     private readonly MyVmsPage _myVmsPage;
     private readonly SettingsPage _settingsPage;
+    private readonly UsersPage _usersPage;
     private readonly TaskPanel _taskPanel;
 
     private Button? _activeNavButton;
@@ -34,10 +36,12 @@ public partial class MainWindow : Window
         AgentConnection agentConnection,
         AgentSettingsService agentSettings,
         TrayIconService trayIconService,
+        PermissionService permissionService,
         MainWindowViewModel viewModel,
         ImagesPage imagesPage,
         MyVmsPage myVmsPage,
         SettingsPage settingsPage,
+        UsersPage usersPage,
         TaskPanel taskPanel,
         ILogger<MainWindow> logger
     )
@@ -46,10 +50,12 @@ public partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(agentConnection);
         ArgumentNullException.ThrowIfNull(agentSettings);
         ArgumentNullException.ThrowIfNull(trayIconService);
+        ArgumentNullException.ThrowIfNull(permissionService);
         ArgumentNullException.ThrowIfNull(viewModel);
         ArgumentNullException.ThrowIfNull(imagesPage);
         ArgumentNullException.ThrowIfNull(myVmsPage);
         ArgumentNullException.ThrowIfNull(settingsPage);
+        ArgumentNullException.ThrowIfNull(usersPage);
         ArgumentNullException.ThrowIfNull(taskPanel);
         ArgumentNullException.ThrowIfNull(logger);
 
@@ -57,11 +63,13 @@ public partial class MainWindow : Window
         _agentConnection = agentConnection;
         _agentSettings = agentSettings;
         _trayIconService = trayIconService;
+        _permissionService = permissionService;
         _logger = logger;
         _viewModel = viewModel;
         _imagesPage = imagesPage;
         _myVmsPage = myVmsPage;
         _settingsPage = settingsPage;
+        _usersPage = usersPage;
         _taskPanel = taskPanel;
 
         DataContext = this;
@@ -75,6 +83,7 @@ public partial class MainWindow : Window
         PopulateEnvironmentSelector();
 
         NavigateTo(NavImages, _imagesPage);
+        UpdateNavVisibility();
 
         Activated += OnWindowActivated;
 
@@ -179,6 +188,9 @@ public partial class MainWindow : Window
             App.AgentClient = _agentConnection.Client;
             Title = Properties.Resources.AppTitle;
 
+            await _permissionService.RefreshAsync();
+            UpdateNavVisibility();
+
             await RefreshAllPagesAsync();
             _ = _viewModel.RefreshBackendStatusAsync();
             _ = _viewModel.RefreshConnectionStatusAsync();
@@ -194,6 +206,17 @@ public partial class MainWindow : Window
         {
             IsEnabled = true;
         }
+    }
+
+    private void UpdateNavVisibility()
+    {
+        NavImages.IsVisible = _permissionService.CanSeeMarketplace;
+        NavUsers.IsVisible = _permissionService.IsAdmin;
+
+        if (_currentPage == _imagesPage && !_permissionService.CanSeeMarketplace)
+            NavigateTo(NavMyVMs, _myVmsPage);
+        if (_currentPage == _usersPage && !_permissionService.IsAdmin)
+            NavigateTo(NavMyVMs, _myVmsPage);
     }
 
     private UserControl? _currentPage;
@@ -268,6 +291,7 @@ public partial class MainWindow : Window
             "Images" => _imagesPage,
             "MyVMs" => _myVmsPage,
             "Settings" => _settingsPage,
+            "Users" => _usersPage,
             _ => null,
         };
 
@@ -282,6 +306,7 @@ public partial class MainWindow : Window
             "Images" => ((Button)NavImages, (UserControl)_imagesPage),
             "MyVMs" => (NavMyVMs, _myVmsPage),
             "Settings" => (NavSettings, _settingsPage),
+            "Users" => (NavUsers, _usersPage),
             _ => (null!, null!),
         };
 
@@ -317,6 +342,8 @@ public partial class MainWindow : Window
             _ = mvm2.RefreshAsync();
         if (page == _settingsPage && _settingsPage.DataContext is SettingsViewModel svm2)
             _ = svm2.LoadSettingsAsync();
+        if (page == _usersPage && _usersPage.DataContext is UsersViewModel uvm2)
+            _ = uvm2.LoadUsersAsync();
 
         if (page == _imagesPage && PendingMarketplaceImageId != null)
         {

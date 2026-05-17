@@ -26,6 +26,5 @@ public class AppSettings
 
     public bool AutoCleanupUnusedNetworks { get; set; } = true;
 
-    public bool SecureApi { get; set; }
     public ProxmoxSettings? Proxmox { get; set; }
 }

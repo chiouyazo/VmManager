@@ -1,0 +1,11 @@
+namespace VmManager.Contracts.Models;
+
+public class UserAccount
+{
+    public string Username { get; set; } = "";
+    public string PasswordHash { get; set; } = "";
+    public string Salt { get; set; } = "";
+    public bool IsAdmin { get; set; }
+    public HashSet<string> Permissions { get; set; } = [];
+    public DateTime CreatedAt { get; set; }
+}

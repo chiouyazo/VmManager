@@ -60,6 +60,12 @@ public static class AgentServiceCollectionExtensions
         services.AddSingleton<RdpProxyListener>();
         services.AddSingleton<NetworkTrackingService>();
         services.AddSingleton<NetworkProvisioningService>();
+
+        services.AddSingleton<UserService>();
+        services.AddSingleton<VmOwnershipService>();
+        services.AddSingleton<VmSharingService>();
+        services.AddSingleton<AuthorizationService>();
+
         return services;
     }
 }

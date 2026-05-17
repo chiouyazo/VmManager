@@ -9,14 +9,19 @@ namespace VmManager.ViewModels;
 public partial class MyVmsViewModel : ViewModelBase
 {
     private readonly ILogger<MyVmsViewModel> _logger;
+    private readonly PermissionService _permissionService;
 
     private AgentClient _agentClient => App.AgentClient!;
 
-    public MyVmsViewModel(ILogger<MyVmsViewModel> logger)
+    public MyVmsViewModel(PermissionService permissionService, ILogger<MyVmsViewModel> logger)
     {
+        ArgumentNullException.ThrowIfNull(permissionService);
         ArgumentNullException.ThrowIfNull(logger);
+        _permissionService = permissionService;
         _logger = logger;
     }
+
+    public ObservableCollection<VmInstanceViewModel> SharedVms { get; } = [];
 
     [ObservableProperty]
     private ObservableCollection<VmInstanceViewModel> _vms = [];
@@ -47,6 +52,8 @@ public partial class MyVmsViewModel : ViewModelBase
     public Func<List<string>, Task<int>>? RequestPushRepository { get; set; }
     public Action<string>? NavigateTo { get; set; }
     public Action<string>? NavigateToMarketplaceImage { get; set; }
+
+    public bool IsAdmin => _permissionService.IsAdmin;
 
     [ObservableProperty]
     private string _credentialTooltip = "";
@@ -103,7 +110,7 @@ public partial class MyVmsViewModel : ViewModelBase
                 }
                 else
                 {
-                    Vms.Add(new VmInstanceViewModel(vmData));
+                    Vms.Add(new VmInstanceViewModel(vmData, _permissionService));
                 }
             }
 
@@ -114,6 +121,11 @@ public partial class MyVmsViewModel : ViewModelBase
             }
             List<VmInstanceViewModel> wrapped = Vms.ToList();
             RebuildGroups(wrapped);
+
+            SharedVms.Clear();
+            foreach (VmInstanceViewModel vm in wrapped.Where(v => v.IsSharedWithCurrentUser))
+                SharedVms.Add(vm);
+
             NoVmsDetected = allVms.Count == 0;
 
             _ = LoadAllSnapshotCountsAsync(wrapped);
@@ -737,6 +749,41 @@ public partial class MyVmsViewModel : ViewModelBase
             }
             catch { }
             await Task.Delay(2000);
+        }
+    }
+
+    public async Task LoadShadowSessionsAsync(VmInstanceViewModel vm)
+    {
+        vm.SessionsLoading = true;
+        vm.ShadowSessions.Clear();
+        try
+        {
+            RdpShadowSessionsResponse response = await _agentClient.GetShadowSessionsAsync(vm.Name);
+            vm.SessionsVmIp = response.VmIp;
+            foreach (RdpShadowSession session in response.Sessions)
+                vm.ShadowSessions.Add(session);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load sessions for VM {VmName}", vm.Name);
+            ShowError("Failed to load sessions: " + ex.Message);
+        }
+        finally
+        {
+            vm.SessionsLoading = false;
+        }
+    }
+
+    public void LaunchShadow(VmInstanceViewModel vm, RdpShadowSession session, bool noConsentPrompt)
+    {
+        try
+        {
+            AgentClient.LaunchShadowSession(vm.SessionsVmIp, session.SessionId, noConsentPrompt);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to launch shadow session");
+            ShowError("Failed to launch shadow: " + ex.Message);
         }
     }
 

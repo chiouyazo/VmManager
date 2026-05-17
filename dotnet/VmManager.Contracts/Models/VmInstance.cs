@@ -23,6 +23,10 @@ public class VmInstance
 
     public string Notes { get; set; } = "";
 
+    public string Owner { get; set; } = "";
+    public List<string> SharedWith { get; set; } = [];
+    public HashSet<string> EffectivePermissions { get; set; } = [];
+
     public bool IsRunning => string.Equals(State, "Running", StringComparison.OrdinalIgnoreCase);
     public bool IsOff => string.Equals(State, "Off", StringComparison.OrdinalIgnoreCase);
 }

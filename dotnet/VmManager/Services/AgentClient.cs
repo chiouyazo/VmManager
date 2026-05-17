@@ -471,6 +471,121 @@ public sealed class AgentClient : IDisposable
         }
     }
 
+    public async Task<AuthenticatedUser> GetCurrentUserAsync()
+    {
+        return await GetJsonAsync<AuthenticatedUser>("/api/auth/me");
+    }
+
+    public async Task ChangeOwnPasswordAsync(string newPassword)
+    {
+        await PutAsync("/api/auth/password", new { newPassword });
+    }
+
+    public async Task<List<AuthenticatedUser>> GetUsersAsync()
+    {
+        return await GetJsonAsync<List<AuthenticatedUser>>("/api/users");
+    }
+
+    public async Task CreateUserAsync(
+        string username,
+        string password,
+        HashSet<string> permissions,
+        bool isAdmin
+    )
+    {
+        await PostAsync(
+            "/api/users",
+            new
+            {
+                username,
+                password,
+                permissions,
+                isAdmin,
+            }
+        );
+    }
+
+    public async Task DeleteUserAsync(string username)
+    {
+        await DeleteAsync("/api/users/" + Uri.EscapeDataString(username));
+    }
+
+    public async Task UpdateUserPermissionsAsync(
+        string username,
+        HashSet<string> permissions,
+        bool? isAdmin = null
+    )
+    {
+        await PutAsync(
+            "/api/users/" + Uri.EscapeDataString(username) + "/permissions",
+            new { permissions, isAdmin }
+        );
+    }
+
+    public async Task RenameUserAsync(string username, string newUsername)
+    {
+        await PutAsync(
+            "/api/users/" + Uri.EscapeDataString(username) + "/rename",
+            new { newUsername }
+        );
+    }
+
+    public async Task ResetUserPasswordAsync(string username, string newPassword)
+    {
+        await PutAsync(
+            "/api/users/" + Uri.EscapeDataString(username) + "/password",
+            new { newPassword }
+        );
+    }
+
+    public async Task<List<VmShareEntry>> GetVmSharesAsync(string vmName)
+    {
+        return await GetJsonAsync<List<VmShareEntry>>(
+            "/api/vms/" + Uri.EscapeDataString(vmName) + "/sharing"
+        );
+    }
+
+    public async Task ShareVmAsync(string vmName, string username, HashSet<string> permissions)
+    {
+        await PostAsync(
+            "/api/vms/" + Uri.EscapeDataString(vmName) + "/sharing",
+            new { username, permissions }
+        );
+    }
+
+    public async Task UnshareVmAsync(string vmName, string username)
+    {
+        await DeleteAsync(
+            "/api/vms/"
+                + Uri.EscapeDataString(vmName)
+                + "/sharing/"
+                + Uri.EscapeDataString(username)
+        );
+    }
+
+    public async Task<RdpShadowSessionsResponse> GetShadowSessionsAsync(string vmName)
+    {
+        return await GetJsonAsync<RdpShadowSessionsResponse>(
+            "/api/vms/" + Uri.EscapeDataString(vmName) + "/sessions"
+        );
+    }
+
+    public static void LaunchShadowSession(string vmIp, int sessionId, bool noConsentPrompt)
+    {
+        string arguments = noConsentPrompt
+            ? "/v:" + vmIp + " /shadow:" + sessionId + " /control /noConsentPrompt /prompt"
+            : "/v:" + vmIp + " /shadow:" + sessionId + " /control /prompt";
+        Process.Start(new ProcessStartInfo("mstsc.exe", arguments) { UseShellExecute = true });
+    }
+
+    public async Task TransferVmOwnershipAsync(string vmName, string newOwnerUsername)
+    {
+        await PutAsync(
+            "/api/vms/" + Uri.EscapeDataString(vmName) + "/sharing/transfer",
+            new { newOwnerUsername }
+        );
+    }
+
     public async Task<bool> WaitForTaskAsync(
         string taskId,
         Action<double, string>? onProgress = null,

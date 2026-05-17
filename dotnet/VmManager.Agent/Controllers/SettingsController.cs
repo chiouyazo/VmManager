@@ -1,31 +1,38 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using VmManager.Agent.Services;
 
 namespace VmManager.Agent.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class SettingsController : ControllerBase
 {
     private readonly SettingsService _settingsService;
     private readonly IEnumerable<ICatalogAdapter> _catalogAdapters;
+    private readonly AuthorizationService _authorizationService;
     private readonly ILogger<SettingsController> _logger;
 
     public SettingsController(
         SettingsService settingsService,
         IEnumerable<ICatalogAdapter> catalogAdapters,
+        AuthorizationService authorizationService,
         ILogger<SettingsController> logger
     )
     {
         ArgumentNullException.ThrowIfNull(settingsService);
         ArgumentNullException.ThrowIfNull(catalogAdapters);
+        ArgumentNullException.ThrowIfNull(authorizationService);
         ArgumentNullException.ThrowIfNull(logger);
         _settingsService = settingsService;
         _catalogAdapters = catalogAdapters;
+        _authorizationService = authorizationService;
         _logger = logger;
     }
 
-    /// <summary>Get current application settings including feeds, VM defaults, and locale configuration.</summary>
     [HttpGet]
+    [Authorize(Policy = Permission.SettingsView)]
     [ProducesResponseType(typeof(AppSettings), 200)]
     public IActionResult GetSettings()
     {
@@ -33,18 +40,53 @@ public class SettingsController : ControllerBase
         return Ok(settings);
     }
 
-    /// <summary>Save application settings.</summary>
     [HttpPut]
     [ProducesResponseType(204)]
+    [ProducesResponseType(403)]
     public IActionResult SaveSettings([FromBody] AppSettings settings)
     {
+        AppSettings current = _settingsService.Load();
+
+        bool feedsChanged = !FeedsEqual(current.Feeds, settings.Feeds);
+        bool scriptsChanged =
+            current.PostCreationScript != settings.PostCreationScript
+            || current.PostStartupScript != settings.PostStartupScript;
+        bool defaultsChanged =
+            current.DefaultMemoryMb != settings.DefaultMemoryMb
+            || current.DefaultCpuCount != settings.DefaultCpuCount
+            || current.DefaultVmUsername != settings.DefaultVmUsername
+            || current.DefaultVmPassword != settings.DefaultVmPassword
+            || current.DefaultLocale != settings.DefaultLocale
+            || current.DefaultKeyboardLayout != settings.DefaultKeyboardLayout
+            || current.DefaultTimezone != settings.DefaultTimezone
+            || current.ApplyLocaleOnCreate != settings.ApplyLocaleOnCreate
+            || current.RenameComputerToVmName != settings.RenameComputerToVmName
+            || current.LocalVmPath != settings.LocalVmPath
+            || current.AutoCleanupUnusedNetworks != settings.AutoCleanupUnusedNetworks;
+
+        if (
+            feedsChanged
+            && !_authorizationService.HasPermission(User, Permission.SettingsManageFeeds)
+        )
+            return Forbid();
+        if (
+            scriptsChanged
+            && !_authorizationService.HasPermission(User, Permission.SettingsEditScripts)
+        )
+            return Forbid();
+        if (
+            defaultsChanged
+            && !_authorizationService.HasPermission(User, Permission.SettingsEditVmDefaults)
+        )
+            return Forbid();
+
         _logger.LogInformation("Saving settings");
         _settingsService.Save(settings);
         return NoContent();
     }
 
-    /// <summary>Test connectivity to a feed. Returns whether the connection succeeded.</summary>
     [HttpPost("feeds/test")]
+    [Authorize(Policy = Permission.SettingsManageFeeds)]
     [ProducesResponseType(typeof(object), 200)]
     public async Task<IActionResult> TestFeedConnection(
         [FromBody] FeedConfiguration feed,
@@ -61,8 +103,8 @@ public class SettingsController : ControllerBase
         return Ok(new { success });
     }
 
-    /// <summary>Discover available repositories on a feed.</summary>
     [HttpPost("feeds/discover")]
+    [Authorize(Policy = Permission.SettingsManageFeeds)]
     [ProducesResponseType(typeof(List<string>), 200)]
     public async Task<IActionResult> DiscoverRepositories(
         [FromBody] FeedConfiguration feed,
@@ -77,5 +119,25 @@ public class SettingsController : ControllerBase
 
         List<string> repos = await adapter.DiscoverRepositoriesAsync(feed, cancellationToken);
         return Ok(repos);
+    }
+
+    private static bool FeedsEqual(List<FeedConfiguration> a, List<FeedConfiguration> b)
+    {
+        if (a.Count != b.Count)
+            return false;
+        for (int i = 0; i < a.Count; i++)
+        {
+            if (
+                a[i].Id != b[i].Id
+                || a[i].Name != b[i].Name
+                || a[i].Url != b[i].Url
+                || a[i].Repository != b[i].Repository
+                || a[i].Username != b[i].Username
+                || a[i].Password != b[i].Password
+                || a[i].Type != b[i].Type
+            )
+                return false;
+        }
+        return true;
     }
 }

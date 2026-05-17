@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VmManager.Agent.Services;
 
@@ -6,6 +7,7 @@ namespace VmManager.Agent.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class CatalogController : ControllerBase
 {
     private readonly CatalogAggregator _catalogAggregator;
@@ -18,6 +20,7 @@ public class CatalogController : ControllerBase
     private readonly IVmTrackingService _vmTrackingService;
     private readonly ILocalImageMetadataService _localImageMetadataService;
     private readonly IBackgroundTaskManager _backgroundTaskManager;
+    private readonly VmOwnershipService _ownershipService;
     private readonly ILogger<CatalogController> _logger;
 
     public CatalogController(
@@ -31,6 +34,7 @@ public class CatalogController : ControllerBase
         IVmTrackingService vmTrackingService,
         ILocalImageMetadataService localImageMetadataService,
         IBackgroundTaskManager backgroundTaskManager,
+        VmOwnershipService ownershipService,
         ILogger<CatalogController> logger
     )
     {
@@ -44,6 +48,7 @@ public class CatalogController : ControllerBase
         ArgumentNullException.ThrowIfNull(vmTrackingService);
         ArgumentNullException.ThrowIfNull(localImageMetadataService);
         ArgumentNullException.ThrowIfNull(backgroundTaskManager);
+        ArgumentNullException.ThrowIfNull(ownershipService);
         ArgumentNullException.ThrowIfNull(logger);
         _catalogAggregator = catalogAggregator;
         _importService = importService;
@@ -55,11 +60,12 @@ public class CatalogController : ControllerBase
         _vmTrackingService = vmTrackingService;
         _localImageMetadataService = localImageMetadataService;
         _backgroundTaskManager = backgroundTaskManager;
+        _ownershipService = ownershipService;
         _logger = logger;
     }
 
-    /// <summary>Load VM images from all configured feeds. Marks versions as locally available if their extracted directory exists.</summary>
     [HttpGet]
+    [Authorize(Policy = Permission.CatalogBrowse)]
     [ProducesResponseType(typeof(List<VmImage>), 200)]
     public async Task<IActionResult> LoadCatalog(CancellationToken cancellationToken)
     {
@@ -102,8 +108,8 @@ public class CatalogController : ControllerBase
         return Ok(images);
     }
 
-    /// <summary>List locally extracted VM images available for VM creation.</summary>
     [HttpGet("local")]
+    [Authorize(Policy = Permission.CatalogBrowse)]
     [ProducesResponseType(typeof(List<LocalImage>), 200)]
     public IActionResult GetLocalImages()
     {
@@ -167,8 +173,8 @@ public class CatalogController : ControllerBase
         return Ok(locals.OrderByDescending(l => l.ExtractedAt));
     }
 
-    /// <summary>Delete a locally extracted image from disk.</summary>
     [HttpDelete("local")]
+    [Authorize(Policy = Permission.CatalogDeleteLocal)]
     [ProducesResponseType(204)]
     public IActionResult DeleteLocalImage([FromQuery] string path)
     {
@@ -195,8 +201,8 @@ public class CatalogController : ControllerBase
         return NoContent();
     }
 
-    /// <summary>Start downloading and extracting a VM image version. Runs as a background task. Returns task ID for progress tracking.</summary>
     [HttpPost("import")]
+    [Authorize(Policy = Permission.CatalogImport)]
     [ProducesResponseType(typeof(object), 202)]
     public IActionResult ImportVersion([FromBody] ImportRequest request)
     {
@@ -349,11 +355,13 @@ public class CatalogController : ControllerBase
         return Accepted(new { taskId = task.Id, title = task.Title });
     }
 
-    /// <summary>Create a Hyper-V VM from an extracted image. Creates base snapshot and optionally applies locale. Runs as a background task.</summary>
     [HttpPost("create-vm")]
+    [Authorize(Policy = Permission.VmCreate)]
     [ProducesResponseType(typeof(object), 202)]
     public IActionResult CreateVm([FromBody] CreateVmRequest request)
     {
+        string currentUser = User.Identity?.Name ?? "admin";
+
         _logger.LogInformation(
             "Creating VM {VmName} from {ExtractedFolder}, Origin: FeedId={FeedId}, FeedUrl={FeedUrl}, Repo={Repo}, ImageId={ImageId}",
             request.Name,
@@ -403,6 +411,7 @@ public class CatalogController : ControllerBase
                 }
 
                 _vmTrackingService.TrackVm(request.Name, request.Origin);
+                _ownershipService.SetOwner(request.Name, currentUser);
 
                 if (networkMappings != null && networkMappings.Count > 0)
                 {

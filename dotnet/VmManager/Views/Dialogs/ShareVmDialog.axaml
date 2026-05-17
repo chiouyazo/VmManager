@@ -1,0 +1,45 @@
+<Window
+  x:Class="VmManager.Views.Dialogs.ShareVmDialog"
+  xmlns="https://github.com/avaloniaui"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+  xmlns:ui="using:FluentAvalonia.UI.Controls"
+  Title="Share VM"
+  Width="500"
+  Height="480"
+  WindowStartupLocation="CenterOwner"
+  mc:Ignorable="d"
+>
+  <Grid Margin="20" RowDefinitions="Auto,*,Auto,Auto">
+    <TextBlock Grid.Row="0" Text="Share VM" FontWeight="Bold" FontSize="16" Margin="0,0,0,12" />
+
+    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+      <StackPanel x:Name="SharesList" />
+    </ScrollViewer>
+
+    <Border Grid.Row="2" Margin="0,12,0,0" Padding="0,8,0,0" BorderBrush="{DynamicResource DividerBrush}" BorderThickness="0,1,0,0">
+      <StackPanel>
+        <TextBlock Text="Add Share" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,8" />
+        <Grid ColumnDefinitions="*,8,Auto">
+          <TextBox x:Name="ShareUsernameBox" Grid.Column="0" Watermark="Username" />
+          <Button x:Name="AddShareButton" Grid.Column="2" Content="Share" Click="AddShare_Click" Padding="12,6" />
+        </Grid>
+
+        <TextBlock Text="Permissions" FontSize="12" Foreground="{DynamicResource MutedBrush}" Margin="0,8,0,4" />
+        <WrapPanel>
+          <CheckBox x:Name="ChkStart" Content="Start" Margin="0,0,12,0" IsChecked="True" />
+          <CheckBox x:Name="ChkStop" Content="Stop" Margin="0,0,12,0" IsChecked="True" />
+          <CheckBox x:Name="ChkReset" Content="Reset" Margin="0,0,12,0" />
+          <CheckBox x:Name="ChkRdp" Content="RDP Connect" Margin="0,0,12,0" IsChecked="True" />
+          <CheckBox x:Name="ChkSnapshot" Content="Create Snapshot" Margin="0,0,12,0" />
+          <CheckBox x:Name="ChkRestore" Content="Restore Snapshot" Margin="0,0,12,0" />
+        </WrapPanel>
+      </StackPanel>
+    </Border>
+
+    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+      <Button Content="Close" Click="Close_Click" Padding="16,8" />
+    </StackPanel>
+  </Grid>
+</Window>

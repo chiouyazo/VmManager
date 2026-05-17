@@ -164,15 +164,18 @@ public partial class App : Application
                     services.AddSingleton<AgentSettingsService>();
                     services.AddSingleton<AgentConnection>();
                     services.AddSingleton<TrayIconService>();
+                    services.AddSingleton<PermissionService>();
 
                     services.AddTransient<ImagesViewModel>();
                     services.AddTransient<MyVmsViewModel>();
                     services.AddTransient<SettingsViewModel>();
+                    services.AddTransient<UsersViewModel>();
                     services.AddSingleton<MainWindowViewModel>();
 
                     services.AddSingleton<ImagesPage>();
                     services.AddSingleton<MyVmsPage>();
                     services.AddSingleton<SettingsPage>();
+                    services.AddSingleton<UsersPage>();
                     services.AddSingleton<TaskPanel>();
 
                     services.AddSingleton<MainWindow>();
@@ -224,6 +227,13 @@ public partial class App : Application
             {
                 Log.Warning(ex, "Failed to connect to {AgentName}", lastAgent.Name);
             }
+        }
+
+        if (AgentClient != null)
+        {
+            PermissionService permissionService =
+                _host.Services.GetRequiredService<PermissionService>();
+            await permissionService.RefreshAsync();
         }
 
         if (AgentClient != null && _agentConnection.IsLocal)

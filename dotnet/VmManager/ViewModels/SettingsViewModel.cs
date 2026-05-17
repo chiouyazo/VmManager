@@ -9,9 +9,14 @@ namespace VmManager.ViewModels;
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly AgentSettingsService _agentSettings;
+    private readonly PermissionService _permissionService;
     private readonly ILogger<SettingsViewModel> _logger;
 
     private AgentClient _agentClient => App.AgentClient!;
+
+    public bool CanManageFeeds => _permissionService.CanManageFeeds;
+    public bool CanEditVmDefaults => _permissionService.CanEditVmDefaults;
+    public bool CanEditScripts => _permissionService.CanEditScripts;
 
     public static readonly Dictionary<string, string> LocaleMap = new Dictionary<string, string>()
     {
@@ -118,11 +123,17 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private ObservableCollection<AgentConfiguration> _agents = [];
 
-    public SettingsViewModel(AgentSettingsService agentSettings, ILogger<SettingsViewModel> logger)
+    public SettingsViewModel(
+        AgentSettingsService agentSettings,
+        PermissionService permissionService,
+        ILogger<SettingsViewModel> logger
+    )
     {
         ArgumentNullException.ThrowIfNull(agentSettings);
+        ArgumentNullException.ThrowIfNull(permissionService);
         ArgumentNullException.ThrowIfNull(logger);
         _agentSettings = agentSettings;
+        _permissionService = permissionService;
         _logger = logger;
     }
 

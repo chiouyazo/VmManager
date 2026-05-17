@@ -15,9 +15,19 @@ public static class RdpEndpoints
                     string vmName,
                     IVmIpResolver resolver,
                     RdpSessionStore sessionStore,
+                    AuthorizationService authorizationService,
                     IConfiguration config
                 ) =>
                 {
+                    if (
+                        !authorizationService.CanAccessVm(
+                            context.User,
+                            vmName,
+                            Permission.RdpConnect
+                        )
+                    )
+                        return Results.Forbid();
+
                     string? ip = await resolver.ResolveIpAsync(vmName, context.RequestAborted);
                     if (ip == null)
                     {
@@ -29,7 +39,7 @@ public static class RdpEndpoints
 
                     try
                     {
-                        using System.Net.Sockets.TcpClient probe = new TcpClient();
+                        using TcpClient probe = new TcpClient();
                         using CancellationTokenSource cts = new CancellationTokenSource(
                             TimeSpan.FromSeconds(3)
                         );
@@ -46,7 +56,8 @@ public static class RdpEndpoints
                         );
                     }
 
-                    RdpSession session = sessionStore.CreateSession(vmName, ip);
+                    string username = context.User.Identity?.Name ?? "";
+                    RdpSession session = sessionStore.CreateSession(vmName, ip, username);
                     int rdpPort = config.GetValue("VmManager:HttpPort", 18275);
 
                     return Results.Ok(
@@ -59,9 +70,7 @@ public static class RdpEndpoints
                     );
                 }
             )
-            .WithSummary(
-                "Create an RDP session token for a VM. The token is used as the routing cookie for the RDP proxy port."
-            );
+            .RequireAuthorization();
 
         endpoints
             .MapGet(
@@ -80,7 +89,7 @@ public static class RdpEndpoints
                     );
                 }
             )
-            .WithSummary("List all active and recent RDP sessions.");
+            .RequireAuthorization();
 
         return endpoints;
     }

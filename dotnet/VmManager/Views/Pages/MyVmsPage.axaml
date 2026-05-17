@@ -139,6 +139,90 @@
       VerticalScrollBarVisibility="Auto"
       IsVisible="{Binding IsLoading, Converter={StaticResource InverseBoolToVisibilityConverter}}"
     >
+      <StackPanel>
+      <!-- Shared with me -->
+      <Expander
+        IsExpanded="True"
+        HorizontalAlignment="Stretch"
+        Margin="0,0,0,8"
+        Padding="0"
+        Background="Transparent"
+        BorderThickness="0"
+        IsVisible="{Binding SharedVms.Count, Converter={StaticResource NonZeroCountToVisibilityConverter}}"
+      >
+        <Expander.Header>
+          <TextBlock Text="Shared with me" Classes="heading-small" Margin="0,8,0,4" />
+        </Expander.Header>
+        <ItemsControl ItemsSource="{Binding SharedVms}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="vm:VmInstanceViewModel">
+              <Border Theme="{StaticResource CardStyle}">
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+
+                  <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                      <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" Margin="0,0,10,0" VerticalAlignment="Center" />
+                      <Border CornerRadius="4" Padding="8,2" VerticalAlignment="Center" Background="{Binding State, Converter={StaticResource VmStateToBrushConverter}}">
+                        <TextBlock Text="{Binding State}" FontSize="11" FontWeight="Medium" Foreground="White" />
+                      </Border>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                      <TextBlock Classes="muted" Margin="0,0,16,0">
+                        <Run Text="Owner: " />
+                        <Run Text="{Binding Owner, Mode=OneWay}" FontWeight="SemiBold" />
+                      </TextBlock>
+                      <TextBlock Text="{Binding MemoryDisplay}" Classes="muted" Margin="0,0,16,0" />
+                      <TextBlock Text="{Binding Uptime, StringFormat='Uptime: {0:hh\\:mm\\:ss}'}" Classes="muted" />
+                    </StackPanel>
+                  </StackPanel>
+
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button
+                      Margin="0,0,4,0"
+                      Command="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).StartVmCommand}"
+                      CommandParameter="{Binding}"
+                      IsEnabled="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+                    >
+                      <StackPanel Orientation="Horizontal">
+                        <ui:SymbolIcon Symbol="Play" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBlock Text="{x:Static props:Resources.MyVms_Start}" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                    <Button
+                      Margin="0,0,4,0"
+                      Command="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).StopVmCommand}"
+                      CommandParameter="{Binding}"
+                      IsEnabled="{Binding State, Converter={StaticResource VmStateIsRunningConverter}}"
+                    >
+                      <StackPanel Orientation="Horizontal">
+                        <ui:SymbolIcon Symbol="Stop" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBlock Text="{x:Static props:Resources.MyVms_Stop}" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                    <Button
+                      Theme="{StaticResource PrimaryButtonStyle}"
+                      Margin="0,0,4,0"
+                      Command="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).ConnectVmCommand}"
+                      CommandParameter="{Binding}"
+                      IsEnabled="{Binding State, Converter={StaticResource VmStateIsRunningConverter}}"
+                    >
+                      <StackPanel Orientation="Horizontal">
+                        <ui:SymbolIcon Symbol="Play" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBlock Text="{x:Static props:Resources.MyVms_Connect}" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                  </StackPanel>
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Expander>
+
       <ItemsControl ItemsSource="{Binding GroupedVms}">
         <ItemsControl.ItemTemplate>
           <DataTemplate DataType="vm:VmGroup">
@@ -309,10 +393,34 @@
                           </Button>
 
                           <Button
+                            Margin="0,0,4,0"
+                            Padding="12,7"
+                            ToolTip.Tip="View active sessions (shadow)"
+                            Click="SessionsButton_Click"
+                            Tag="{Binding}"
+                            IsVisible="{Binding CanShadow}"
+                            IsEnabled="{Binding State, Converter={StaticResource VmStateIsRunningConverter}}"
+                          >
+                            <ui:SymbolIcon Symbol="SlideShow" FontSize="14" />
+                          </Button>
+
+                          <Button
+                            Margin="0,0,4,0"
+                            Padding="12,7"
+                            ToolTip.Tip="Share this VM with another user"
+                            Click="ShareButton_Click"
+                            Tag="{Binding}"
+                            IsVisible="{Binding CanShare}"
+                          >
+                            <ui:SymbolIcon Symbol="People" FontSize="14" />
+                          </Button>
+
+                          <Button
                             Theme="{StaticResource DangerButtonStyle}"
                             Command="{Binding $parent[UserControl].((vm:MyVmsViewModel)DataContext).DeleteVmCommand}"
                             CommandParameter="{Binding}"
                             IsEnabled="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+                            IsVisible="{Binding CanDelete}"
                             ToolTip.Tip="{x:Static props:Resources.Tooltip_DeleteVm}"
                           >
                             <ui:SymbolIcon
@@ -517,6 +625,7 @@
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
+      </StackPanel>
     </ScrollViewer>
 
     <StackPanel

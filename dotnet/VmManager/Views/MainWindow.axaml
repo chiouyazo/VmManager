@@ -131,6 +131,21 @@
               <TextBlock Text="{x:Static props:Resources.Nav_MyVms}" FontSize="13" Margin="10,0,0,0" VerticalAlignment="Center" />
             </StackPanel>
           </Button>
+          <Button
+            x:Name="NavUsers"
+            Tag="Users"
+            Theme="{StaticResource NavButtonStyle}"
+            Background="Transparent"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Left"
+            Click="NavItem_Click"
+            IsVisible="False"
+          >
+            <StackPanel Orientation="Horizontal">
+              <ui:SymbolIcon Symbol="People" FontSize="16" VerticalAlignment="Center" />
+              <TextBlock Text="Users" FontSize="13" Margin="10,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
         </StackPanel>
       </DockPanel>
     </Border>

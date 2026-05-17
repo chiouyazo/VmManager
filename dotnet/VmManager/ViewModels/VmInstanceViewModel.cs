@@ -1,22 +1,21 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using VmManager.Contracts.Models;
+using VmManager.Services;
 
 namespace VmManager.ViewModels;
 
-/// <summary>
-/// ViewModel wrapper around <see cref="VmInstance"/> that adds observable UI state
-/// (snapshots, rename, etc.) while keeping the Contracts model a pure POCO.
-/// </summary>
 public partial class VmInstanceViewModel : ObservableObject
 {
     public VmInstance Data { get; }
+    private readonly PermissionService? _permissionService;
 
-    public VmInstanceViewModel(VmInstance data)
+    public VmInstanceViewModel(VmInstance data, PermissionService? permissionService = null)
     {
         Data = data;
+        _permissionService = permissionService;
     }
 
-    // Pass-through properties from Data
     public string Name => Data.Name;
 
     private string? _stateOverride;
@@ -41,6 +40,45 @@ public partial class VmInstanceViewModel : ObservableObject
     public string MemoryDisplay => Data.MemoryDisplay;
     public string? OriginDisplay => Data.OriginDisplay;
 
+    public string Owner => Data.Owner;
+    public List<string> SharedWith => Data.SharedWith;
+
+    public bool IsOwnedByCurrentUser =>
+        _permissionService != null
+        && string.Equals(
+            Data.Owner,
+            _permissionService.Username,
+            StringComparison.OrdinalIgnoreCase
+        );
+
+    public bool IsSharedWithCurrentUser =>
+        _permissionService != null
+        && !IsOwnedByCurrentUser
+        && Data.SharedWith.Any(u =>
+            string.Equals(u, _permissionService.Username, StringComparison.OrdinalIgnoreCase)
+        );
+
+    public bool CanStart => Data.EffectivePermissions.Contains(Permission.VmStart);
+    public bool CanStop => Data.EffectivePermissions.Contains(Permission.VmStop);
+    public bool CanDelete =>
+        Data.EffectivePermissions.Contains(Permission.VmDelete) && IsOwnedByCurrentUser;
+    public bool CanRename =>
+        Data.EffectivePermissions.Contains(Permission.VmRename) && IsOwnedByCurrentUser;
+    public bool CanReset => Data.EffectivePermissions.Contains(Permission.VmReset);
+    public bool CanConnect => Data.EffectivePermissions.Contains(Permission.RdpConnect);
+    public bool CanCreateSnapshot => Data.EffectivePermissions.Contains(Permission.SnapshotCreate);
+    public bool CanShare =>
+        IsOwnedByCurrentUser || (_permissionService != null && _permissionService.IsAdmin);
+    public bool CanShadow => _permissionService != null && _permissionService.IsAdmin;
+
+    [ObservableProperty]
+    private bool _sessionsLoading;
+
+    [ObservableProperty]
+    private string _sessionsVmIp = "";
+
+    public ObservableCollection<RdpShadowSession> ShadowSessions { get; } = [];
+
     public void UpdateData(VmInstance newData)
     {
         bool stateChanged = Data.State != newData.State;
@@ -50,6 +88,9 @@ public partial class VmInstanceViewModel : ObservableObject
         Data.IsManaged = newData.IsManaged;
         Data.Origin = newData.Origin;
         Data.Notes = newData.Notes;
+        Data.Owner = newData.Owner;
+        Data.SharedWith = newData.SharedWith;
+        Data.EffectivePermissions = newData.EffectivePermissions;
         if (stateChanged)
         {
             if (_stateOverride == null)
@@ -61,6 +102,10 @@ public partial class VmInstanceViewModel : ObservableObject
             OnPropertyChanged(nameof(MemoryDisplay));
         }
         OnPropertyChanged(nameof(Uptime));
+        OnPropertyChanged(nameof(Owner));
+        OnPropertyChanged(nameof(SharedWith));
+        OnPropertyChanged(nameof(IsOwnedByCurrentUser));
+        OnPropertyChanged(nameof(IsSharedWithCurrentUser));
     }
 
     public string Notes
@@ -100,6 +145,5 @@ public partial class VmInstanceViewModel : ObservableObject
     [ObservableProperty]
     private bool _snapshotsExpanded;
 
-    public ObservableCollection<VmSnapshot> Snapshots { get; } =
-        new ObservableCollection<VmSnapshot>();
+    public ObservableCollection<VmSnapshot> Snapshots { get; } = [];
 }

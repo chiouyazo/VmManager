@@ -26,7 +26,7 @@ public sealed class RdpSessionStore : IDisposable
         );
     }
 
-    public RdpSession CreateSession(string vmName, string vmIp)
+    public RdpSession CreateSession(string vmName, string vmIp, string username = "")
     {
         byte[] tokenBytes = RandomNumberGenerator.GetBytes(32);
         string token = Convert
@@ -40,6 +40,7 @@ public sealed class RdpSessionStore : IDisposable
             Token = token,
             VmName = vmName,
             VmIp = vmIp,
+            Username = username,
             CreatedAt = DateTimeOffset.UtcNow,
             State = RdpSessionState.Pending,
         };
@@ -132,6 +133,29 @@ public sealed class RdpSessionStore : IDisposable
     public IReadOnlyList<RdpSession> GetAllSessions()
     {
         return _sessions.Values.ToList();
+    }
+
+    public void DisconnectSessionsForUser(string vmName, string username)
+    {
+        foreach (KeyValuePair<string, RdpSession> kvp in _sessions)
+        {
+            RdpSession session = kvp.Value;
+            if (session.State != RdpSessionState.Active)
+                continue;
+            if (!string.Equals(session.VmName, vmName, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!string.Equals(session.Username, username, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            _logger.LogInformation(
+                "Disconnecting RDP session for {Username} on {VmName} (share revoked)",
+                username,
+                vmName
+            );
+            session.Cancellation.Cancel();
+            session.State = RdpSessionState.Completed;
+            session.CompletedAt = DateTimeOffset.UtcNow;
+        }
     }
 
     private void CleanupExpired()

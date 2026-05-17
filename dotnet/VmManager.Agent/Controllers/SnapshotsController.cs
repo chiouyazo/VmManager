@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VmManager.Agent.Services;
 
@@ -5,6 +6,7 @@ namespace VmManager.Agent.Controllers;
 
 [ApiController]
 [Route("api/vms/{vmName}/snapshots")]
+[Authorize]
 public class SnapshotsController : ControllerBase
 {
     private readonly IVmBackend _backend;
@@ -13,6 +15,8 @@ public class SnapshotsController : ControllerBase
     private readonly FeedResolutionService _feedResolutionService;
     private readonly SettingsService _settingsService;
     private readonly IBackgroundTaskManager _backgroundTaskManager;
+    private readonly AuthorizationService _authorizationService;
+    private readonly VmOwnershipService _ownershipService;
     private readonly ILogger<SnapshotsController> _logger;
 
     public SnapshotsController(
@@ -22,6 +26,8 @@ public class SnapshotsController : ControllerBase
         FeedResolutionService feedResolutionService,
         SettingsService settingsService,
         IBackgroundTaskManager backgroundTaskManager,
+        AuthorizationService authorizationService,
+        VmOwnershipService ownershipService,
         ILogger<SnapshotsController> logger
     )
     {
@@ -31,6 +37,8 @@ public class SnapshotsController : ControllerBase
         ArgumentNullException.ThrowIfNull(feedResolutionService);
         ArgumentNullException.ThrowIfNull(settingsService);
         ArgumentNullException.ThrowIfNull(backgroundTaskManager);
+        ArgumentNullException.ThrowIfNull(authorizationService);
+        ArgumentNullException.ThrowIfNull(ownershipService);
         ArgumentNullException.ThrowIfNull(logger);
         _backend = backend;
         _vmTrackingService = vmTrackingService;
@@ -38,19 +46,22 @@ public class SnapshotsController : ControllerBase
         _feedResolutionService = feedResolutionService;
         _settingsService = settingsService;
         _backgroundTaskManager = backgroundTaskManager;
+        _authorizationService = authorizationService;
+        _ownershipService = ownershipService;
         _logger = logger;
     }
 
-    /// <summary>List all snapshots for a VM.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(List<VmSnapshot>), 200)]
     public async Task<IActionResult> ListSnapshots(string vmName)
     {
+        if (!_authorizationService.CanAccessVm(User, vmName, Permission.SnapshotCreate))
+            return Forbid();
+
         List<VmSnapshot> snapshots = await _backend.GetSnapshotsAsync(vmName);
         return Ok(snapshots);
     }
 
-    /// <summary>Create a named snapshot for a VM.</summary>
     [HttpPost]
     [ProducesResponseType(204)]
     public async Task<IActionResult> CreateSnapshot(
@@ -58,6 +69,9 @@ public class SnapshotsController : ControllerBase
         [FromBody] CreateSnapshotRequest request
     )
     {
+        if (!_authorizationService.CanAccessVm(User, vmName, Permission.SnapshotCreate))
+            return Forbid();
+
         _logger.LogInformation(
             "Creating snapshot {SnapshotName} for VM {VmName}",
             request.Name,
@@ -67,11 +81,13 @@ public class SnapshotsController : ControllerBase
         return NoContent();
     }
 
-    /// <summary>Restore a snapshot. Stops the VM if running before restoring.</summary>
     [HttpPost("{snapshotId}/restore")]
     [ProducesResponseType(204)]
     public async Task<IActionResult> RestoreSnapshot(string vmName, string snapshotId)
     {
+        if (!_authorizationService.CanAccessVm(User, vmName, Permission.SnapshotRestore))
+            return Forbid();
+
         _logger.LogInformation(
             "Restoring snapshot {SnapshotId} for VM {VmName}",
             snapshotId,
@@ -81,11 +97,13 @@ public class SnapshotsController : ControllerBase
         return NoContent();
     }
 
-    /// <summary>Delete a snapshot.</summary>
     [HttpDelete("{snapshotId}")]
     [ProducesResponseType(204)]
     public async Task<IActionResult> DeleteSnapshot(string vmName, string snapshotId)
     {
+        if (!_authorizationService.CanAccessVm(User, vmName, Permission.SnapshotDelete))
+            return Forbid();
+
         _logger.LogInformation(
             "Deleting snapshot {SnapshotId} for VM {VmName}",
             snapshotId,
@@ -95,7 +113,6 @@ public class SnapshotsController : ControllerBase
         return NoContent();
     }
 
-    /// <summary>Clone a new VM from a snapshot.</summary>
     [HttpPost("{snapshotId}/clone")]
     [ProducesResponseType(204)]
     public async Task<IActionResult> CloneFromSnapshot(
@@ -104,6 +121,9 @@ public class SnapshotsController : ControllerBase
         [FromBody] CloneRequest request
     )
     {
+        if (!_authorizationService.CanAccessVm(User, vmName, Permission.SnapshotClone))
+            return Forbid();
+
         _logger.LogInformation(
             "Cloning VM {VmName} from snapshot {SnapshotId} as {NewName}",
             vmName,
@@ -118,10 +138,13 @@ public class SnapshotsController : ControllerBase
 
         await _backend.CloneVmFromSnapshotAsync(vmName, snapshot.Name, request.NewName);
         _vmTrackingService.TrackVm(request.NewName, _vmTrackingService.GetOrigin(vmName));
+
+        string currentUser = User.Identity?.Name ?? "admin";
+        _ownershipService.SetOwner(request.NewName, currentUser);
+
         return NoContent();
     }
 
-    /// <summary>Push a snapshot to a feed. Runs as a background task. Optionally specify feedId to override auto-resolution.</summary>
     [HttpPost("{snapshotId}/push")]
     [ProducesResponseType(typeof(object), 202)]
     public IActionResult PushSnapshot(
@@ -130,6 +153,9 @@ public class SnapshotsController : ControllerBase
         [FromBody] PushRequest? request = null
     )
     {
+        if (!_authorizationService.CanAccessVm(User, vmName, Permission.SnapshotPush))
+            return Forbid();
+
         _logger.LogInformation("Pushing snapshot {SnapshotId} for VM {VmName}", snapshotId, vmName);
 
         AppSettings settings = _settingsService.Load();

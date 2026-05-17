@@ -1,5 +1,8 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Serilog;
+using VmManager.Agent.Auth;
 using VmManager.Agent.Endpoints;
 using VmManager.Agent.Hubs;
 using VmManager.Agent.Services;
@@ -67,6 +70,26 @@ public static class AgentHost
         builder.Services.AddCatalogServices();
         builder.Services.AddAgentServices(vmBackend);
 
+        builder
+            .Services.AddAuthentication("Basic")
+            .AddScheme<AuthenticationSchemeOptions, BasicAuthenticationHandler>("Basic", null);
+
+        builder.Services.AddSingleton<IAuthorizationHandler, PermissionHandler>();
+        builder.Services.AddAuthorization(options =>
+        {
+            options.DefaultPolicy = new AuthorizationPolicyBuilder("Basic")
+                .RequireAuthenticatedUser()
+                .Build();
+
+            foreach (string permission in Permission.All)
+            {
+                options.AddPolicy(
+                    permission,
+                    policy => policy.AddRequirements(new PermissionRequirement(permission))
+                );
+            }
+        });
+
         builder.Services.AddControllers().AddApplicationPart(typeof(AgentHost).Assembly);
         builder.Services.AddSignalR();
         builder.Services.AddHealthChecks();
@@ -95,12 +118,13 @@ public static class AgentHost
         rdpHandler = app.Services.GetRequiredService<RdpConnectionHandler>();
 
         app.UseCors();
-        app.UseMiddleware<Middleware.BasicAuthMiddleware>();
+        app.UseAuthentication();
+        app.UseAuthorization();
         app.UseSwagger();
         app.UseSwaggerUI();
         app.MapControllers();
         app.MapHub<ProgressHub>("/hubs/progress");
-        app.MapHealthChecks("/health");
+        app.MapHealthChecks("/health").AllowAnonymous();
         app.MapRdpEndpoints();
 
         int rdpProxyPort = builder.Configuration.GetValue("VmManager:RdpProxyPort", 13389);

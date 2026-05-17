@@ -1,4 +1,5 @@
 using System.Reflection;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VmManager.Agent.Services;
 
@@ -6,6 +7,7 @@ namespace VmManager.Agent.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class StatusController : ControllerBase
 {
     private readonly IVmBackend _vmBackend;

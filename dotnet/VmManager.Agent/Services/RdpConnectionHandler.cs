@@ -60,18 +60,23 @@ public sealed class RdpConnectionHandler
                 session.VmIp
             );
 
+            using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                session.Cancellation.Token
+            );
+
             using TcpClient target = new TcpClient();
-            await target.ConnectAsync(session.VmIp, 3389, cancellationToken);
+            await target.ConnectAsync(session.VmIp, 3389, linked.Token);
             NetworkStream targetStream = target.GetStream();
 
             byte[] fullRequest = new byte[totalLength];
             Buffer.BlockCopy(tpktHeader, 0, fullRequest, 0, 4);
             Buffer.BlockCopy(payload, 0, fullRequest, 4, payloadLength);
-            await targetStream.WriteAsync(fullRequest, cancellationToken);
-            await targetStream.FlushAsync(cancellationToken);
+            await targetStream.WriteAsync(fullRequest, linked.Token);
+            await targetStream.FlushAsync(linked.Token);
 
             string connectionId = session.VmName + "-" + Guid.NewGuid().ToString("N")[..8];
-            await _relay.RelayAsync(clientStream, targetStream, connectionId, cancellationToken);
+            await _relay.RelayAsync(clientStream, targetStream, connectionId, linked.Token);
         }
         finally
         {

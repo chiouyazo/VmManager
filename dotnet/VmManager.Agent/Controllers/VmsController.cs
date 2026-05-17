@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VmManager.Agent.Services;
 
@@ -6,6 +7,7 @@ namespace VmManager.Agent.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class VmsController : ControllerBase
 {
     private readonly IVmBackend _backend;
@@ -16,6 +18,9 @@ public class VmsController : ControllerBase
     private readonly IBackgroundTaskManager _backgroundTaskManager;
     private readonly IPreflightService _preflightService;
     private readonly IVmIpResolver _ipResolver;
+    private readonly AuthorizationService _authorizationService;
+    private readonly VmOwnershipService _ownershipService;
+    private readonly VmSharingService _sharingService;
     private readonly ILogger<VmsController> _logger;
 
     public VmsController(
@@ -27,6 +32,9 @@ public class VmsController : ControllerBase
         IBackgroundTaskManager backgroundTaskManager,
         IPreflightService preflightService,
         IVmIpResolver ipResolver,
+        AuthorizationService authorizationService,
+        VmOwnershipService ownershipService,
+        VmSharingService sharingService,
         ILogger<VmsController> logger
     )
     {
@@ -38,6 +46,9 @@ public class VmsController : ControllerBase
         ArgumentNullException.ThrowIfNull(backgroundTaskManager);
         ArgumentNullException.ThrowIfNull(preflightService);
         ArgumentNullException.ThrowIfNull(ipResolver);
+        ArgumentNullException.ThrowIfNull(authorizationService);
+        ArgumentNullException.ThrowIfNull(ownershipService);
+        ArgumentNullException.ThrowIfNull(sharingService);
         ArgumentNullException.ThrowIfNull(logger);
         _backend = backend;
         _networkService = networkService;
@@ -47,6 +58,9 @@ public class VmsController : ControllerBase
         _backgroundTaskManager = backgroundTaskManager;
         _preflightService = preflightService;
         _ipResolver = ipResolver;
+        _authorizationService = authorizationService;
+        _ownershipService = ownershipService;
+        _sharingService = sharingService;
         _logger = logger;
     }
 
@@ -54,7 +68,7 @@ public class VmsController : ControllerBase
     [ProducesResponseType(typeof(List<VmInstance>), 200)]
     public async Task<IActionResult> ListVms()
     {
-        List<VmInstance> allVms = new List<VmInstance>();
+        List<VmInstance> allVms = [];
 
         try
         {
@@ -76,9 +90,38 @@ public class VmsController : ControllerBase
             vm.IsManaged = managedVms.ContainsKey(vm.Name);
             if (managedVms.TryGetValue(vm.Name, out VmOrigin? vmOrigin))
                 vm.Origin = vmOrigin;
+
+            vm.Owner = _ownershipService.GetOwner(vm.Name);
+            List<VmShareEntry> shares = _sharingService.GetSharesForVm(vm.Name);
+            vm.SharedWith = shares.Select(s => s.SharedWithUsername).ToList();
+
+            string currentUsername = User.Identity?.Name ?? "";
+            if (
+                User.IsInRole("Admin")
+                || string.Equals(vm.Owner, currentUsername, StringComparison.OrdinalIgnoreCase)
+            )
+            {
+                vm.EffectivePermissions = Permission.All;
+            }
+            else
+            {
+                VmShareEntry? myShare = shares.FirstOrDefault(s =>
+                    string.Equals(
+                        s.SharedWithUsername,
+                        currentUsername,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                );
+                if (myShare != null)
+                    vm.EffectivePermissions = myShare.GrantedPermissions;
+            }
         }
 
-        return Ok(allVms);
+        List<VmInstance> filtered = allVms
+            .Where(vm => _authorizationService.CanViewVm(User, vm.Name))
+            .ToList();
+
+        return Ok(filtered);
     }
 
     [HttpPost("{name}/start")]
@@ -87,6 +130,9 @@ public class VmsController : ControllerBase
     [ProducesResponseType(typeof(object), 500)]
     public async Task<IActionResult> StartVm(string name)
     {
+        if (!_authorizationService.CanAccessVm(User, name, Permission.VmStart))
+            return Forbid();
+
         _logger.LogInformation("Starting VM {VmName}", name);
 
         try
@@ -124,6 +170,9 @@ public class VmsController : ControllerBase
     [ProducesResponseType(204)]
     public async Task<IActionResult> StopVm(string name)
     {
+        if (!_authorizationService.CanAccessVm(User, name, Permission.VmStop))
+            return Forbid();
+
         _logger.LogInformation("Stopping VM {VmName}", name);
         await _backend.StopVmAsync(name);
         return NoContent();
@@ -155,10 +204,18 @@ public class VmsController : ControllerBase
     [ProducesResponseType(204)]
     public async Task<IActionResult> DeleteVm(string name)
     {
+        if (
+            !_authorizationService.IsOwnerOrAdmin(User, name)
+            || !_authorizationService.HasPermission(User, Permission.VmDelete)
+        )
+            return Forbid();
+
         _logger.LogInformation("Deleting VM {VmName}", name);
         await _backend.DeleteVmAsync(name);
         _vmTrackingService.UntrackVm(name);
         _vmTrackingService.RemoveNote(name);
+        _ownershipService.RemoveOwner(name);
+        _sharingService.RemoveAllSharesForVm(name);
 
         AppSettings settings = _settingsService.Load();
         List<string> emptyNetworks = _networkTrackingService.DecrementReferences(name);
@@ -186,6 +243,12 @@ public class VmsController : ControllerBase
     [ProducesResponseType(204)]
     public async Task<IActionResult> RenameVm(string name, [FromBody] RenameRequest request)
     {
+        if (
+            !_authorizationService.IsOwnerOrAdmin(User, name)
+            || !_authorizationService.HasPermission(User, Permission.VmRename)
+        )
+            return Forbid();
+
         _logger.LogInformation("Renaming VM {VmName} to {NewName}", name, request.NewName);
         await _backend.RenameVmAsync(name, request.NewName);
 
@@ -196,12 +259,15 @@ public class VmsController : ControllerBase
             _vmTrackingService.TrackVm(request.NewName, origin);
         }
 
-        string? note = _vmTrackingService.LoadNotes().GetValueOrDefault(name);
-        if (note != null)
+        string? existingNote = _vmTrackingService.LoadNotes().GetValueOrDefault(name);
+        if (existingNote != null)
         {
             _vmTrackingService.RemoveNote(name);
-            _vmTrackingService.SaveNote(request.NewName, note);
+            _vmTrackingService.SaveNote(request.NewName, existingNote);
         }
+
+        _ownershipService.RenameVm(name, request.NewName);
+        _sharingService.RenameVm(name, request.NewName);
 
         return NoContent();
     }
@@ -210,6 +276,9 @@ public class VmsController : ControllerBase
     [ProducesResponseType(204)]
     public async Task<IActionResult> ResetVm(string name)
     {
+        if (!_authorizationService.CanAccessVm(User, name, Permission.VmReset))
+            return Forbid();
+
         _logger.LogInformation("Resetting VM {VmName} to base", name);
         bool restored = await _backend.ResetVmAsync(name);
         if (!restored)
@@ -221,6 +290,9 @@ public class VmsController : ControllerBase
     [ProducesResponseType(204)]
     public IActionResult SaveNotes(string name, [FromBody] NotesRequest request)
     {
+        if (!_authorizationService.CanAccessVm(User, name, Permission.VmViewOwn))
+            return Forbid();
+
         if (string.IsNullOrWhiteSpace(request.Notes))
             _vmTrackingService.RemoveNote(name);
         else
@@ -232,6 +304,12 @@ public class VmsController : ControllerBase
     [ProducesResponseType(typeof(object), 202)]
     public IActionResult ApplyLocale(string name)
     {
+        if (
+            !_authorizationService.IsOwnerOrAdmin(User, name)
+            || !_authorizationService.HasPermission(User, Permission.VmApplyLocale)
+        )
+            return Forbid();
+
         _logger.LogInformation("Applying locale to VM {VmName}", name);
 
         AppSettings settings = _settingsService.Load();
@@ -268,6 +346,101 @@ public class VmsController : ControllerBase
         );
 
         return Accepted(new { taskId = task.Id, title = task.Title });
+    }
+
+    [HttpGet("{name}/sessions")]
+    [ProducesResponseType(typeof(RdpShadowSessionsResponse), 200)]
+    [ProducesResponseType(403)]
+    [ProducesResponseType(503)]
+    public async Task<IActionResult> GetSessions(string name)
+    {
+        if (!User.IsInRole("Admin"))
+            return Forbid();
+
+        string? ip = await _ipResolver.ResolveIpAsync(name);
+        if (ip == null)
+            return StatusCode(503, new { error = "VM IP not available. Is the VM running?" });
+
+        AppSettings settings = _settingsService.Load();
+        if (
+            string.IsNullOrWhiteSpace(settings.DefaultVmUsername)
+            || string.IsNullOrWhiteSpace(settings.DefaultVmPassword)
+        )
+            return BadRequest(new { error = "VM credentials not configured in settings" });
+
+        try
+        {
+            using Backends.Shared.WinRmClient client = new Backends.Shared.WinRmClient(
+                ip,
+                settings.DefaultVmUsername,
+                settings.DefaultVmPassword
+            );
+            Backends.Shared.WinRmResult result = await client.RunPowerShellAsync("query session");
+            List<RdpShadowSession> sessions = ParseQuerySessionOutput(result.StdOut);
+
+            return Ok(new RdpShadowSessionsResponse { VmIp = ip, Sessions = sessions });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to query sessions on VM {VmName}", name);
+            return StatusCode(503, new { error = "Failed to query sessions: " + ex.Message });
+        }
+    }
+
+    private static List<RdpShadowSession> ParseQuerySessionOutput(string output)
+    {
+        List<RdpShadowSession> sessions = [];
+        string[] lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        if (lines.Length < 2)
+            return sessions;
+
+        string header = lines[0];
+        int usernameCol = header.IndexOf("USERNAME", StringComparison.OrdinalIgnoreCase);
+        int idCol = header.IndexOf(" ID", StringComparison.OrdinalIgnoreCase);
+        int stateCol = header.IndexOf("STATE", StringComparison.OrdinalIgnoreCase);
+
+        if (usernameCol < 0 || idCol < 0 || stateCol < 0)
+            return sessions;
+
+        idCol++;
+
+        for (int i = 1; i < lines.Length; i++)
+        {
+            string line = lines[i].TrimEnd('\r');
+            if (line.Length < stateCol + 1)
+                continue;
+
+            string cleanLine = line.StartsWith('>') ? " " + line[1..] : line;
+
+            string sessionName =
+                usernameCol <= cleanLine.Length ? cleanLine[..usernameCol].Trim() : "";
+            string username = idCol <= cleanLine.Length ? cleanLine[usernameCol..idCol].Trim() : "";
+            string idStr = stateCol <= cleanLine.Length ? cleanLine[idCol..stateCol].Trim() : "";
+            string state = stateCol <= cleanLine.Length ? cleanLine[stateCol..].Trim() : "";
+
+            int spaceIdx = state.IndexOf(' ');
+            if (spaceIdx > 0)
+                state = state[..spaceIdx];
+
+            if (!int.TryParse(idStr, out int sessionId))
+                continue;
+            if (!string.Equals(state, "Active", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (string.IsNullOrEmpty(username))
+                continue;
+
+            sessions.Add(
+                new RdpShadowSession
+                {
+                    SessionName = sessionName,
+                    Username = username,
+                    SessionId = sessionId,
+                    State = state,
+                }
+            );
+        }
+
+        return sessions;
     }
 
     private void RunPostStartupScriptInBackground(string vmName)
@@ -311,7 +484,7 @@ public class VmsController : ControllerBase
                 {
                     try
                     {
-                        using System.Net.Sockets.TcpClient tcp = new System.Net.Sockets.TcpClient();
+                        using TcpClient tcp = new TcpClient();
                         await tcp.ConnectAsync(ip, 5985).WaitAsync(TimeSpan.FromSeconds(2));
                         winrmReady = true;
                         break;
