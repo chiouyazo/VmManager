@@ -206,7 +206,10 @@ public sealed class AgentClient : IDisposable
         }
 
         string tempPath = Path.Combine(tempDir, name + "-" + session.Token[..8] + ".rdp");
-        await File.WriteAllTextAsync(tempPath, rdpContent);
+        await File.WriteAllTextAsync(tempPath, rdpContent, Encoding.Unicode);
+
+        RdpSigningService rdpSigner = new RdpSigningService();
+        rdpSigner.SignRdpFile(tempPath);
 
         LaunchRdpFile(tempPath);
     }
