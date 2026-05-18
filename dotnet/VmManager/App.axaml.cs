@@ -162,6 +162,7 @@ public partial class App : Application
                     services.AddSingleton<TempTracker>();
                     services.AddSingleton<ITempTracker>(sp => sp.GetRequiredService<TempTracker>());
                     services.AddSingleton<AgentSettingsService>();
+                    services.AddSingleton<RdpPreferencesService>();
                     services.AddSingleton<AgentConnection>();
                     services.AddSingleton<TrayIconService>();
                     services.AddSingleton<PermissionService>();

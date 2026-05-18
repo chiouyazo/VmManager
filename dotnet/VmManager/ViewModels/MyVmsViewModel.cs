@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using VmManager.Models;
 using VmManager.Services;
 
 namespace VmManager.ViewModels;
@@ -10,14 +11,27 @@ public partial class MyVmsViewModel : ViewModelBase
 {
     private readonly ILogger<MyVmsViewModel> _logger;
     private readonly PermissionService _permissionService;
+    private readonly RdpPreferencesService _rdpPreferences;
 
     private AgentClient _agentClient => App.AgentClient!;
 
-    public MyVmsViewModel(PermissionService permissionService, ILogger<MyVmsViewModel> logger)
+    public Func<
+        string,
+        RdpConnectionSettings,
+        Task<(RdpConnectionSettings Settings, bool Remember)>
+    >? RequestConnectionSettings { get; set; }
+
+    public MyVmsViewModel(
+        PermissionService permissionService,
+        RdpPreferencesService rdpPreferences,
+        ILogger<MyVmsViewModel> logger
+    )
     {
         ArgumentNullException.ThrowIfNull(permissionService);
+        ArgumentNullException.ThrowIfNull(rdpPreferences);
         ArgumentNullException.ThrowIfNull(logger);
         _permissionService = permissionService;
+        _rdpPreferences = rdpPreferences;
         _logger = logger;
     }
 
@@ -292,8 +306,25 @@ public partial class MyVmsViewModel : ViewModelBase
     {
         try
         {
-            await _agentClient.ConnectToVmAsync(vm.Name);
+            RdpConnectionSettings defaults = _rdpPreferences.Load();
+
+            if (RequestConnectionSettings == null)
+            {
+                await _agentClient.ConnectToVmAsync(vm.Name, defaults);
+                return;
+            }
+
+            (RdpConnectionSettings settings, bool remember) = await RequestConnectionSettings(
+                vm.Name,
+                defaults
+            );
+
+            if (remember)
+                _rdpPreferences.Save(settings);
+
+            await _agentClient.ConnectToVmAsync(vm.Name, settings);
         }
+        catch (TaskCanceledException) { }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to connect to VM {VmName}", vm.Name);

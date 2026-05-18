@@ -155,7 +155,7 @@ public sealed class AgentClient : IDisposable
         await PutAsync("/api/vms/" + Uri.EscapeDataString(name) + "/notes", new { notes });
     }
 
-    public async Task ConnectToVmAsync(string name)
+    public async Task ConnectToVmAsync(string name, RdpConnectionSettings settings)
     {
         RdpSessionResponse? session = await PostJsonAsync<RdpSessionResponse>(
             "/api/rdp-sessions/" + Uri.EscapeDataString(name)
@@ -182,15 +182,7 @@ public sealed class AgentClient : IDisposable
             rdpPort = session.RdpPort;
         }
 
-        string rdpContent = string.Join(
-            "\r\n",
-            "full address:s:" + rdpHost + ":" + rdpPort,
-            "username:s:Administrator",
-            "loadbalanceinfo:s:cookie: mstshash=" + session.Token,
-            "autoreconnection enabled:i:1",
-            "prompt for credentials:i:1",
-            ""
-        );
+        string rdpContent = BuildRdpContent(rdpHost, rdpPort, session.Token, settings);
 
         string tempDir = Path.Combine(Path.GetTempPath(), "VmManager");
         Directory.CreateDirectory(tempDir);
@@ -208,10 +200,55 @@ public sealed class AgentClient : IDisposable
         string tempPath = Path.Combine(tempDir, name + "-" + session.Token[..8] + ".rdp");
         await File.WriteAllTextAsync(tempPath, rdpContent, Encoding.Unicode);
 
-        RdpSigningService rdpSigner = new RdpSigningService();
-        rdpSigner.SignRdpFile(tempPath);
-
         LaunchRdpFile(tempPath);
+    }
+
+    private static string BuildRdpContent(
+        string host,
+        int port,
+        string token,
+        RdpConnectionSettings settings
+    )
+    {
+        List<string> lines =
+        [
+            "full address:s:" + host + ":" + port,
+            "username:s:Administrator",
+            "loadbalanceinfo:s:cookie: mstshash=" + token,
+            "autoreconnection enabled:i:1",
+            "prompt for credentials:i:1",
+            "screen mode id:i:" + (settings.Fullscreen ? 2 : 1),
+            "desktopwidth:i:" + settings.DesktopWidth,
+            "desktopheight:i:" + settings.DesktopHeight,
+            "use multimon:i:" + (settings.UseMultiMon ? 1 : 0),
+            "session bpp:i:" + settings.SessionBpp,
+            "audiomode:i:" + (int)settings.AudioMode,
+            "audiocapturemode:i:" + (settings.AudioCapture ? 1 : 0),
+            "redirectclipboard:i:" + (settings.RedirectClipboard ? 1 : 0),
+            "redirectprinters:i:" + (settings.RedirectPrinters ? 1 : 0),
+            "keyboardhook:i:" + (int)settings.KeyboardHook,
+            "smart sizing:i:" + (settings.SmartSizing ? 1 : 0),
+            "dynamic resolution:i:" + (settings.DynamicResolution ? 1 : 0),
+            "allow font smoothing:i:" + (settings.AllowFontSmoothing ? 1 : 0),
+            "disable wallpaper:i:" + (settings.ShowWallpaper ? 0 : 1),
+            "connection type:i:" + (int)settings.ConnectionType,
+            "networkautodetect:i:"
+                + (settings.ConnectionType == NetworkConnectionType.AutoDetect ? 1 : 0),
+            "bandwidthautodetect:i:"
+                + (settings.ConnectionType == NetworkConnectionType.AutoDetect ? 1 : 0),
+        ];
+
+        if (!string.IsNullOrEmpty(settings.DrivesToRedirect))
+            lines.Add("drivestoredirect:s:" + settings.DrivesToRedirect);
+
+        if (settings.RedirectCameras)
+            lines.Add("camerastoredirect:s:*");
+
+        if (settings.RedirectUsb)
+            lines.Add("usbdevicestoredirect:s:*");
+
+        lines.Add("");
+        return string.Join("\r\n", lines);
     }
 
     private static void LaunchRdpFile(string rdpPath)
@@ -219,10 +256,7 @@ public sealed class AgentClient : IDisposable
         if (OperatingSystem.IsWindows())
         {
             Process.Start(
-                new ProcessStartInfo("mstsc.exe", "/edit \"" + rdpPath + "\"")
-                {
-                    UseShellExecute = true,
-                }
+                new ProcessStartInfo("mstsc.exe", "\"" + rdpPath + "\"") { UseShellExecute = true }
             );
             return;
         }

@@ -1,4 +1,3 @@
-using System.Net.Sockets;
 using VmManager.Agent.Services;
 
 namespace VmManager.Agent.Endpoints;
@@ -33,25 +32,6 @@ public static class RdpEndpoints
                     {
                         return Results.Json(
                             new { error = "VM not found or IP not available. Is the VM running?" },
-                            statusCode: 503
-                        );
-                    }
-
-                    try
-                    {
-                        using TcpClient probe = new TcpClient();
-                        using CancellationTokenSource cts = new CancellationTokenSource(
-                            TimeSpan.FromSeconds(3)
-                        );
-                        await probe.ConnectAsync(ip, 3389, cts.Token);
-                    }
-                    catch
-                    {
-                        return Results.Json(
-                            new
-                            {
-                                error = "RDP port 3389 is not reachable on the VM. Is Remote Desktop enabled?",
-                            },
                             statusCode: 503
                         );
                     }

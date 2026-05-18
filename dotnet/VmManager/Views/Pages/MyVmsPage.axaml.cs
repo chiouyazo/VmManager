@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
+using VmManager.Models;
 using VmManager.ViewModels;
 using VmManager.Views.Dialogs;
 using Res = VmManager.Properties.Resources;
@@ -58,6 +59,15 @@ public partial class MyVmsPage : UserControl
             MainWindow mainWindow = (MainWindow)GetOwnerWindow();
             mainWindow.PendingMarketplaceImageId = imageId;
             mainWindow.NavigateToPage("Images");
+        };
+
+        _viewModel.RequestConnectionSettings = async (vmName, defaults) =>
+        {
+            ConnectionSettingsDialog dialog = new ConnectionSettingsDialog(vmName, defaults);
+            bool? result = await dialog.ShowDialog<bool?>(GetOwnerWindow());
+            if (result != true || dialog.Settings == null)
+                throw new TaskCanceledException();
+            return (dialog.Settings, dialog.RememberAsDefault);
         };
     }
 
