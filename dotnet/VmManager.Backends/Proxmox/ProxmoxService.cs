@@ -117,6 +117,29 @@ public class ProxmoxService : IVmBackend
             onStatus
         );
 
+    public Task ConfigureAndFinalizeAsync(
+        string vmName,
+        string username,
+        string password,
+        string? locale,
+        string? keyboardLayout,
+        string? timezone,
+        bool renameComputer,
+        string? postCreationScript,
+        Action<string>? onStatus = null
+    ) =>
+        Import.ConfigureAndFinalizeAsync(
+            vmName,
+            username,
+            password,
+            locale,
+            keyboardLayout,
+            timezone,
+            renameComputer,
+            postCreationScript,
+            onStatus
+        );
+
     public async Task CloneVmFromSnapshotAsync(string vmName, string snapshotName, string newVmName)
     {
         _logger.LogInformation(

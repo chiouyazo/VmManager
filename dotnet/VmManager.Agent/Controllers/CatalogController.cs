@@ -419,76 +419,52 @@ public class CatalogController : ControllerBase
                     await _networkService.ConfigureVmAdaptersAsync(request.Name, networkMappings);
                 }
 
-                if (
+                bool applyLocale =
                     settings.ApplyLocaleOnCreate
-                    && !string.IsNullOrWhiteSpace(settings.DefaultLocale)
-                    && !string.IsNullOrWhiteSpace(settings.DefaultVmUsername)
-                    && !string.IsNullOrWhiteSpace(settings.DefaultVmPassword)
-                )
-                {
-                    try
-                    {
-                        ctx.ReportProgress(-1, "Applying locale: " + settings.DefaultLocale);
-                        ctx.Log(
-                            "Applying locale: "
-                                + settings.DefaultLocale
-                                + ", keyboard: "
-                                + settings.DefaultKeyboardLayout
-                                + ", timezone: "
-                                + settings.DefaultTimezone
-                        );
-                        await _backend.ConfigureLocaleAsync(
-                            request.Name,
-                            settings.DefaultVmUsername,
-                            settings.DefaultVmPassword,
-                            settings.DefaultLocale,
-                            settings.DefaultKeyboardLayout,
-                            settings.DefaultTimezone,
-                            onStatus: status => ctx.ReportProgress(-1, status)
-                        );
-                        ctx.Log("Locale applied successfully");
-                    }
-                    catch (Exception localeEx)
-                    {
-                        _logger.LogError(
-                            localeEx,
-                            "Locale application failed for VM {VmName}",
-                            request.Name
-                        );
-                        ctx.ReportProgress(-1, "Locale failed: " + localeEx.Message);
-                        ctx.Log("Locale failed: " + localeEx.Message);
-                    }
-                }
-
+                    && !string.IsNullOrWhiteSpace(settings.DefaultLocale);
                 bool needsPostCreation =
                     settings.RenameComputerToVmName
                     || !string.IsNullOrWhiteSpace(settings.PostCreationScript);
+
                 if (
-                    needsPostCreation
+                    (applyLocale || needsPostCreation)
                     && !string.IsNullOrWhiteSpace(settings.DefaultVmUsername)
                     && !string.IsNullOrWhiteSpace(settings.DefaultVmPassword)
                 )
                 {
                     try
                     {
-                        await _backend.RunPostCreationAsync(
+                        ctx.ReportProgress(-1, "Configuring VM (single boot)...");
+                        ctx.Log(
+                            "Combined configuration: locale="
+                                + (applyLocale ? settings.DefaultLocale : "skip")
+                                + ", rename="
+                                + settings.RenameComputerToVmName
+                                + ", postScript="
+                                + (!string.IsNullOrWhiteSpace(settings.PostCreationScript))
+                        );
+                        await _backend.ConfigureAndFinalizeAsync(
                             request.Name,
                             settings.DefaultVmUsername,
                             settings.DefaultVmPassword,
+                            applyLocale ? settings.DefaultLocale : null,
+                            applyLocale ? settings.DefaultKeyboardLayout : null,
+                            applyLocale ? settings.DefaultTimezone : null,
                             settings.RenameComputerToVmName,
                             settings.PostCreationScript,
                             onStatus: status => ctx.ReportProgress(-1, status)
                         );
                     }
-                    catch (Exception postEx)
+                    catch (Exception ex)
                     {
-                        _logger.LogError(
-                            postEx,
-                            "Post-creation tasks failed for VM {VmName}",
-                            request.Name
-                        );
-                        ctx.Log("Post-creation tasks failed: " + postEx.Message);
+                        _logger.LogError(ex, "VM configuration failed for {VmName}", request.Name);
+                        ctx.Log("Configuration failed: " + ex.Message);
                     }
+                }
+                else
+                {
+                    ctx.ReportProgress(-1, "Creating base snapshot...");
+                    await _backend.CreateSnapshotAsync(request.Name, "Base");
                 }
 
                 List<VmNetworkAdapter> staticIpAdapters =
@@ -503,9 +479,6 @@ public class CatalogController : ControllerBase
                         staticIpAdapters
                     );
                 }
-
-                ctx.ReportProgress(-1, "Creating base snapshot...");
-                await _backend.CreateSnapshotAsync(request.Name, "Base");
 
                 ctx.ReportProgress(1.0, "Complete");
             }

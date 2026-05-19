@@ -43,6 +43,45 @@ public interface IVmBackend
         string? postCreationScript = null,
         Action<string>? onStatus = null
     );
+    async Task ConfigureAndFinalizeAsync(
+        string vmName,
+        string username,
+        string password,
+        string? locale,
+        string? keyboardLayout,
+        string? timezone,
+        bool renameComputer,
+        string? postCreationScript,
+        Action<string>? onStatus = null
+    )
+    {
+        if (!string.IsNullOrWhiteSpace(locale))
+        {
+            await ConfigureLocaleAsync(
+                vmName,
+                username,
+                password,
+                locale!,
+                keyboardLayout ?? "00000407",
+                timezone ?? "",
+                onStatus
+            );
+        }
+
+        if (renameComputer || !string.IsNullOrWhiteSpace(postCreationScript))
+        {
+            await RunPostCreationAsync(
+                vmName,
+                username,
+                password,
+                renameComputer,
+                postCreationScript,
+                onStatus
+            );
+        }
+
+        await CreateSnapshotAsync(vmName, "Base");
+    }
     Task CloneVmFromSnapshotAsync(string vmName, string snapshotName, string newVmName);
     Task ResetDiskAsync(string name);
     Task<string?> TroubleshootAsync();

@@ -75,7 +75,7 @@ public class ProxmoxImportService
         {
             onStatus?.Invoke("Converting VHDX to QCOW2...");
             diskPath = Path.ChangeExtension(vhdxPath, ".qcow2");
-            await _sh.RunBashAsync($"qemu-img convert -O qcow2 {Q(vhdxPath)} {Q(diskPath)}");
+            await _sh.RunBashAsync($"qemu-img convert -W -O qcow2 {Q(vhdxPath)} {Q(diskPath)}");
         }
 
         string folderName = Path.GetFileName(extractedFolder);
@@ -169,15 +169,7 @@ public class ProxmoxImportService
         await _sh.RunBashAsync($"qm set {vmid} --sata0 {diskVolId},ssd=1,discard=on");
         await _sh.RunBashAsync($"qm set {vmid} --boot order=sata0");
 
-        onStatus?.Invoke("Creating base snapshot...");
-        string snapRaw = await _api.PostRawAsync(
-            $"{_api.VmPath(vmid)}/snapshot",
-            new Dictionary<string, string> { ["snapname"] = "Base" }
-        );
-        string snapUpid = JsonDocument.Parse(snapRaw).RootElement.GetProperty("data").GetString()!;
-        await _api.PollTaskAsync(snapUpid);
-
-        onStatus?.Invoke("VM created successfully");
+        onStatus?.Invoke("VM imported successfully");
         _logger.LogInformation("VM created: {Name} (VMID {VmId})", finalName, vmid);
     }
 
@@ -334,6 +326,143 @@ public class ProxmoxImportService
         }
 
         await StopVmAsync(vmid);
+    }
+
+    public async Task ConfigureAndFinalizeAsync(
+        string vmName,
+        string username,
+        string password,
+        string? locale,
+        string? keyboardLayout,
+        string? timezone,
+        bool renameComputer,
+        string? postCreationScript,
+        Action<string>? onStatus = null
+    )
+    {
+        bool needsLocale =
+            !string.IsNullOrWhiteSpace(locale) && !string.IsNullOrWhiteSpace(keyboardLayout);
+        bool needsPostCreation = renameComputer || !string.IsNullOrWhiteSpace(postCreationScript);
+
+        if (!needsLocale && !needsPostCreation)
+        {
+            onStatus?.Invoke("Creating base snapshot...");
+            await CreateBaseSnapshotAsync(vmName);
+            return;
+        }
+
+        string? inputMethodTip = null;
+        if (needsLocale)
+        {
+            CultureInfo culture = CultureInfo.GetCultureInfo(locale!);
+            string lcidHex4 = culture.LCID.ToString("x4");
+            inputMethodTip = $"{lcidHex4}:{keyboardLayout}";
+        }
+
+        int vmid = await _vms.ResolveVmIdAsync(vmName);
+
+        onStatus?.Invoke("Starting VM for configuration...");
+        JsonElement status = await _api.GetAsync<JsonElement>(
+            $"{_api.VmPath(vmid)}/status/current"
+        );
+        if (status.GetProperty("status").GetString() != "running")
+        {
+            string upid = await PostForUpidAsync($"{_api.VmPath(vmid)}/status/start");
+            await _api.PollTaskAsync(upid);
+        }
+
+        onStatus?.Invoke("Waiting for VM to get IP address...");
+        string? ip = await WaitForIpAsync(vmName, TimeSpan.FromMinutes(5));
+        if (ip == null)
+        {
+            await StopVmAsync(vmid);
+            throw new TimeoutException(
+                $"VM '{vmName}' did not receive an IP address within 5 minutes."
+            );
+        }
+
+        _logger.LogInformation("VM {VmName} has IP {Ip}, waiting for WinRM", vmName, ip);
+        onStatus?.Invoke("Waiting for WinRM...");
+        await Shared.WinRmLocaleHelper.WaitForWinRmAsync(ip, TimeSpan.FromMinutes(3));
+
+        string combinedScript = Shared.WinRmLocaleHelper.BuildCombinedPreRebootScript(
+            locale,
+            keyboardLayout,
+            inputMethodTip,
+            timezone,
+            vmName,
+            renameComputer,
+            postCreationScript
+        );
+
+        onStatus?.Invoke("Applying configuration...");
+        _logger.LogInformation("Running combined pre-reboot script on {VmName}", vmName);
+
+        bool hasPostCreationScript = !string.IsNullOrWhiteSpace(postCreationScript);
+        if (hasPostCreationScript)
+        {
+            string regOnlyScript = Shared.WinRmLocaleHelper.BuildCombinedPreRebootScript(
+                locale,
+                keyboardLayout,
+                inputMethodTip,
+                timezone,
+                vmName,
+                renameComputer,
+                postCreationScript: null
+            );
+            if (!string.IsNullOrWhiteSpace(regOnlyScript))
+                await Shared.WinRmLocaleHelper.RunWinRmCmdAsync(
+                    ip,
+                    username,
+                    password,
+                    regOnlyScript
+                );
+            await Shared.WinRmLocaleHelper.RunWinRmPowerShellAsync(
+                ip,
+                username,
+                password,
+                postCreationScript!
+            );
+        }
+        else
+        {
+            await Shared.WinRmLocaleHelper.RunWinRmCmdAsync(ip, username, password, combinedScript);
+        }
+
+        onStatus?.Invoke("Shutting down VM...");
+        try
+        {
+            await Shared.WinRmLocaleHelper.RunWinRmCmdAsync(
+                ip,
+                username,
+                password,
+                "shutdown /s /t 0"
+            );
+        }
+        catch { }
+        for (int i = 0; i < 30; i++)
+        {
+            await Task.Delay(2000);
+            JsonElement st = await _api.GetAsync<JsonElement>(
+                $"{_api.VmPath(vmid)}/status/current"
+            );
+            if (st.GetProperty("status").GetString() == "stopped")
+                break;
+        }
+
+        onStatus?.Invoke("Creating base snapshot...");
+        await CreateBaseSnapshotAsync(vmName);
+    }
+
+    private async Task CreateBaseSnapshotAsync(string vmName)
+    {
+        int vmid = await _vms.ResolveVmIdAsync(vmName);
+        string snapRaw = await _api.PostRawAsync(
+            $"{_api.VmPath(vmid)}/snapshot",
+            new Dictionary<string, string> { ["snapname"] = "Base" }
+        );
+        string snapUpid = JsonDocument.Parse(snapRaw).RootElement.GetProperty("data").GetString()!;
+        await _api.PollTaskAsync(snapUpid);
     }
 
     private async Task StopVmAsync(int vmid)

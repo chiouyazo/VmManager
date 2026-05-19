@@ -53,6 +53,25 @@ public class WinRmClient : IDisposable
         }
     }
 
+    public async Task<WinRmResult> RunCmdAsync(string script)
+    {
+        string shellId = await CreateShellAsync();
+        try
+        {
+            string commandId = await ExecuteCommandAsync(shellId, "cmd", $"/c {script}");
+
+            return await ReceiveOutputAsync(shellId, commandId);
+        }
+        finally
+        {
+            try
+            {
+                await DeleteShellAsync(shellId);
+            }
+            catch { }
+        }
+    }
+
     private async Task<string> CreateShellAsync()
     {
         XElement body = new XElement(
