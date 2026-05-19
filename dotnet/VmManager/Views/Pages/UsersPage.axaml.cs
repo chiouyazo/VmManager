@@ -1,15 +1,17 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using VmManager.Contracts.Models;
+using VmManager.Services;
 using VmManager.ViewModels;
 
 namespace VmManager.Views.Pages;
 
 public partial class UsersPage : UserControl
 {
-    public UsersPage(UsersViewModel viewModel)
+    public UsersPage(UsersViewModel viewModel, NotificationService notificationService)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
+        viewModel.Notifications = notificationService;
         DataContext = viewModel;
         InitializeComponent();
     }

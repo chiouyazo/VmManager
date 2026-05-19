@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using VmManager.Contracts.Models;
 using VmManager.Services;
 
 namespace VmManager.ViewModels;
@@ -11,6 +12,8 @@ public partial class SettingsViewModel : ObservableObject
     private readonly AgentSettingsService _agentSettings;
     private readonly PermissionService _permissionService;
     private readonly ILogger<SettingsViewModel> _logger;
+
+    public NotificationService? Notifications { get; set; }
 
     private AgentClient _agentClient => App.AgentClient!;
 
@@ -102,6 +105,39 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private string _postStartupScript = "";
+
+    [ObservableProperty]
+    private bool _smtpEnabled;
+
+    [ObservableProperty]
+    private string _smtpHost = "";
+
+    [ObservableProperty]
+    private int _smtpPort = 587;
+
+    [ObservableProperty]
+    private string _smtpUsername = "";
+
+    [ObservableProperty]
+    private string _smtpPassword = "";
+
+    [ObservableProperty]
+    private string _smtpFromAddress = "";
+
+    [ObservableProperty]
+    private bool _smtpUseTls = true;
+
+    [ObservableProperty]
+    private string _testEmailAddress = "";
+
+    [ObservableProperty]
+    private int _maxTotalVms;
+
+    [ObservableProperty]
+    private int _defaultUserMaxVms;
+
+    [ObservableProperty]
+    private int _staleVmReminderDays;
 
     [ObservableProperty]
     private string _statusMessage = "";
@@ -220,6 +256,16 @@ public partial class SettingsViewModel : ObservableObject
         RenameComputerToVmName = settings.RenameComputerToVmName;
         PostCreationScript = settings.PostCreationScript;
         PostStartupScript = settings.PostStartupScript;
+        SmtpEnabled = settings.SmtpEnabled;
+        SmtpHost = settings.SmtpHost;
+        SmtpPort = settings.SmtpPort;
+        SmtpUsername = settings.SmtpUsername;
+        SmtpPassword = settings.SmtpPassword;
+        SmtpFromAddress = settings.SmtpFromAddress;
+        SmtpUseTls = settings.SmtpUseTls;
+        MaxTotalVms = settings.MaxTotalVms;
+        DefaultUserMaxVms = settings.DefaultUserMaxVms;
+        StaleVmReminderDays = settings.StaleVmReminderDays;
     }
 
     [RelayCommand]
@@ -362,6 +408,16 @@ public partial class SettingsViewModel : ObservableObject
                 existing.RenameComputerToVmName = RenameComputerToVmName;
                 existing.PostCreationScript = PostCreationScript;
                 existing.PostStartupScript = PostStartupScript;
+                existing.SmtpEnabled = SmtpEnabled;
+                existing.SmtpHost = SmtpHost;
+                existing.SmtpPort = SmtpPort;
+                existing.SmtpUsername = SmtpUsername;
+                existing.SmtpPassword = SmtpPassword;
+                existing.SmtpFromAddress = SmtpFromAddress;
+                existing.SmtpUseTls = SmtpUseTls;
+                existing.MaxTotalVms = MaxTotalVms;
+                existing.DefaultUserMaxVms = DefaultUserMaxVms;
+                existing.StaleVmReminderDays = StaleVmReminderDays;
 
                 await _agentClient.SaveSettingsAsync(existing);
                 OnSettingsSaved?.Invoke();
@@ -373,6 +429,37 @@ public partial class SettingsViewModel : ObservableObject
         {
             ShowStatusMessage(true, string.Format(Resources.Settings_SaveFailedFormat, ex.Message));
             _logger.LogError(ex, "Failed to save settings");
+        }
+    }
+
+    [RelayCommand]
+    private async Task TestEmailAsync()
+    {
+        if (string.IsNullOrWhiteSpace(TestEmailAddress))
+        {
+            Notifications?.ShowWarning("Enter an email address to send the test to.");
+            return;
+        }
+
+        try
+        {
+            EmailTestResult result = await _agentClient.TestEmailAsync(
+                TestEmailAddress,
+                SmtpHost,
+                SmtpPort,
+                SmtpUsername,
+                SmtpPassword,
+                SmtpFromAddress,
+                SmtpUseTls
+            );
+            if (result.Success)
+                Notifications?.ShowSuccess("Test email sent to " + TestEmailAddress);
+            else
+                Notifications?.ShowError("Email failed: " + result.Error);
+        }
+        catch (Exception ex)
+        {
+            Notifications?.ShowError("Email test failed: " + ex.Message);
         }
     }
 

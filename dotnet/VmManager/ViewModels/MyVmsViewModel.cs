@@ -12,6 +12,7 @@ public partial class MyVmsViewModel : ViewModelBase
     private readonly ILogger<MyVmsViewModel> _logger;
     private readonly PermissionService _permissionService;
     private readonly RdpPreferencesService _rdpPreferences;
+    private readonly NativeNotificationService _nativeNotifications;
 
     private AgentClient _agentClient => App.AgentClient!;
 
@@ -24,14 +25,17 @@ public partial class MyVmsViewModel : ViewModelBase
     public MyVmsViewModel(
         PermissionService permissionService,
         RdpPreferencesService rdpPreferences,
+        NativeNotificationService nativeNotifications,
         ILogger<MyVmsViewModel> logger
     )
     {
         ArgumentNullException.ThrowIfNull(permissionService);
         ArgumentNullException.ThrowIfNull(rdpPreferences);
+        ArgumentNullException.ThrowIfNull(nativeNotifications);
         ArgumentNullException.ThrowIfNull(logger);
         _permissionService = permissionService;
         _rdpPreferences = rdpPreferences;
+        _nativeNotifications = nativeNotifications;
         _logger = logger;
     }
 
@@ -614,6 +618,7 @@ public partial class MyVmsViewModel : ViewModelBase
             await _agentClient.CloneFromSnapshotAsync(snapshot.VmName, snapshot.Id, newName);
             await RefreshAsync();
             ShowSuccess(string.Format(Resources.Status_ClonedFormat, newName, snapshot.Name));
+            _nativeNotifications.Show("Clone Complete", newName + " cloned from " + snapshot.Name);
         }
         catch (Exception ex)
         {

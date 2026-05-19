@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using VmManager.Services;
 using VmManager.ViewModels;
 using Res = VmManager.Properties.Resources;
 
@@ -10,9 +11,10 @@ public partial class SettingsPage : UserControl
 {
     private readonly SettingsViewModel _viewModel;
 
-    public SettingsPage(SettingsViewModel viewModel)
+    public SettingsPage(SettingsViewModel viewModel, NotificationService notificationService)
     {
         _viewModel = viewModel;
+        _viewModel.Notifications = notificationService;
         DataContext = _viewModel;
         InitializeComponent();
 

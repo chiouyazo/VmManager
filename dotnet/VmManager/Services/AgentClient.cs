@@ -446,6 +446,53 @@ public sealed class AgentClient : IDisposable
             ?? new List<string>();
     }
 
+    public async Task<EmailTestResult> TestEmailAsync(
+        string toAddress,
+        string smtpHost,
+        int smtpPort,
+        string smtpUsername,
+        string smtpPassword,
+        string smtpFromAddress,
+        bool smtpUseTls
+    )
+    {
+        return await PostJsonAsync<EmailTestResult>(
+                "/api/settings/test-email",
+                new
+                {
+                    toAddress,
+                    smtpHost,
+                    smtpPort,
+                    smtpUsername,
+                    smtpPassword,
+                    smtpFromAddress,
+                    smtpUseTls,
+                }
+            ) ?? new EmailTestResult { Success = false, Error = "No response" };
+    }
+
+    public async Task<QuotaUsage> GetMyQuotaAsync()
+    {
+        return await GetJsonAsync<QuotaUsage>("/api/settings/quota");
+    }
+
+    public async Task<QuotaUsage> GetUserQuotaAsync(string username)
+    {
+        return await GetJsonAsync<QuotaUsage>(
+            "/api/users/" + Uri.EscapeDataString(username) + "/quota"
+        );
+    }
+
+    public async Task SetUserQuotaAsync(string username, int maxVms)
+    {
+        await PutAsync("/api/users/" + Uri.EscapeDataString(username) + "/quota", new { maxVms });
+    }
+
+    public async Task UpdateUserEmailAsync(string username, string email)
+    {
+        await PutAsync("/api/users/" + Uri.EscapeDataString(username) + "/email", new { email });
+    }
+
     public async Task ConnectToProgressHubAsync(
         Action<string, double, string> onProgress,
         Action<string, bool, string?> onCompleted,

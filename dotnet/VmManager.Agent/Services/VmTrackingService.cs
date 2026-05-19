@@ -12,7 +12,7 @@ public class VmTrackingService : IVmTrackingService
         WriteIndented = true,
     };
 
-    private record ManagedVmEntry(string Name, VmOrigin? Origin);
+    private record ManagedVmEntry(string Name, VmOrigin? Origin, DateTime? CreatedAt = null);
 
     public VmTrackingService(IAppPaths paths, ILogger<VmTrackingService> logger)
     {
@@ -35,9 +35,10 @@ public class VmTrackingService : IVmTrackingService
 
         try
         {
-            Dictionary<string, VmOrigin?> vms = LoadAllInternal();
-            vms[vmName] = origin;
-            SaveVms(vms);
+            List<ManagedVmEntry> entries = LoadEntries();
+            entries.RemoveAll(e => e.Name == vmName);
+            entries.Add(new ManagedVmEntry(vmName, origin, DateTime.UtcNow));
+            SaveEntries(entries);
         }
         catch (Exception ex)
         {
@@ -49,10 +50,10 @@ public class VmTrackingService : IVmTrackingService
     {
         try
         {
-            Dictionary<string, VmOrigin?> vms = LoadAllInternal();
-            if (vms.Remove(vmName))
+            List<ManagedVmEntry> entries = LoadEntries();
+            if (entries.RemoveAll(e => e.Name == vmName) > 0)
             {
-                SaveVms(vms);
+                SaveEntries(entries);
                 _logger.LogInformation("Untracked VM {VmName}", vmName);
             }
         }
@@ -82,25 +83,50 @@ public class VmTrackingService : IVmTrackingService
 
     public Dictionary<string, VmOrigin?> LoadAll() => LoadAllInternal();
 
+    public DateTime? GetCreatedAt(string vmName)
+    {
+        try
+        {
+            List<ManagedVmEntry> entries = LoadEntries();
+            return entries.FirstOrDefault(e => e.Name == vmName)?.CreatedAt;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public List<(string Name, DateTime CreatedAt, string Owner)> GetVmsOlderThan(
+        int days,
+        VmOwnershipService ownershipService
+    )
+    {
+        List<ManagedVmEntry> entries = LoadEntries();
+        DateTime cutoff = DateTime.UtcNow.AddDays(-days);
+        List<(string, DateTime, string)> result = new List<(string, DateTime, string)>();
+        foreach (ManagedVmEntry entry in entries)
+        {
+            if (entry.CreatedAt.HasValue && entry.CreatedAt.Value < cutoff)
+            {
+                string owner = ownershipService.GetOwner(entry.Name);
+                result.Add((entry.Name, entry.CreatedAt.Value, owner));
+            }
+        }
+        return result;
+    }
+
     public void PruneStaleEntries(IReadOnlySet<string> existingVmNames)
     {
         try
         {
-            Dictionary<string, VmOrigin?> vms = LoadAllInternal();
-            List<string> stale = vms.Keys.Where(name => !existingVmNames.Contains(name)).ToList();
+            List<ManagedVmEntry> entries = LoadEntries();
+            int removed = entries.RemoveAll(e => !existingVmNames.Contains(e.Name));
 
-            if (stale.Count == 0)
+            if (removed == 0)
                 return;
 
-            foreach (string name in stale)
-                vms.Remove(name);
-
-            SaveVms(vms);
-            _logger.LogInformation(
-                "Pruned {Count} stale VM entries: {Names}",
-                stale.Count,
-                string.Join(", ", stale)
-            );
+            SaveEntries(entries);
+            _logger.LogInformation("Pruned {Count} stale VM entries", removed);
         }
         catch (Exception ex)
         {
@@ -144,6 +170,11 @@ public class VmTrackingService : IVmTrackingService
 
     private Dictionary<string, VmOrigin?> LoadAllInternal()
     {
+        return LoadEntries().ToDictionary(e => e.Name, e => e.Origin);
+    }
+
+    private List<ManagedVmEntry> LoadEntries()
+    {
         try
         {
             if (File.Exists(_paths.ManagedVmsPath))
@@ -151,27 +182,22 @@ public class VmTrackingService : IVmTrackingService
                 string json = File.ReadAllText(_paths.ManagedVmsPath);
                 try
                 {
-                    List<ManagedVmEntry> entries =
-                        JsonSerializer.Deserialize<List<ManagedVmEntry>>(json) ?? [];
-                    return entries.ToDictionary(e => e.Name, e => e.Origin);
+                    return JsonSerializer.Deserialize<List<ManagedVmEntry>>(json) ?? [];
                 }
                 catch (JsonException)
                 {
-                    // Fall back to old format (plain string array) and migrate
                     _logger.LogInformation("Migrating managed-vms.json from old format");
                     HashSet<string> names = JsonSerializer.Deserialize<HashSet<string>>(json) ?? [];
-                    Dictionary<string, VmOrigin?> migrated = names.ToDictionary(
-                        n => n,
-                        _ => (VmOrigin?)null
-                    );
-                    SaveVms(migrated);
+                    List<ManagedVmEntry> migrated = names
+                        .Select(n => new ManagedVmEntry(n, null))
+                        .ToList();
+                    SaveEntries(migrated);
                     return migrated;
                 }
             }
             else
             {
-                // First run: seed from VMs that have notes
-                Dictionary<string, VmOrigin?> vms = [];
+                List<ManagedVmEntry> entries = [];
                 if (File.Exists(_paths.NotesPath))
                 {
                     string notesJson = File.ReadAllText(_paths.NotesPath);
@@ -179,10 +205,10 @@ public class VmTrackingService : IVmTrackingService
                         Dictionary<string, string>
                     >(notesJson);
                     if (notes != null)
-                        vms = notes.Keys.ToDictionary(n => n, _ => (VmOrigin?)null);
+                        entries = notes.Keys.Select(n => new ManagedVmEntry(n, null)).ToList();
                 }
-                SaveVms(vms);
-                return vms;
+                SaveEntries(entries);
+                return entries;
             }
         }
         catch (Exception ex)
@@ -192,10 +218,8 @@ public class VmTrackingService : IVmTrackingService
         }
     }
 
-    private void SaveVms(Dictionary<string, VmOrigin?> vms)
+    private void SaveEntries(List<ManagedVmEntry> entries)
     {
-        List<ManagedVmEntry> entries = vms.Select(kv => new ManagedVmEntry(kv.Key, kv.Value))
-            .ToList();
         Directory.CreateDirectory(Path.GetDirectoryName(_paths.ManagedVmsPath)!);
         File.WriteAllText(_paths.ManagedVmsPath, JsonSerializer.Serialize(entries, WriteOptions));
     }

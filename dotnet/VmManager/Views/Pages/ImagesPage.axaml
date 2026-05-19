@@ -279,12 +279,22 @@
       IsVisible="{Binding HasLocalImages}"
     >
       <StackPanel>
-        <TextBlock
-          Text="{x:Static props:Resources.Images_LocalImages}"
-          FontWeight="SemiBold"
-          FontSize="14"
-          Margin="0,0,0,8"
-        />
+        <DockPanel Margin="0,0,0,8">
+          <TextBlock
+            Text="{x:Static props:Resources.Images_LocalImages}"
+            FontWeight="SemiBold"
+            FontSize="14"
+          />
+          <TextBlock
+            Text="{Binding QuotaText}"
+            FontSize="12"
+            DockPanel.Dock="Right"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Center"
+            Foreground="{DynamicResource MutedBrush}"
+            IsVisible="{Binding QuotaText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+          />
+        </DockPanel>
         <ScrollViewer MaxHeight="160" VerticalScrollBarVisibility="Auto">
           <ItemsControl ItemsSource="{Binding LocalImages}">
             <ItemsControl.ItemTemplate>

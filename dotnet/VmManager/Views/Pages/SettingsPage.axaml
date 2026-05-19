@@ -526,6 +526,64 @@
             </StackPanel>
           </StackPanel>
         </Border>
+
+        <Border Theme="{StaticResource CardStyle}" IsVisible="{Binding CanEditScripts}">
+          <StackPanel>
+            <TextBlock Text="Email Notifications" Classes="heading-small" Margin="0,0,0,12" />
+            <CheckBox Content="Enable email notifications" IsChecked="{Binding SmtpEnabled}" Margin="0,0,0,12" />
+            <StackPanel IsEnabled="{Binding SmtpEnabled}" Spacing="8">
+              <Grid ColumnDefinitions="*,12,Auto">
+                <StackPanel Grid.Column="0">
+                  <TextBlock Text="SMTP Host" Margin="0,0,0,4" />
+                  <TextBox Text="{Binding SmtpHost}" Watermark="smtp.example.com" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" Width="140">
+                  <TextBlock Text="Port" Margin="0,0,0,4" />
+                  <NumericUpDown Value="{Binding SmtpPort}" Minimum="1" Maximum="65535" FormatString="0" />
+                </StackPanel>
+              </Grid>
+              <Grid ColumnDefinitions="*,12,*">
+                <StackPanel Grid.Column="0">
+                  <TextBlock Text="Username" Margin="0,0,0,4" />
+                  <TextBox Text="{Binding SmtpUsername}" Watermark="user@example.com" />
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                  <TextBlock Text="Password" Margin="0,0,0,4" />
+                  <TextBox Text="{Binding SmtpPassword}" PasswordChar="*" />
+                </StackPanel>
+              </Grid>
+              <StackPanel>
+                <TextBlock Text="From Address" Margin="0,0,0,4" />
+                <TextBox Text="{Binding SmtpFromAddress}" Watermark="noreply@example.com" />
+              </StackPanel>
+              <CheckBox Content="Use TLS" IsChecked="{Binding SmtpUseTls}" />
+              <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                <TextBox Text="{Binding TestEmailAddress}" Watermark="recipient@example.com" Width="250" />
+                <Button Content="Send Test Email" Theme="{StaticResource PrimaryButtonStyle}" Command="{Binding TestEmailCommand}" />
+              </StackPanel>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <Border Theme="{StaticResource CardStyle}" IsVisible="{Binding CanEditScripts}">
+          <StackPanel>
+            <TextBlock Text="Resource Limits" Classes="heading-small" Margin="0,0,0,12" />
+            <Grid ColumnDefinitions="*,12,*,12,*">
+              <StackPanel Grid.Column="0">
+                <TextBlock Text="Maximum total VMs (0 = no limit)" Margin="0,0,0,4" />
+                <NumericUpDown Value="{Binding MaxTotalVms}" Minimum="0" FormatString="0" />
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock Text="Default per-user VM limit (0 = no limit)" Margin="0,0,0,4" />
+                <NumericUpDown Value="{Binding DefaultUserMaxVms}" Minimum="0" FormatString="0" />
+              </StackPanel>
+              <StackPanel Grid.Column="4">
+                <TextBlock Text="Stale VM reminder after days (0 = off)" Margin="0,0,0,4" />
+                <NumericUpDown Value="{Binding StaleVmReminderDays}" Minimum="0" FormatString="0" />
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+        </Border>
       </StackPanel>
     </ScrollViewer>
 

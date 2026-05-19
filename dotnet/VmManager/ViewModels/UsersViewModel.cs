@@ -55,6 +55,9 @@ public partial class UsersViewModel : ViewModelBase
     private bool _showDeleteConfirmation;
 
     [ObservableProperty]
+    private int _editMaxVms;
+
+    [ObservableProperty]
     private bool _permVmCreate;
 
     [ObservableProperty]
@@ -161,6 +164,7 @@ public partial class UsersViewModel : ViewModelBase
         IsEditMode = true;
         EditUsername = user.Username;
         EditIsAdmin = user.IsAdmin;
+        EditMaxVms = user.MaxVms;
         LoadPermissionsFromUser(user);
     }
 
@@ -242,6 +246,9 @@ public partial class UsersViewModel : ViewModelBase
                 permissions,
                 EditIsAdmin
             );
+
+            if (SelectedUser.MaxVms != EditMaxVms)
+                await App.AgentClient.SetUserQuotaAsync(EditUsername, EditMaxVms);
 
             ShowSuccess("User saved");
             await LoadUsersAsync();

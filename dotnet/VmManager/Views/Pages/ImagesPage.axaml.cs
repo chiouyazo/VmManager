@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using VmManager.Services;
 using VmManager.ViewModels;
 using VmManager.Views.Dialogs;
 using Res = VmManager.Properties.Resources;
@@ -11,9 +12,10 @@ public partial class ImagesPage : UserControl
 {
     private readonly ImagesViewModel _viewModel;
 
-    public ImagesPage(ImagesViewModel viewModel)
+    public ImagesPage(ImagesViewModel viewModel, NotificationService notificationService)
     {
         _viewModel = viewModel;
+        _viewModel.Notifications = notificationService;
         DataContext = viewModel;
         InitializeComponent();
 

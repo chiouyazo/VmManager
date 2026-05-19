@@ -39,6 +39,7 @@ public partial class MainWindow : Window
         AgentSettingsService agentSettings,
         TrayIconService trayIconService,
         PermissionService permissionService,
+        NotificationService notificationService,
         MainWindowViewModel viewModel,
         ImagesPage imagesPage,
         MyVmsPage myVmsPage,
@@ -53,6 +54,7 @@ public partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(agentSettings);
         ArgumentNullException.ThrowIfNull(trayIconService);
         ArgumentNullException.ThrowIfNull(permissionService);
+        ArgumentNullException.ThrowIfNull(notificationService);
         ArgumentNullException.ThrowIfNull(viewModel);
         ArgumentNullException.ThrowIfNull(imagesPage);
         ArgumentNullException.ThrowIfNull(myVmsPage);
@@ -76,6 +78,8 @@ public partial class MainWindow : Window
 
         DataContext = this;
         InitializeComponent();
+
+        notificationService.SetManager(NotificationManager);
 
         Closing += OnClosing;
 

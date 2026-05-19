@@ -27,4 +27,17 @@ public class AppSettings
     public bool AutoCleanupUnusedNetworks { get; set; } = true;
 
     public ProxmoxSettings? Proxmox { get; set; }
+
+    public string SmtpHost { get; set; } = "";
+    public int SmtpPort { get; set; } = 587;
+    public string SmtpUsername { get; set; } = "";
+    public string SmtpPassword { get; set; } = "";
+    public string SmtpFromAddress { get; set; } = "";
+    public bool SmtpUseTls { get; set; } = true;
+    public bool SmtpEnabled { get; set; }
+
+    public int MaxTotalVms { get; set; }
+    public int DefaultUserMaxVms { get; set; }
+
+    public int StaleVmReminderDays { get; set; }
 }

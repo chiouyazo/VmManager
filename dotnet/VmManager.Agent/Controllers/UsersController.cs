@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VmManager.Agent.Services;
+using VmManager.Contracts.Models;
 
 namespace VmManager.Agent.Controllers;
 
@@ -11,19 +12,23 @@ public class UsersController : ControllerBase
 {
     private readonly UserService _userService;
     private readonly VmSharingService _sharingService;
+    private readonly QuotaService _quotaService;
     private readonly ILogger<UsersController> _logger;
 
     public UsersController(
         UserService userService,
         VmSharingService sharingService,
+        QuotaService quotaService,
         ILogger<UsersController> logger
     )
     {
         ArgumentNullException.ThrowIfNull(userService);
         ArgumentNullException.ThrowIfNull(sharingService);
+        ArgumentNullException.ThrowIfNull(quotaService);
         ArgumentNullException.ThrowIfNull(logger);
         _userService = userService;
         _sharingService = sharingService;
+        _quotaService = quotaService;
         _logger = logger;
     }
 
@@ -38,6 +43,8 @@ public class UsersController : ControllerBase
                 Username = u.Username,
                 IsAdmin = u.IsAdmin,
                 Permissions = u.IsAdmin ? Permission.All : u.Permissions,
+                Email = u.Email,
+                MaxVms = u.MaxVms,
             })
             .ToList();
 
@@ -137,6 +144,10 @@ public class UsersController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.NewUsername))
             return BadRequest(new { error = "New username is required" });
 
+        UserAccount? user = _userService.GetByUsername(username);
+        if (user != null && !user.IsAdmin && !EmailValidator.IsValid(request.NewUsername))
+            return BadRequest(new { error = "Username must be a valid email address" });
+
         try
         {
             _userService.RenameUser(username, request.NewUsername);
@@ -165,5 +176,50 @@ public class UsersController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+    }
+
+    [HttpPut("{username}/email")]
+    [ProducesResponseType(204)]
+    [ProducesResponseType(400)]
+    public IActionResult UpdateEmail(string username, [FromBody] UpdateEmailRequest request)
+    {
+        try
+        {
+            _userService.UpdateEmail(username, request.Email);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("{username}/quota")]
+    [ProducesResponseType(typeof(QuotaUsage), 200)]
+    public async Task<IActionResult> GetUserQuota(string username)
+    {
+        QuotaUsage usage = await _quotaService.GetUsageAsync(username);
+        return Ok(usage);
+    }
+
+    [HttpPut("{username}/quota")]
+    [ProducesResponseType(204)]
+    [ProducesResponseType(400)]
+    public async Task<IActionResult> SetUserQuota(
+        string username,
+        [FromBody] SetQuotaRequest request
+    )
+    {
+        UserAccount? user = _userService.GetByUsername(username);
+        if (user == null)
+            return BadRequest(new { error = "User not found" });
+
+        int oldMax = user.MaxVms;
+        _userService.UpdateMaxVms(username, request.MaxVms);
+
+        if (oldMax != request.MaxVms)
+            await _quotaService.NotifyQuotaChangedAsync(username, oldMax, request.MaxVms);
+
+        return NoContent();
     }
 }

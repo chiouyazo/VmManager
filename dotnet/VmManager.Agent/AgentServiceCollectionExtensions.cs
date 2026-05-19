@@ -65,6 +65,9 @@ public static class AgentServiceCollectionExtensions
         services.AddSingleton<VmOwnershipService>();
         services.AddSingleton<VmSharingService>();
         services.AddSingleton<AuthorizationService>();
+        services.AddSingleton<EmailService>();
+        services.AddSingleton<QuotaService>();
+        services.AddHostedService<StaleVmReminderService>();
 
         return services;
     }

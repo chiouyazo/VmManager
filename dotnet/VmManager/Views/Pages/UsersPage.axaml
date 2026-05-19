@@ -99,6 +99,18 @@
                     >
                       <TextBlock Text="Admin" FontSize="11" Foreground="White" />
                     </Border>
+                    <TextBlock
+                      Foreground="{DynamicResource MutedBrush}"
+                      FontSize="11"
+                      VerticalAlignment="Center"
+                      Margin="12,0,0,0"
+                    >
+                      <TextBlock.Text>
+                        <MultiBinding StringFormat="Max VMs: {0}">
+                          <Binding Path="MaxVms" />
+                        </MultiBinding>
+                      </TextBlock.Text>
+                    </TextBlock>
                   </StackPanel>
                 </DockPanel>
               </Button>
@@ -155,7 +167,7 @@
         >
           <StackPanel>
             <Grid ColumnDefinitions="*,16,*" Margin="0,0,0,8">
-              <TextBox Grid.Column="0" Watermark="Username" Text="{Binding NewUsername}" />
+              <TextBox Grid.Column="0" Watermark="Email (login)" Text="{Binding NewUsername}" />
               <TextBox Grid.Column="2" Watermark="Password" PasswordChar="*" Text="{Binding NewPassword}" />
             </Grid>
             <CheckBox Content="Admin" IsChecked="{Binding EditIsAdmin}" Margin="0,0,0,8" />
@@ -183,7 +195,14 @@
           Margin="0,0,0,16"
         >
           <StackPanel>
-            <TextBox Watermark="Username" Text="{Binding EditUsername}" Margin="0,0,0,8" MaxWidth="300" HorizontalAlignment="Left" />
+            <Grid ColumnDefinitions="*,16,Auto" Margin="0,0,0,8">
+              <TextBox Grid.Column="0" Watermark="Email (login)" Text="{Binding EditUsername}" MaxWidth="300" HorizontalAlignment="Left" />
+              <StackPanel Grid.Column="2" Width="120">
+                <TextBlock Text="Max VMs" FontSize="12" Margin="0,0,0,4" />
+                <NumericUpDown Value="{Binding EditMaxVms}" Minimum="-1" FormatString="0" />
+              </StackPanel>
+            </Grid>
+            <TextBlock Text="-1 = unlimited, 0 = use global default" FontSize="11" Foreground="{DynamicResource MutedBrush}" Margin="0,0,0,8" />
             <CheckBox Content="Admin" IsChecked="{Binding EditIsAdmin}" Margin="0,0,0,8" />
 
             <ContentControl Content="{Binding}" ContentTemplate="{StaticResource PermissionCheckboxes}" />

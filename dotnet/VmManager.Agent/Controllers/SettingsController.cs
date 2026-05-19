@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VmManager.Agent.Services;
+using VmManager.Contracts.Models;
 
 namespace VmManager.Agent.Controllers;
 
@@ -12,22 +13,30 @@ public class SettingsController : ControllerBase
     private readonly SettingsService _settingsService;
     private readonly IEnumerable<ICatalogAdapter> _catalogAdapters;
     private readonly AuthorizationService _authorizationService;
+    private readonly EmailService _emailService;
+    private readonly QuotaService _quotaService;
     private readonly ILogger<SettingsController> _logger;
 
     public SettingsController(
         SettingsService settingsService,
         IEnumerable<ICatalogAdapter> catalogAdapters,
         AuthorizationService authorizationService,
+        EmailService emailService,
+        QuotaService quotaService,
         ILogger<SettingsController> logger
     )
     {
         ArgumentNullException.ThrowIfNull(settingsService);
         ArgumentNullException.ThrowIfNull(catalogAdapters);
         ArgumentNullException.ThrowIfNull(authorizationService);
+        ArgumentNullException.ThrowIfNull(emailService);
+        ArgumentNullException.ThrowIfNull(quotaService);
         ArgumentNullException.ThrowIfNull(logger);
         _settingsService = settingsService;
         _catalogAdapters = catalogAdapters;
         _authorizationService = authorizationService;
+        _emailService = emailService;
+        _quotaService = quotaService;
         _logger = logger;
     }
 
@@ -119,6 +128,32 @@ public class SettingsController : ControllerBase
 
         List<string> repos = await adapter.DiscoverRepositoriesAsync(feed, cancellationToken);
         return Ok(repos);
+    }
+
+    [HttpPost("test-email")]
+    [Authorize(Policy = Permission.SettingsEditScripts)]
+    [ProducesResponseType(typeof(EmailTestResult), 200)]
+    public async Task<IActionResult> TestEmail([FromBody] TestEmailRequest request)
+    {
+        EmailTestResult result = await _emailService.TestAsync(
+            request.ToAddress,
+            request.SmtpHost,
+            request.SmtpPort,
+            request.SmtpUsername,
+            request.SmtpPassword,
+            request.SmtpFromAddress,
+            request.SmtpUseTls
+        );
+        return Ok(result);
+    }
+
+    [HttpGet("quota")]
+    [ProducesResponseType(typeof(QuotaUsage), 200)]
+    public async Task<IActionResult> GetMyQuota()
+    {
+        string username = User.Identity?.Name ?? "admin";
+        QuotaUsage usage = await _quotaService.GetUsageAsync(username);
+        return Ok(usage);
     }
 
     private static bool FeedsEqual(List<FeedConfiguration> a, List<FeedConfiguration> b)

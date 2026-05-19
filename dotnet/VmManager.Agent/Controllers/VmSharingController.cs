@@ -14,6 +14,7 @@ public class VmSharingController : ControllerBase
     private readonly AuthorizationService _authorizationService;
     private readonly UserService _userService;
     private readonly RdpSessionStore _sessionStore;
+    private readonly EmailService _emailService;
     private readonly ILogger<VmSharingController> _logger;
 
     public VmSharingController(
@@ -22,6 +23,7 @@ public class VmSharingController : ControllerBase
         AuthorizationService authorizationService,
         UserService userService,
         RdpSessionStore sessionStore,
+        EmailService emailService,
         ILogger<VmSharingController> logger
     )
     {
@@ -30,12 +32,14 @@ public class VmSharingController : ControllerBase
         ArgumentNullException.ThrowIfNull(authorizationService);
         ArgumentNullException.ThrowIfNull(userService);
         ArgumentNullException.ThrowIfNull(sessionStore);
+        ArgumentNullException.ThrowIfNull(emailService);
         ArgumentNullException.ThrowIfNull(logger);
         _sharingService = sharingService;
         _ownershipService = ownershipService;
         _authorizationService = authorizationService;
         _userService = userService;
         _sessionStore = sessionStore;
+        _emailService = emailService;
         _logger = logger;
     }
 
@@ -79,7 +83,49 @@ public class VmSharingController : ControllerBase
         if (!validPermissions.Contains(Permission.RdpConnect))
             _sessionStore.DisconnectSessionsForUser(vmName, request.Username);
 
+        _ = SendShareNotificationAsync(vmName, owner, request.Username, validPermissions);
+
         return NoContent();
+    }
+
+    private async Task SendShareNotificationAsync(
+        string vmName,
+        string owner,
+        string recipient,
+        HashSet<string> permissions
+    )
+    {
+        try
+        {
+            string? email = GetUserEmail(recipient);
+            if (string.IsNullOrWhiteSpace(email))
+                return;
+
+            string permList = string.Join(", ", permissions.Select(p => p.Split('.').Last()));
+
+            string body =
+                $@"
+<h2>VM Shared With You</h2>
+<p><b>{owner}</b> has shared the VM <b>{vmName}</b> with you.</p>
+<p>Granted permissions: {permList}</p>
+<p>You can access this VM from the VmManager client.</p>";
+
+            await _emailService.SendAsync(email, "VM Shared: " + vmName, body);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send share notification for {VmName}", vmName);
+        }
+    }
+
+    private string? GetUserEmail(string username)
+    {
+        UserAccount? user = _userService.GetByUsername(username);
+        if (user == null)
+            return null;
+        if (user.IsAdmin)
+            return string.IsNullOrWhiteSpace(user.Email) ? null : user.Email;
+        return EmailValidator.IsValid(user.Username) ? user.Username : null;
     }
 
     [HttpDelete("{username}")]

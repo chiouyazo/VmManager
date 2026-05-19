@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using VmManager.Contracts.Models;
 using VmManager.Services;
 
 namespace VmManager.ViewModels;
@@ -12,10 +13,23 @@ public partial class ImagesViewModel : ViewModelBase
 
     private AgentClient _agentClient => App.AgentClient!;
 
-    public ImagesViewModel(ILogger<ImagesViewModel> logger)
+    [ObservableProperty]
+    private string _quotaText = "";
+
+    [ObservableProperty]
+    private bool _isOverQuota;
+
+    private readonly NativeNotificationService _nativeNotifications;
+
+    public ImagesViewModel(
+        ILogger<ImagesViewModel> logger,
+        NativeNotificationService nativeNotifications
+    )
     {
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(nativeNotifications);
         _logger = logger;
+        _nativeNotifications = nativeNotifications;
     }
 
     [ObservableProperty]
@@ -187,6 +201,7 @@ public partial class ImagesViewModel : ViewModelBase
             }
 
             await ReconnectToActiveTasksAsync();
+            await LoadQuotaAsync();
         }
         catch (Exception ex)
         {
@@ -196,6 +211,34 @@ public partial class ImagesViewModel : ViewModelBase
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    private async Task LoadQuotaAsync()
+    {
+        try
+        {
+            QuotaUsage quota = await _agentClient.GetMyQuotaAsync();
+            if (quota.MaxVms > 0)
+            {
+                QuotaText = $"{quota.VmsOwned}/{quota.MaxVms} VMs";
+                IsOverQuota = quota.VmsOwned >= quota.MaxVms;
+            }
+            else if (quota.GlobalMaxVms > 0)
+            {
+                QuotaText = $"{quota.GlobalVmCount}/{quota.GlobalMaxVms} VMs (global)";
+                IsOverQuota = quota.GlobalVmCount >= quota.GlobalMaxVms;
+            }
+            else
+            {
+                QuotaText = "";
+                IsOverQuota = false;
+            }
+        }
+        catch
+        {
+            QuotaText = "";
+            IsOverQuota = false;
         }
     }
 
@@ -235,9 +278,21 @@ public partial class ImagesViewModel : ViewModelBase
                             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                             {
                                 if (success)
+                                {
                                     NavigateWithMessage?.Invoke("MyVMs", "VM created successfully");
+                                    _nativeNotifications.Show(
+                                        "VM Ready",
+                                        "Your VM has been created and is ready to use."
+                                    );
+                                }
                                 else
+                                {
                                     ShowError("VM creation failed: " + (error ?? "unknown"));
+                                    _nativeNotifications.Show(
+                                        "VM Creation Failed",
+                                        error ?? "Unknown error"
+                                    );
+                                }
                                 IsCreatingVm = false;
                                 _currentCreateVmTaskId = null;
                                 CreateVmStatusMessage = Resources.Status_CreatingVm;
@@ -282,11 +337,21 @@ public partial class ImagesViewModel : ViewModelBase
                                 if (success)
                                 {
                                     ShowSuccess(Resources.Status_ImportComplete);
+                                    _nativeNotifications.Show(
+                                        "Import Complete",
+                                        "Image imported and ready to use."
+                                    );
                                     await LoadLocalImagesAsync();
                                     ApplyFilter();
                                 }
                                 else
+                                {
                                     ShowError("Import failed: " + (error ?? "unknown"));
+                                    _nativeNotifications.Show(
+                                        "Import Failed",
+                                        error ?? "Unknown error"
+                                    );
+                                }
                                 IsImporting = false;
                                 _currentImportTaskId = null;
                                 ImportStatusText = "";

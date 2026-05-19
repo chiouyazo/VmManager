@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using VmManager.Models;
+using VmManager.Services;
 using VmManager.ViewModels;
 using VmManager.Views.Dialogs;
 using Res = VmManager.Properties.Resources;
@@ -12,9 +13,10 @@ public partial class MyVmsPage : UserControl
 {
     private readonly MyVmsViewModel _viewModel;
 
-    public MyVmsPage(MyVmsViewModel viewModel)
+    public MyVmsPage(MyVmsViewModel viewModel, NotificationService notificationService)
     {
         _viewModel = viewModel;
+        _viewModel.Notifications = notificationService;
         DataContext = viewModel;
         InitializeComponent();
 

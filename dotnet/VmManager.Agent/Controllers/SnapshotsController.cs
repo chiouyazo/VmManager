@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VmManager.Agent.Services;
+using VmManager.Contracts.Models;
 
 namespace VmManager.Agent.Controllers;
 
@@ -17,6 +18,7 @@ public class SnapshotsController : ControllerBase
     private readonly IBackgroundTaskManager _backgroundTaskManager;
     private readonly AuthorizationService _authorizationService;
     private readonly VmOwnershipService _ownershipService;
+    private readonly QuotaService _quotaService;
     private readonly ILogger<SnapshotsController> _logger;
 
     public SnapshotsController(
@@ -28,6 +30,7 @@ public class SnapshotsController : ControllerBase
         IBackgroundTaskManager backgroundTaskManager,
         AuthorizationService authorizationService,
         VmOwnershipService ownershipService,
+        QuotaService quotaService,
         ILogger<SnapshotsController> logger
     )
     {
@@ -39,6 +42,7 @@ public class SnapshotsController : ControllerBase
         ArgumentNullException.ThrowIfNull(backgroundTaskManager);
         ArgumentNullException.ThrowIfNull(authorizationService);
         ArgumentNullException.ThrowIfNull(ownershipService);
+        ArgumentNullException.ThrowIfNull(quotaService);
         ArgumentNullException.ThrowIfNull(logger);
         _backend = backend;
         _vmTrackingService = vmTrackingService;
@@ -48,6 +52,7 @@ public class SnapshotsController : ControllerBase
         _backgroundTaskManager = backgroundTaskManager;
         _authorizationService = authorizationService;
         _ownershipService = ownershipService;
+        _quotaService = quotaService;
         _logger = logger;
     }
 
@@ -124,6 +129,11 @@ public class SnapshotsController : ControllerBase
         if (!_authorizationService.CanAccessVm(User, vmName, Permission.SnapshotClone))
             return Forbid();
 
+        string currentUser = User.Identity?.Name ?? "admin";
+        QuotaCheckResult quotaCheck = await _quotaService.CheckCanCreateVmAsync(currentUser);
+        if (!quotaCheck.Allowed)
+            return BadRequest(new { error = quotaCheck.Reason });
+
         _logger.LogInformation(
             "Cloning VM {VmName} from snapshot {SnapshotId} as {NewName}",
             vmName,
@@ -138,8 +148,6 @@ public class SnapshotsController : ControllerBase
 
         await _backend.CloneVmFromSnapshotAsync(vmName, snapshot.Name, request.NewName);
         _vmTrackingService.TrackVm(request.NewName, _vmTrackingService.GetOrigin(vmName));
-
-        string currentUser = User.Identity?.Name ?? "admin";
         _ownershipService.SetOwner(request.NewName, currentUser);
 
         return NoContent();

@@ -166,6 +166,8 @@ public partial class App : Application
                     services.AddSingleton<AgentConnection>();
                     services.AddSingleton<TrayIconService>();
                     services.AddSingleton<PermissionService>();
+                    services.AddSingleton<NotificationService>();
+                    services.AddSingleton<NativeNotificationService>();
 
                     services.AddTransient<ImagesViewModel>();
                     services.AddTransient<MyVmsViewModel>();

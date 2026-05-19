@@ -51,6 +51,11 @@ public class UserService
         bool isAdmin
     )
     {
+        if (!isAdmin && !EmailValidator.IsValid(username))
+            throw new InvalidOperationException(
+                "Username must be a valid email address: " + username
+            );
+
         lock (FileLock)
         {
             List<UserAccount> users = LoadUsers();
@@ -120,6 +125,39 @@ public class UserService
             if (user == null)
                 throw new InvalidOperationException("User not found: " + username);
             user.IsAdmin = isAdmin;
+            SaveUsers(users);
+        }
+    }
+
+    public void UpdateEmail(string username, string email)
+    {
+        if (!string.IsNullOrWhiteSpace(email) && !EmailValidator.IsValid(email))
+            throw new InvalidOperationException("Invalid email address: " + email);
+
+        lock (FileLock)
+        {
+            List<UserAccount> users = LoadUsers();
+            UserAccount? user = users.FirstOrDefault(u =>
+                string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase)
+            );
+            if (user == null)
+                throw new InvalidOperationException("User not found: " + username);
+            user.Email = email;
+            SaveUsers(users);
+        }
+    }
+
+    public void UpdateMaxVms(string username, int maxVms)
+    {
+        lock (FileLock)
+        {
+            List<UserAccount> users = LoadUsers();
+            UserAccount? user = users.FirstOrDefault(u =>
+                string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase)
+            );
+            if (user == null)
+                throw new InvalidOperationException("User not found: " + username);
+            user.MaxVms = maxVms;
             SaveUsers(users);
         }
     }

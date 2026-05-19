@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VmManager.Agent.Services;
+using VmManager.Contracts.Models;
 
 namespace VmManager.Agent.Controllers;
 
@@ -21,6 +22,9 @@ public class CatalogController : ControllerBase
     private readonly ILocalImageMetadataService _localImageMetadataService;
     private readonly IBackgroundTaskManager _backgroundTaskManager;
     private readonly VmOwnershipService _ownershipService;
+    private readonly QuotaService _quotaService;
+    private readonly EmailService _emailService;
+    private readonly UserService _userService;
     private readonly ILogger<CatalogController> _logger;
 
     public CatalogController(
@@ -35,6 +39,9 @@ public class CatalogController : ControllerBase
         ILocalImageMetadataService localImageMetadataService,
         IBackgroundTaskManager backgroundTaskManager,
         VmOwnershipService ownershipService,
+        QuotaService quotaService,
+        EmailService emailService,
+        UserService userService,
         ILogger<CatalogController> logger
     )
     {
@@ -49,6 +56,9 @@ public class CatalogController : ControllerBase
         ArgumentNullException.ThrowIfNull(localImageMetadataService);
         ArgumentNullException.ThrowIfNull(backgroundTaskManager);
         ArgumentNullException.ThrowIfNull(ownershipService);
+        ArgumentNullException.ThrowIfNull(quotaService);
+        ArgumentNullException.ThrowIfNull(emailService);
+        ArgumentNullException.ThrowIfNull(userService);
         ArgumentNullException.ThrowIfNull(logger);
         _catalogAggregator = catalogAggregator;
         _importService = importService;
@@ -61,6 +71,9 @@ public class CatalogController : ControllerBase
         _localImageMetadataService = localImageMetadataService;
         _backgroundTaskManager = backgroundTaskManager;
         _ownershipService = ownershipService;
+        _quotaService = quotaService;
+        _emailService = emailService;
+        _userService = userService;
         _logger = logger;
     }
 
@@ -358,9 +371,13 @@ public class CatalogController : ControllerBase
     [HttpPost("create-vm")]
     [Authorize(Policy = Permission.VmCreate)]
     [ProducesResponseType(typeof(object), 202)]
-    public IActionResult CreateVm([FromBody] CreateVmRequest request)
+    public async Task<IActionResult> CreateVm([FromBody] CreateVmRequest request)
     {
         string currentUser = User.Identity?.Name ?? "admin";
+
+        QuotaCheckResult quotaCheck = await _quotaService.CheckCanCreateVmAsync(currentUser);
+        if (!quotaCheck.Allowed)
+            return BadRequest(new { error = quotaCheck.Reason });
 
         _logger.LogInformation(
             "Creating VM {VmName} from {ExtractedFolder}, Origin: FeedId={FeedId}, FeedUrl={FeedUrl}, Repo={Repo}, ImageId={ImageId}",
@@ -480,10 +497,45 @@ public class CatalogController : ControllerBase
                     );
                 }
 
+                _ = SendVmCreatedEmailAsync(currentUser, request.Name);
+                _ = _quotaService.CheckAndNotifyApproachingLimitAsync(currentUser);
+
                 ctx.ReportProgress(1.0, "Complete");
             }
         );
 
         return Accepted(new { taskId = task.Id, title = task.Title });
+    }
+
+    private async Task SendVmCreatedEmailAsync(string username, string vmName)
+    {
+        try
+        {
+            string? email = GetUserEmail(username);
+            if (string.IsNullOrWhiteSpace(email))
+                return;
+
+            string body =
+                $@"
+<h2>VM Ready</h2>
+<p>Your VM <b>{vmName}</b> has been created and is ready to use.</p>
+<p>You can connect to it from the VmManager client.</p>";
+
+            await _emailService.SendAsync(email, "VM Ready: " + vmName, body);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send VM created email for {VmName}", vmName);
+        }
+    }
+
+    private string? GetUserEmail(string username)
+    {
+        UserAccount? user = _userService.GetByUsername(username);
+        if (user == null)
+            return null;
+        if (user.IsAdmin)
+            return string.IsNullOrWhiteSpace(user.Email) ? null : user.Email;
+        return EmailValidator.IsValid(user.Username) ? user.Username : null;
     }
 }
