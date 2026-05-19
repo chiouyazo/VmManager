@@ -756,20 +756,45 @@ public partial class MyVmsViewModel : ViewModelBase
         TimeSpan timeout
     )
     {
-        DateTime deadline = DateTime.UtcNow + timeout;
+        DateTime startTime = DateTime.UtcNow;
+        DateTime deadline = startTime + timeout;
+        int consecutiveFailures = 0;
         while (DateTime.UtcNow < deadline)
         {
-            List<VmInstance> vms = await _agentClient.GetVmsAsync();
-            VmInstance? updated = vms.FirstOrDefault(v => v.Name == vm.Name);
-            if (updated?.State == targetState)
-                return;
+            try
+            {
+                List<VmInstance> vms = await _agentClient.GetVmsAsync();
+                VmInstance? updated = vms.FirstOrDefault(v => v.Name == vm.Name);
+                if (updated?.State == targetState)
+                    return;
+                consecutiveFailures = 0;
+            }
+            catch (Exception ex)
+            {
+                consecutiveFailures++;
+                _logger.LogWarning(
+                    ex,
+                    "Polling VM state failed (attempt {Count})",
+                    consecutiveFailures
+                );
+                if (consecutiveFailures >= 3)
+                    throw new InvalidOperationException(
+                        $"Lost connection while waiting for {vm.Name} to reach '{targetState}'.",
+                        ex
+                    );
+            }
+
+            int elapsed = (int)(DateTime.UtcNow - startTime).TotalSeconds;
+            vm.StatusMessage = $"Waiting for {targetState}... ({elapsed}s)";
             await Task.Delay(3000);
         }
     }
 
     private async Task PollRdpReadyAsync(VmInstanceViewModel vm, TimeSpan timeout)
     {
-        DateTime deadline = DateTime.UtcNow + timeout;
+        DateTime startTime = DateTime.UtcNow;
+        DateTime deadline = startTime + timeout;
+        int consecutiveFailures = 0;
         while (DateTime.UtcNow < deadline)
         {
             try
@@ -777,8 +802,25 @@ public partial class MyVmsViewModel : ViewModelBase
                 bool ready = await _agentClient.IsRdpReadyAsync(vm.Name);
                 if (ready)
                     return;
+                consecutiveFailures = 0;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                consecutiveFailures++;
+                _logger.LogWarning(
+                    ex,
+                    "RDP readiness check failed (attempt {Count})",
+                    consecutiveFailures
+                );
+                if (consecutiveFailures >= 3)
+                    throw new InvalidOperationException(
+                        $"Lost connection while checking RDP for {vm.Name}.",
+                        ex
+                    );
+            }
+
+            int elapsed = (int)(DateTime.UtcNow - startTime).TotalSeconds;
+            vm.StatusMessage = $"Waiting for RDP... ({elapsed}s)";
             await Task.Delay(2000);
         }
     }

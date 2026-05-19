@@ -18,10 +18,11 @@ public partial class MyVmsPage : UserControl
         DataContext = viewModel;
         InitializeComponent();
 
-        _viewModel.ConfirmAction = async (_, _) =>
+        _viewModel.ConfirmAction = async (title, message) =>
         {
-            // TODO: replace with proper Avalonia confirm dialog
-            return true;
+            var dlg = new ConfirmDialog(title, message);
+            bool? result = await dlg.ShowDialog<bool?>(GetOwnerWindow());
+            return result == true;
         };
 
         _viewModel.RequestVmName = async defaultName =>

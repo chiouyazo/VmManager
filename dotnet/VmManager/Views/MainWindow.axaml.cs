@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.Http;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -8,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using VmManager.Services;
 using VmManager.ViewModels;
 using VmManager.Views.Controls;
+using VmManager.Views.Dialogs;
 using VmManager.Views.Pages;
 
 namespace VmManager.Views;
@@ -199,7 +201,27 @@ public partial class MainWindow : Window
         {
             _logger.LogError(ex, "Failed to connect to agent {AgentName}", agent.Name);
             Title = Properties.Resources.AppTitle;
-            // TODO: show error dialog
+
+            string errorMessage = ex switch
+            {
+                HttpRequestException { StatusCode: System.Net.HttpStatusCode.Unauthorized } =>
+                    $"Invalid credentials for {agent.Name}.",
+                HttpRequestException httpEx =>
+                    $"Could not reach {agent.Name} at {agent.Url}:\n{httpEx.Message}",
+                TimeoutException => $"Connection to {agent.Name} timed out.",
+                InvalidOperationException when ex.Message.Contains("not reachable") =>
+                    $"{agent.Name} at {agent.Url} is not reachable.\nCheck the URL and ensure the agent is running.",
+                _ => $"Failed to connect to {agent.Name}:\n{ex.Message}",
+            };
+
+            var dlg = new ConfirmDialog(
+                "Connection Failed",
+                errorMessage,
+                isDangerous: false,
+                confirmText: "OK",
+                cancelText: null
+            );
+            await dlg.ShowDialog<bool?>(this);
             EnvironmentSelector.SelectedIndex = 0;
         }
         finally

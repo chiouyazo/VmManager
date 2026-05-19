@@ -86,10 +86,10 @@ public class ProxmoxVmService
         int vmid = await ResolveVmIdAsync(name);
         _logger.LogInformation("Stopping VM {Name} (VMID {VmId})", name, vmid);
 
-        string upid = await PostForUpidAsync($"{_api.VmPath(vmid)}/status/shutdown");
         try
         {
-            await _api.PollTaskAsync(upid, TimeSpan.FromSeconds(30));
+            string upid = await PostForUpidAsync($"{_api.VmPath(vmid)}/status/shutdown");
+            await _api.PollTaskAsync(upid, TimeSpan.FromSeconds(10));
             return;
         }
         catch
@@ -97,8 +97,8 @@ public class ProxmoxVmService
             _logger.LogWarning("Graceful shutdown timed out for {Name}, forcing stop", name);
         }
 
-        upid = await PostForUpidAsync($"{_api.VmPath(vmid)}/status/stop");
-        await _api.PollTaskAsync(upid);
+        string stopUpid = await PostForUpidAsync($"{_api.VmPath(vmid)}/status/stop");
+        await _api.PollTaskAsync(stopUpid);
     }
 
     public async Task DeleteVmAsync(string name)

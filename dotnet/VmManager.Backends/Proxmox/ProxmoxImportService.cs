@@ -430,25 +430,7 @@ public class ProxmoxImportService
         }
 
         onStatus?.Invoke("Shutting down VM...");
-        try
-        {
-            await Shared.WinRmLocaleHelper.RunWinRmCmdAsync(
-                ip,
-                username,
-                password,
-                "shutdown /s /t 0"
-            );
-        }
-        catch { }
-        for (int i = 0; i < 30; i++)
-        {
-            await Task.Delay(2000);
-            JsonElement st = await _api.GetAsync<JsonElement>(
-                $"{_api.VmPath(vmid)}/status/current"
-            );
-            if (st.GetProperty("status").GetString() == "stopped")
-                break;
-        }
+        await StopVmAsync(vmid);
 
         onStatus?.Invoke("Creating base snapshot...");
         await CreateBaseSnapshotAsync(vmName);
@@ -467,16 +449,8 @@ public class ProxmoxImportService
 
     private async Task StopVmAsync(int vmid)
     {
-        try
-        {
-            string upid = await PostForUpidAsync($"{_api.VmPath(vmid)}/status/shutdown");
-            await _api.PollTaskAsync(upid, TimeSpan.FromSeconds(30));
-        }
-        catch
-        {
-            string upid = await PostForUpidAsync($"{_api.VmPath(vmid)}/status/stop");
-            await _api.PollTaskAsync(upid);
-        }
+        string upid = await PostForUpidAsync($"{_api.VmPath(vmid)}/status/stop");
+        await _api.PollTaskAsync(upid);
     }
 
     private async Task<string?> WaitForIpAsync(string vmName, TimeSpan timeout)
