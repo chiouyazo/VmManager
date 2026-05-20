@@ -13,22 +13,26 @@ public class UsersController : ControllerBase
     private readonly UserService _userService;
     private readonly VmSharingService _sharingService;
     private readonly QuotaService _quotaService;
+    private readonly EmailService _emailService;
     private readonly ILogger<UsersController> _logger;
 
     public UsersController(
         UserService userService,
         VmSharingService sharingService,
         QuotaService quotaService,
+        EmailService emailService,
         ILogger<UsersController> logger
     )
     {
         ArgumentNullException.ThrowIfNull(userService);
         ArgumentNullException.ThrowIfNull(sharingService);
         ArgumentNullException.ThrowIfNull(quotaService);
+        ArgumentNullException.ThrowIfNull(emailService);
         ArgumentNullException.ThrowIfNull(logger);
         _userService = userService;
         _sharingService = sharingService;
         _quotaService = quotaService;
+        _emailService = emailService;
         _logger = logger;
     }
 
@@ -176,6 +180,51 @@ public class UsersController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+    }
+
+    [HttpPost("{username}/send-invite")]
+    [ProducesResponseType(200)]
+    [ProducesResponseType(400)]
+    public async Task<IActionResult> SendInviteEmail(string username)
+    {
+        UserAccount? user = _userService.GetByUsername(username);
+        if (user == null)
+            return BadRequest(new { error = "User not found" });
+
+        string? email = user.IsAdmin
+            ? (string.IsNullOrWhiteSpace(user.Email) ? null : user.Email)
+            : (EmailValidator.IsValid(user.Username) ? user.Username : null);
+
+        if (string.IsNullOrWhiteSpace(email))
+            return BadRequest(new { error = "User has no valid email address" });
+
+        string tempPassword = GenerateTempPassword();
+        _userService.ChangePassword(username, tempPassword);
+        _userService.SetMustChangePassword(username, true);
+
+        string body =
+            $@"
+<h2>VmManager Account</h2>
+<p>An account has been created for you on VmManager.</p>
+<p>Your temporary credentials:</p>
+<ul>
+    <li>Login: <b>{user.Username}</b></li>
+    <li>Password: <b>{tempPassword}</b></li>
+</ul>
+<p>You will be required to change your password on first login.</p>";
+
+        await _emailService.SendAsync(email, "VmManager Account - Password Reset", body);
+        return Ok(new { success = true });
+    }
+
+    private static string GenerateTempPassword()
+    {
+        const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$";
+        byte[] bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(12);
+        char[] result = new char[12];
+        for (int i = 0; i < 12; i++)
+            result[i] = chars[bytes[i] % chars.Length];
+        return new string(result);
     }
 
     [HttpPut("{username}/email")]

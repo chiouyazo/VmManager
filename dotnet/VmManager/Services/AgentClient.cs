@@ -488,6 +488,11 @@ public sealed class AgentClient : IDisposable
         await PutAsync("/api/users/" + Uri.EscapeDataString(username) + "/quota", new { maxVms });
     }
 
+    public async Task SendInviteEmailAsync(string username)
+    {
+        await PostAsync("/api/users/" + Uri.EscapeDataString(username) + "/send-invite", null);
+    }
+
     public async Task UpdateUserEmailAsync(string username, string email)
     {
         await PutAsync("/api/users/" + Uri.EscapeDataString(username) + "/email", new { email });

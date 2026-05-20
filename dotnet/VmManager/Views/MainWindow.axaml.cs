@@ -6,6 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
+using VmManager.Contracts.Models;
 using VmManager.Services;
 using VmManager.ViewModels;
 using VmManager.Views.Controls;
@@ -193,6 +194,18 @@ public partial class MainWindow : Window
 
             App.AgentClient = _agentConnection.Client;
             Title = Properties.Resources.AppTitle;
+
+            AuthenticatedUser currentUser = await App.AgentClient.GetCurrentUserAsync();
+            if (currentUser.MustChangePassword)
+            {
+                ChangePasswordDialog pwDialog = new ChangePasswordDialog();
+                bool? changed = await pwDialog.ShowDialog<bool?>(this);
+                if (changed != true)
+                {
+                    EnvironmentSelector.SelectedIndex = 0;
+                    return;
+                }
+            }
 
             await _permissionService.RefreshAsync();
             UpdateNavVisibility();

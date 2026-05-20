@@ -30,12 +30,17 @@ public class AuthController : ControllerBase
             .Select(c => c.Value)
             .ToHashSet();
 
+        bool mustChangePassword = User.Claims.Any(c =>
+            c.Type == "MustChangePassword" && c.Value == "true"
+        );
+
         return Ok(
             new AuthenticatedUser
             {
                 Username = username,
                 IsAdmin = isAdmin,
                 Permissions = permissions,
+                MustChangePassword = mustChangePassword,
             }
         );
     }

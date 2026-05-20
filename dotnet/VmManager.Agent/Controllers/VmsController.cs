@@ -21,6 +21,8 @@ public class VmsController : ControllerBase
     private readonly AuthorizationService _authorizationService;
     private readonly VmOwnershipService _ownershipService;
     private readonly VmSharingService _sharingService;
+    private readonly EmailService _emailService;
+    private readonly UserService _userService;
     private readonly ILogger<VmsController> _logger;
 
     public VmsController(
@@ -35,6 +37,8 @@ public class VmsController : ControllerBase
         AuthorizationService authorizationService,
         VmOwnershipService ownershipService,
         VmSharingService sharingService,
+        EmailService emailService,
+        UserService userService,
         ILogger<VmsController> logger
     )
     {
@@ -49,6 +53,8 @@ public class VmsController : ControllerBase
         ArgumentNullException.ThrowIfNull(authorizationService);
         ArgumentNullException.ThrowIfNull(ownershipService);
         ArgumentNullException.ThrowIfNull(sharingService);
+        ArgumentNullException.ThrowIfNull(emailService);
+        ArgumentNullException.ThrowIfNull(userService);
         ArgumentNullException.ThrowIfNull(logger);
         _backend = backend;
         _networkService = networkService;
@@ -61,6 +67,8 @@ public class VmsController : ControllerBase
         _authorizationService = authorizationService;
         _ownershipService = ownershipService;
         _sharingService = sharingService;
+        _emailService = emailService;
+        _userService = userService;
         _logger = logger;
     }
 
@@ -211,11 +219,17 @@ public class VmsController : ControllerBase
             return Forbid();
 
         _logger.LogInformation("Deleting VM {VmName}", name);
+        string vmOwner = _ownershipService.GetOwner(name);
+        string currentUser = User.Identity?.Name ?? "admin";
+
         await _backend.DeleteVmAsync(name);
         _vmTrackingService.UntrackVm(name);
         _vmTrackingService.RemoveNote(name);
         _ownershipService.RemoveOwner(name);
         _sharingService.RemoveAllSharesForVm(name);
+
+        if (!string.Equals(vmOwner, currentUser, StringComparison.OrdinalIgnoreCase))
+            _ = SendVmDeletedEmailAsync(vmOwner, name, currentUser);
 
         AppSettings settings = _settingsService.Load();
         List<string> emptyNetworks = _networkTrackingService.DecrementReferences(name);
@@ -521,5 +535,40 @@ public class VmsController : ControllerBase
                 _logger.LogWarning(ex, "Post-startup script failed for {VmName}", vmName);
             }
         });
+    }
+
+    private async Task SendVmDeletedEmailAsync(
+        string ownerUsername,
+        string vmName,
+        string deletedBy
+    )
+    {
+        try
+        {
+            string? email = GetUserEmail(ownerUsername);
+            if (string.IsNullOrWhiteSpace(email))
+                return;
+
+            string body =
+                $@"
+<h2>VM Deleted</h2>
+<p>Your VM <b>{vmName}</b> has been deleted by <b>{deletedBy}</b>.</p>";
+
+            await _emailService.SendAsync(email, "VM Deleted: " + vmName, body);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send VM deleted email for {VmName}", vmName);
+        }
+    }
+
+    private string? GetUserEmail(string username)
+    {
+        UserAccount? user = _userService.GetByUsername(username);
+        if (user == null)
+            return null;
+        if (user.IsAdmin)
+            return string.IsNullOrWhiteSpace(user.Email) ? null : user.Email;
+        return EmailValidator.IsValid(user.Username) ? user.Username : null;
     }
 }

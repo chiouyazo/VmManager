@@ -119,6 +119,7 @@ public static class AgentHost
 
         app.UseCors();
         app.UseAuthentication();
+        app.UseMiddleware<Auth.MustChangePasswordMiddleware>();
         app.UseAuthorization();
         app.UseSwagger();
         app.UseSwaggerUI();

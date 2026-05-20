@@ -159,8 +159,33 @@ public class VmSharingController : ControllerBase
         if (_userService.GetByUsername(request.NewOwnerUsername) == null)
             return BadRequest(new { error = "User not found: " + request.NewOwnerUsername });
 
+        string previousOwner = _ownershipService.GetOwner(vmName);
         _ownershipService.TransferOwnership(vmName, request.NewOwnerUsername);
         _sharingService.UnshareVm(vmName, request.NewOwnerUsername);
+
+        _ = SendTransferEmailAsync(vmName, previousOwner, request.NewOwnerUsername);
+
         return NoContent();
+    }
+
+    private async Task SendTransferEmailAsync(string vmName, string fromUser, string toUser)
+    {
+        try
+        {
+            string? newOwnerEmail = GetUserEmail(toUser);
+            if (!string.IsNullOrWhiteSpace(newOwnerEmail))
+            {
+                string body =
+                    $@"
+<h2>VM Ownership Transferred</h2>
+<p>The VM <b>{vmName}</b> has been transferred to you by <b>{fromUser}</b>.</p>
+<p>You are now the owner of this VM.</p>";
+                await _emailService.SendAsync(newOwnerEmail, "VM Transferred: " + vmName, body);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send transfer email for {VmName}", vmName);
+        }
     }
 }

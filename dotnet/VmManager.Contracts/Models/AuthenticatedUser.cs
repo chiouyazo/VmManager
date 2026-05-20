@@ -7,4 +7,5 @@ public class AuthenticatedUser
     public HashSet<string> Permissions { get; set; } = [];
     public string Email { get; set; } = "";
     public int MaxVms { get; set; }
+    public bool MustChangePassword { get; set; }
 }

@@ -282,6 +282,23 @@ public partial class UsersViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private async Task SendInviteAsync(AuthenticatedUser user)
+    {
+        if (App.AgentClient == null)
+            return;
+
+        try
+        {
+            await App.AgentClient.SendInviteEmailAsync(user.Username);
+            ShowSuccess("Invite email sent to " + user.Username);
+        }
+        catch (Exception ex)
+        {
+            ShowError("Failed to send invite: " + ex.Message);
+        }
+    }
+
+    [RelayCommand]
     private async Task ConfirmDeleteUserAsync()
     {
         if (App.AgentClient == null || SelectedUser == null)

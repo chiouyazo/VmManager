@@ -53,6 +53,9 @@ public class BasicAuthenticationHandler : AuthenticationHandler<AuthenticationSc
 
             List<Claim> claims = [new Claim(ClaimTypes.Name, account.Username)];
 
+            if (account.MustChangePassword)
+                claims.Add(new Claim("MustChangePassword", "true"));
+
             if (account.IsAdmin)
             {
                 claims.Add(new Claim(ClaimTypes.Role, "Admin"));

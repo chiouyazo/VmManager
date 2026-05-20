@@ -75,6 +75,7 @@ public class UserService
                 IsAdmin = isAdmin,
                 Permissions = permissions,
                 CreatedAt = DateTime.UtcNow,
+                MustChangePassword = !isAdmin,
             };
 
             users.Add(account);
@@ -125,6 +126,21 @@ public class UserService
             if (user == null)
                 throw new InvalidOperationException("User not found: " + username);
             user.IsAdmin = isAdmin;
+            SaveUsers(users);
+        }
+    }
+
+    public void SetMustChangePassword(string username, bool mustChange)
+    {
+        lock (FileLock)
+        {
+            List<UserAccount> users = LoadUsers();
+            UserAccount? user = users.FirstOrDefault(u =>
+                string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase)
+            );
+            if (user == null)
+                throw new InvalidOperationException("User not found: " + username);
+            user.MustChangePassword = mustChange;
             SaveUsers(users);
         }
     }
@@ -218,6 +234,7 @@ public class UserService
                 throw new InvalidOperationException("User not found: " + username);
             user.Salt = GenerateSalt();
             user.PasswordHash = HashPassword(newPassword, user.Salt);
+            user.MustChangePassword = false;
             SaveUsers(users);
             _logger.LogInformation("Changed password for user {Username}", username);
         }
