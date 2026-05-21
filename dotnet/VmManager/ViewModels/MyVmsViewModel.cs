@@ -56,6 +56,17 @@ public partial class MyVmsViewModel : ViewModelBase
     private bool _backendUnavailable;
 
     [ObservableProperty]
+    private string _backendError = "";
+
+    [ObservableProperty]
+    private string _searchQuery = "";
+
+    [ObservableProperty]
+    private string _stateFilter = "All";
+
+    public bool HasSharedVms => SharedVms.Count > 0;
+
+    [ObservableProperty]
     private bool _noVmsDetected;
 
     [ObservableProperty]
@@ -143,6 +154,7 @@ public partial class MyVmsViewModel : ViewModelBase
             SharedVms.Clear();
             foreach (VmInstanceViewModel vm in wrapped.Where(v => v.IsSharedWithCurrentUser))
                 SharedVms.Add(vm);
+            OnPropertyChanged(nameof(HasSharedVms));
 
             NoVmsDetected = allVms.Count == 0;
 
@@ -170,6 +182,54 @@ public partial class MyVmsViewModel : ViewModelBase
         {
             IsLoading = false;
         }
+    }
+
+    [RelayCommand]
+    public void SetFilter(string filter)
+    {
+        StateFilter = filter;
+        ApplyFilters();
+    }
+
+    partial void OnSearchQueryChanged(string value)
+    {
+        ApplyFilters();
+    }
+
+    [RelayCommand]
+    public void ToggleExpand(VmInstanceViewModel vm)
+    {
+        bool wasExpanded = vm.IsExpanded;
+        foreach (VmInstanceViewModel v in Vms)
+            v.IsExpanded = false;
+
+        vm.IsExpanded = !wasExpanded;
+        if (vm.IsExpanded && !vm.SnapshotsLoaded)
+            _ = LoadSnapshotsForVmAsync(vm);
+    }
+
+    private void ApplyFilters()
+    {
+        List<VmInstanceViewModel> filtered = Vms.ToList();
+
+        if (!string.IsNullOrEmpty(SearchQuery))
+        {
+            filtered = filtered
+                .Where(v => v.Name.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        if (StateFilter == "Running")
+            filtered = filtered.Where(v => v.IsRunning).ToList();
+        else if (StateFilter == "Off")
+            filtered = filtered.Where(v => v.IsOff).ToList();
+
+        RebuildGroups(filtered);
+
+        SharedVms.Clear();
+        foreach (VmInstanceViewModel vm in filtered.Where(v => v.IsSharedWithCurrentUser))
+            SharedVms.Add(vm);
+        OnPropertyChanged(nameof(HasSharedVms));
     }
 
     [RelayCommand]

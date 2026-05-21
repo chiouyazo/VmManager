@@ -488,6 +488,24 @@ public sealed class AgentClient : IDisposable
         await PutAsync("/api/users/" + Uri.EscapeDataString(username) + "/quota", new { maxVms });
     }
 
+    public async Task<List<VmSessionGroup>> GetActiveSessionsAsync()
+    {
+        return await GetJsonAsync<List<VmSessionGroup>>("/api/sessions")
+            ?? new List<VmSessionGroup>();
+    }
+
+    public async Task DisconnectSessionAsync(string vmName, string token)
+    {
+        await PostAsync(
+            "/api/sessions/"
+                + Uri.EscapeDataString(vmName)
+                + "/"
+                + Uri.EscapeDataString(token)
+                + "/disconnect",
+            null
+        );
+    }
+
     public async Task SendInviteEmailAsync(string username)
     {
         await PostAsync("/api/users/" + Uri.EscapeDataString(username) + "/send-invite", null);

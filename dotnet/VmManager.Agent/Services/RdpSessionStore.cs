@@ -130,6 +130,21 @@ public sealed class RdpSessionStore : IDisposable
         }
     }
 
+    public void ForceDisconnect(string token)
+    {
+        if (_sessions.TryGetValue(token, out RdpSession? session))
+        {
+            session.Cancellation.Cancel();
+            session.State = RdpSessionState.Completed;
+            session.CompletedAt = DateTimeOffset.UtcNow;
+            _logger.LogInformation(
+                "RDP session force-disconnected for VM {VmName}, token={TokenPrefix}...",
+                session.VmName,
+                token[..8]
+            );
+        }
+    }
+
     public IReadOnlyList<RdpSession> GetAllSessions()
     {
         return _sessions.Values.ToList();

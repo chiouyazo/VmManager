@@ -2,31 +2,65 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
   <Styles.Resources>
+    <!-- Core Colors -->
     <SolidColorBrush x:Key="BgBrush" Color="White" />
     <SolidColorBrush x:Key="SurfaceBrush" Color="#F5F5F5" />
     <SolidColorBrush x:Key="SidebarBrush" Color="#F5F5F5" />
     <SolidColorBrush x:Key="CardBrush" Color="White" />
-    <SolidColorBrush x:Key="AccentBrush" Color="#2196F3" />
-    <SolidColorBrush x:Key="AccentDarkBrush" Color="#1976D2" />
-    <SolidColorBrush x:Key="AccentLightBrush" Color="#E3F2FD" />
-    <SolidColorBrush x:Key="TextBrush" Color="#1A1A1A" />
-    <SolidColorBrush x:Key="MutedBrush" Color="#666666" />
-    <SolidColorBrush x:Key="HintBrush" Color="#999999" />
-    <SolidColorBrush x:Key="DividerBrush" Color="#E0E0E0" />
-    <SolidColorBrush x:Key="SuccessBrush" Color="#2E7D32" />
-    <SolidColorBrush x:Key="ErrorBrush" Color="#D32F2F" />
-    <SolidColorBrush x:Key="WarningBrush" Color="#F57C00" />
     <SolidColorBrush x:Key="InputBrush" Color="White" />
 
-    <SolidColorBrush x:Key="ButtonBackground" Color="#E8E8E8" />
-    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#D0D0D0" />
-    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#B8B8B8" />
+    <!-- Accent -->
+    <SolidColorBrush x:Key="AccentBrush" Color="#0078D4" />
+    <SolidColorBrush x:Key="AccentDarkBrush" Color="#005A9E" />
+    <SolidColorBrush x:Key="AccentLightBrush" Color="#E6F2FB" />
+
+    <!-- Text -->
+    <SolidColorBrush x:Key="TextBrush" Color="#1A1A1A" />
+    <SolidColorBrush x:Key="MutedBrush" Color="#606060" />
+    <SolidColorBrush x:Key="HintBrush" Color="#9E9E9E" />
+
+    <!-- Borders -->
+    <SolidColorBrush x:Key="DividerBrush" Color="#E0E0E0" />
+    <SolidColorBrush x:Key="SubtleBrush" Color="#F0F0F0" />
+
+    <!-- Status -->
+    <SolidColorBrush x:Key="SuccessBrush" Color="#107C10" />
+    <SolidColorBrush x:Key="ErrorBrush" Color="#D13438" />
+    <SolidColorBrush x:Key="WarningBrush" Color="#CA5010" />
+
+    <!-- State badges -->
+    <SolidColorBrush x:Key="StateRunningBrush" Color="#107C10" />
+    <SolidColorBrush x:Key="StateOffBrush" Color="#8A8886" />
+    <SolidColorBrush x:Key="StateBusyBrush" Color="#CA5010" />
+
+    <!-- Tags -->
+    <SolidColorBrush x:Key="TagBrush" Color="#EFF6FC" />
+    <SolidColorBrush x:Key="TagTextBrush" Color="#0078D4" />
+
+    <!-- Button colors -->
+    <SolidColorBrush x:Key="ButtonBackground" Color="#F0F0F0" />
+    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#E0E0E0" />
+    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#D0D0D0" />
     <SolidColorBrush x:Key="ButtonForeground" Color="#1A1A1A" />
     <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#1A1A1A" />
     <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#1A1A1A" />
 
+    <!-- Spacing -->
+    <Thickness x:Key="SpaceXs">4</Thickness>
+    <Thickness x:Key="SpaceSm">8</Thickness>
+    <Thickness x:Key="SpaceMd">12</Thickness>
+    <Thickness x:Key="SpaceLg">16</Thickness>
+    <Thickness x:Key="SpaceXl">24</Thickness>
+
+    <!-- Corner radius -->
+    <CornerRadius x:Key="RoundSm">4</CornerRadius>
+    <CornerRadius x:Key="RoundMd">6</CornerRadius>
+    <CornerRadius x:Key="RoundLg">8</CornerRadius>
+    <CornerRadius x:Key="RoundPill">12</CornerRadius>
+
+    <!-- Button Themes -->
     <ControlTheme x:Key="PrimaryButtonStyle" TargetType="Button">
-      <Setter Property="Foreground" Value="#2196F3" />
+      <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
       <Setter Property="CornerRadius" Value="6" />
       <Setter Property="Padding" Value="12,7" />
       <Setter Property="Cursor" Value="Hand" />
@@ -37,7 +71,7 @@
         <ControlTemplate TargetType="Button">
           <ContentPresenter x:Name="PART_ContentPresenter"
                             Background="White"
-                            BorderBrush="#2196F3"
+                            BorderBrush="{DynamicResource AccentBrush}"
                             BorderThickness="1"
                             CornerRadius="{TemplateBinding CornerRadius}"
                             Padding="{TemplateBinding Padding}"
@@ -48,15 +82,15 @@
         </ControlTemplate>
       </Setter>
       <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-        <Setter Property="Background" Value="#E3F2FD" />
-        <Setter Property="BorderBrush" Value="#1976D2" />
+        <Setter Property="Background" Value="{DynamicResource AccentLightBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentDarkBrush}" />
       </Style>
       <Style Selector="^:pressed /template/ ContentPresenter#PART_ContentPresenter">
-        <Setter Property="Background" Value="#BBDEFB" />
-        <Setter Property="BorderBrush" Value="#1976D2" />
+        <Setter Property="Background" Value="#CCE4F7" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentDarkBrush}" />
       </Style>
       <Style Selector="^:disabled">
-        <Setter Property="Opacity" Value="0.5" />
+        <Setter Property="Opacity" Value="0.4" />
       </Style>
     </ControlTheme>
 
@@ -72,7 +106,7 @@
       <Setter Property="Template">
         <ControlTemplate TargetType="Button">
           <ContentPresenter x:Name="PART_ContentPresenter"
-                            Background="#2196F3"
+                            Background="{DynamicResource AccentBrush}"
                             BorderThickness="0"
                             CornerRadius="{TemplateBinding CornerRadius}"
                             Padding="{TemplateBinding Padding}"
@@ -83,13 +117,13 @@
         </ControlTemplate>
       </Setter>
       <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-        <Setter Property="Background" Value="#1E88E5" />
+        <Setter Property="Background" Value="#106EBE" />
       </Style>
       <Style Selector="^:pressed /template/ ContentPresenter#PART_ContentPresenter">
-        <Setter Property="Background" Value="#1976D2" />
+        <Setter Property="Background" Value="{DynamicResource AccentDarkBrush}" />
       </Style>
       <Style Selector="^:disabled">
-        <Setter Property="Opacity" Value="0.5" />
+        <Setter Property="Opacity" Value="0.4" />
       </Style>
     </ControlTheme>
 
@@ -104,7 +138,7 @@
       <Setter Property="Template">
         <ControlTemplate TargetType="Button">
           <ContentPresenter x:Name="PART_ContentPresenter"
-                            Background="#D32F2F"
+                            Background="{DynamicResource ErrorBrush}"
                             BorderThickness="0"
                             CornerRadius="{TemplateBinding CornerRadius}"
                             Padding="{TemplateBinding Padding}"
@@ -115,18 +149,18 @@
         </ControlTemplate>
       </Setter>
       <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-        <Setter Property="Background" Value="#C62828" />
+        <Setter Property="Background" Value="#C50F1F" />
       </Style>
       <Style Selector="^:pressed /template/ ContentPresenter#PART_ContentPresenter">
-        <Setter Property="Background" Value="#B71C1C" />
+        <Setter Property="Background" Value="#A80000" />
       </Style>
       <Style Selector="^:disabled">
-        <Setter Property="Opacity" Value="0.5" />
+        <Setter Property="Opacity" Value="0.4" />
       </Style>
     </ControlTheme>
 
     <ControlTheme x:Key="NavButtonStyle" TargetType="Button">
-      <Setter Property="Foreground" Value="#666666" />
+      <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
       <Setter Property="Padding" Value="16,10" />
       <Setter Property="HorizontalContentAlignment" Value="Left" />
       <Setter Property="HorizontalAlignment" Value="Stretch" />
@@ -147,12 +181,12 @@
         </ControlTemplate>
       </Setter>
       <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-        <Setter Property="Background" Value="#E0E0E0" />
+        <Setter Property="Background" Value="#E8E8E8" />
       </Style>
     </ControlTheme>
 
     <ControlTheme x:Key="NavButtonActiveStyle" TargetType="Button">
-      <Setter Property="Foreground" Value="#1A1A1A" />
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
       <Setter Property="Padding" Value="16,10" />
       <Setter Property="HorizontalContentAlignment" Value="Left" />
       <Setter Property="HorizontalAlignment" Value="Stretch" />
@@ -176,39 +210,61 @@
 
     <ControlTheme x:Key="CardStyle" TargetType="Border">
       <Setter Property="Background" Value="White" />
-      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="CornerRadius" Value="{DynamicResource RoundLg}" />
       <Setter Property="Padding" Value="16" />
       <Setter Property="Margin" Value="0,0,0,12" />
       <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BoxShadow" Value="0 1 6 0 #1A000000" />
+      <Setter Property="BoxShadow" Value="0 2 8 0 #14000000" />
     </ControlTheme>
 
+    <ControlTheme x:Key="StateBadgeStyle" TargetType="Border">
+      <Setter Property="CornerRadius" Value="{DynamicResource RoundPill}" />
+      <Setter Property="Padding" Value="10,3" />
+    </ControlTheme>
   </Styles.Resources>
 
-  <Style Selector="TextBlock.heading-large">
+  <!-- Typography -->
+  <Style Selector="TextBlock.display">
     <Setter Property="FontSize" Value="28" />
+    <Setter Property="FontWeight" Value="Light" />
+  </Style>
+  <Style Selector="TextBlock.heading-large">
+    <Setter Property="FontSize" Value="24" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
-
   <Style Selector="TextBlock.title">
-    <Setter Property="FontSize" Value="22" />
+    <Setter Property="FontSize" Value="20" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
-
   <Style Selector="TextBlock.heading-small">
     <Setter Property="FontSize" Value="16" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
-
+  <Style Selector="TextBlock.subtitle">
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.body">
+    <Setter Property="FontSize" Value="14" />
+  </Style>
+  <Style Selector="TextBlock.body-strong">
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
   <Style Selector="TextBlock.muted">
     <Setter Property="Foreground" Value="{DynamicResource MutedBrush}" />
     <Setter Property="FontSize" Value="12" />
   </Style>
-
   <Style Selector="TextBlock.caption">
     <Setter Property="Foreground" Value="{DynamicResource HintBrush}" />
-    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+
+  <!-- Base controls -->
+  <Style Selector="TextBlock">
+    <Setter Property="FontFamily" Value="Segoe UI Variable, Segoe UI, sans-serif" />
+    <Setter Property="FontSize" Value="13" />
   </Style>
 
   <Style Selector="Button">
@@ -221,20 +277,15 @@
     <Setter Property="VerticalContentAlignment" Value="Center" />
   </Style>
   <Style Selector="Button:disabled">
-    <Setter Property="Opacity" Value="0.5" />
-  </Style>
-
-  <Style Selector="TextBlock">
-    <Setter Property="FontFamily" Value="Segoe UI" />
-    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Opacity" Value="0.4" />
   </Style>
 
   <Style Selector="TextBox">
     <Setter Property="Background" Value="{DynamicResource InputBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="Padding" Value="8,6" />
-    <Setter Property="FontFamily" Value="Segoe UI" />
+    <Setter Property="Padding" Value="10,8" />
+    <Setter Property="FontFamily" Value="Segoe UI Variable, Segoe UI, sans-serif" />
     <Setter Property="FontSize" Value="13" />
     <Setter Property="CaretBrush" Value="{DynamicResource TextBrush}" />
     <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}" />
@@ -245,37 +296,38 @@
   </Style>
   <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
     <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
   </Style>
 
   <Style Selector="ComboBox">
     <Setter Property="Background" Value="{DynamicResource InputBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="Padding" Value="8,6" />
-    <Setter Property="FontFamily" Value="Segoe UI" />
+    <Setter Property="Padding" Value="10,8" />
+    <Setter Property="FontFamily" Value="Segoe UI Variable, Segoe UI, sans-serif" />
     <Setter Property="FontSize" Value="13" />
     <Setter Property="CornerRadius" Value="6" />
   </Style>
   <Style Selector="ComboBox:pointerover /template/ Border#Background">
-    <Setter Property="BorderBrush" Value="#2196F3" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
   </Style>
-
   <Style Selector="ComboBoxItem">
     <Setter Property="Background" Value="Transparent" />
-    <Setter Property="Padding" Value="8,6" />
+    <Setter Property="Padding" Value="10,8" />
   </Style>
   <Style Selector="ComboBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="#E8E8E8" />
+    <Setter Property="Background" Value="{DynamicResource SubtleBrush}" />
   </Style>
   <Style Selector="ComboBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="#E0E0E0" />
+    <Setter Property="Background" Value="{DynamicResource AccentLightBrush}" />
   </Style>
 
   <Style Selector="ProgressBar">
-    <Setter Property="Background" Value="#F0F0F0" />
+    <Setter Property="Background" Value="{DynamicResource SubtleBrush}" />
     <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="Height" Value="4" />
+    <Setter Property="CornerRadius" Value="2" />
   </Style>
 
   <Style Selector="Expander">
@@ -287,9 +339,10 @@
     <Setter Property="Background" Value="White" />
     <Setter Property="BorderBrush" Value="{DynamicResource DividerBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="Padding" Value="8,5" />
+    <Setter Property="Padding" Value="10,6" />
     <Setter Property="FontSize" Value="12" />
-    <Setter Property="FontFamily" Value="Segoe UI" />
+    <Setter Property="FontFamily" Value="Segoe UI Variable, Segoe UI, sans-serif" />
+    <Setter Property="CornerRadius" Value="6" />
   </Style>
 
 </Styles>

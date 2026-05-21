@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private readonly MyVmsPage _myVmsPage;
     private readonly SettingsPage _settingsPage;
     private readonly UsersPage _usersPage;
+    private readonly SessionsPage _sessionsPage;
     private readonly TaskPanel _taskPanel;
 
     private Button? _activeNavButton;
@@ -46,6 +47,7 @@ public partial class MainWindow : Window
         MyVmsPage myVmsPage,
         SettingsPage settingsPage,
         UsersPage usersPage,
+        SessionsPage sessionsPage,
         TaskPanel taskPanel,
         ILogger<MainWindow> logger
     )
@@ -61,6 +63,7 @@ public partial class MainWindow : Window
         ArgumentNullException.ThrowIfNull(myVmsPage);
         ArgumentNullException.ThrowIfNull(settingsPage);
         ArgumentNullException.ThrowIfNull(usersPage);
+        ArgumentNullException.ThrowIfNull(sessionsPage);
         ArgumentNullException.ThrowIfNull(taskPanel);
         ArgumentNullException.ThrowIfNull(logger);
 
@@ -75,6 +78,7 @@ public partial class MainWindow : Window
         _myVmsPage = myVmsPage;
         _settingsPage = settingsPage;
         _usersPage = usersPage;
+        _sessionsPage = sessionsPage;
         _taskPanel = taskPanel;
 
         DataContext = this;
@@ -148,6 +152,9 @@ public partial class MainWindow : Window
 
         EnvironmentSelector.SelectedIndex = selectedIndex;
         EnvironmentSelector.SelectionChanged += EnvironmentSelector_Changed;
+
+        if (EnvironmentSelector.SelectedItem is ComboBoxItem selectedItem)
+            EnvironmentLabel.Text = selectedItem.Content?.ToString() ?? "Local";
     }
 
     public void ReconnectCurrentAgent()
@@ -167,6 +174,7 @@ public partial class MainWindow : Window
             return;
 
         _agentSettings.SaveSelectedAgentId(agentId);
+        EnvironmentLabel.Text = agent.Name;
 
         IsEnabled = false;
         Title = "Connecting to " + agent.Name + "...";
@@ -250,6 +258,7 @@ public partial class MainWindow : Window
     private void UpdateNavVisibility()
     {
         NavImages.IsVisible = _permissionService.CanSeeMarketplace;
+        NavSessions.IsVisible = _permissionService.IsAdmin;
         NavUsers.IsVisible = _permissionService.IsAdmin;
 
         if (_currentPage == _imagesPage && !_permissionService.CanSeeMarketplace)
@@ -331,6 +340,7 @@ public partial class MainWindow : Window
             "MyVMs" => _myVmsPage,
             "Settings" => _settingsPage,
             "Users" => _usersPage,
+            "Sessions" => _sessionsPage,
             _ => null,
         };
 
@@ -346,6 +356,7 @@ public partial class MainWindow : Window
             "MyVMs" => (NavMyVMs, _myVmsPage),
             "Settings" => (NavSettings, _settingsPage),
             "Users" => (NavUsers, _usersPage),
+            "Sessions" => (NavSessions, _sessionsPage),
             _ => (null!, null!),
         };
 
@@ -357,11 +368,19 @@ public partial class MainWindow : Window
     {
         if (_activeNavButton is not null)
         {
-            _activeNavButton.Theme = (ControlTheme?)this.FindResource("NavButtonStyle");
             _activeNavButton.Background = Avalonia.Media.Brushes.Transparent;
+            if (_activeNavButton.Content is FluentAvalonia.UI.Controls.SymbolIcon oldIcon)
+                oldIcon.Foreground = (Avalonia.Media.IBrush?)this.FindResource("MutedBrush");
         }
 
-        navButton.Theme = (ControlTheme?)this.FindResource("NavButtonActiveStyle");
+        Avalonia.Media.IBrush? accentBrush = (Avalonia.Media.IBrush?)
+            this.FindResource("AccentBrush");
+        Avalonia.Media.IBrush? accentLightBrush = (Avalonia.Media.IBrush?)
+            this.FindResource("AccentLightBrush");
+        navButton.Background = accentLightBrush;
+        if (navButton.Content is FluentAvalonia.UI.Controls.SymbolIcon newIcon)
+            newIcon.Foreground = accentBrush;
+
         _activeNavButton = navButton;
         _currentPage = page;
 

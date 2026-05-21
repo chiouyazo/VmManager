@@ -16,7 +16,8 @@ public static class AgentServiceCollectionExtensions
         services.AddSingleton<IAppPaths, AppPaths>();
         services.AddSingleton<TempTracker>();
         services.AddSingleton<ITempTracker>(sp => sp.GetRequiredService<TempTracker>());
-        services.AddSingleton<IVmTrackingService, VmTrackingService>();
+        services.AddSingleton<VmTrackingService>();
+        services.AddSingleton<IVmTrackingService>(sp => sp.GetRequiredService<VmTrackingService>());
         services.AddSingleton<ILocalImageMetadataService, LocalImageMetadataService>();
         services.AddSingleton<BackgroundTaskManager>();
         services.AddSingleton<IBackgroundTaskManager>(sp =>

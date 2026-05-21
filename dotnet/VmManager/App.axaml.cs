@@ -173,12 +173,14 @@ public partial class App : Application
                     services.AddTransient<MyVmsViewModel>();
                     services.AddTransient<SettingsViewModel>();
                     services.AddTransient<UsersViewModel>();
+                    services.AddTransient<SessionsViewModel>();
                     services.AddSingleton<MainWindowViewModel>();
 
                     services.AddSingleton<ImagesPage>();
                     services.AddSingleton<MyVmsPage>();
                     services.AddSingleton<SettingsPage>();
                     services.AddSingleton<UsersPage>();
+                    services.AddSingleton<SessionsPage>();
                     services.AddSingleton<TaskPanel>();
 
                     services.AddSingleton<MainWindow>();

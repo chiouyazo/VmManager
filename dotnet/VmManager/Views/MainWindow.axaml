@@ -12,263 +12,226 @@
   Height="720"
   MinWidth="860"
   MinHeight="560"
-  Background="{DynamicResource SurfaceBrush}"
+  Background="{DynamicResource BgBrush}"
   WindowStartupLocation="CenterScreen"
   mc:Ignorable="d"
 >
-  <Grid>
-    <Grid.RowDefinitions>
-      <RowDefinition Height="*" />
-      <RowDefinition Height="Auto" />
-    </Grid.RowDefinitions>
-    <Grid.ColumnDefinitions>
-      <ColumnDefinition Width="200" />
-      <ColumnDefinition Width="*" />
-    </Grid.ColumnDefinitions>
+  <Grid ColumnDefinitions="56,*">
 
+    <!-- Narrow icon sidebar -->
     <Border
-      Grid.Row="0"
       Grid.Column="0"
-      Grid.RowSpan="2"
-      Background="{DynamicResource SidebarBrush}"
+      Background="{DynamicResource SurfaceBrush}"
       BorderBrush="{DynamicResource DividerBrush}"
       BorderThickness="0,0,1,0"
     >
       <DockPanel>
-        <Border DockPanel.Dock="Top" Padding="20,22,20,18">
-          <StackPanel Orientation="Horizontal">
-            <Image
-              Source="../Assets/app_32.png"
-              Width="40"
-              Height="40"
-              Margin="0,0,12,0"
-              VerticalAlignment="Center"
-            />
-            <StackPanel VerticalAlignment="Center">
-              <TextBlock
-                Text="{x:Static props:Resources.AppTitle}"
-                FontSize="17"
-                FontWeight="Bold"
-                Foreground="{DynamicResource TextBrush}"
-              />
-              <TextBlock
-                Text="{x:Static props:Resources.AppSubtitle}"
-                FontSize="11"
-                Foreground="{DynamicResource AccentBrush}"
-                Margin="0,2,0,0"
-              />
-            </StackPanel>
-          </StackPanel>
+        <!-- App icon top -->
+        <Border DockPanel.Dock="Top" Padding="0,14,0,10" HorizontalAlignment="Center">
+          <Image Source="../Assets/app_32.png" Width="28" Height="28" />
         </Border>
 
-        <Border DockPanel.Dock="Top" Padding="14,4,14,8">
-          <ComboBox
-            x:Name="EnvironmentSelector"
-            FontSize="12"
-            HorizontalAlignment="Stretch"
-            SelectionChanged="EnvironmentSelector_Changed"
-            ToolTip.Tip="Select environment"
-          />
-        </Border>
+        <!-- spacer where env selector used to be -->
+        <Border DockPanel.Dock="Top" Height="4" />
 
-        <Border
-          DockPanel.Dock="Top"
-          Height="1"
-          Background="{DynamicResource DividerBrush}"
-          Margin="16,0,16,12"
-        />
-
-        <Border DockPanel.Dock="Bottom" Padding="10,8,10,14">
+        <!-- Bottom nav items -->
+        <StackPanel DockPanel.Dock="Bottom" Spacing="2" Margin="0,0,0,12">
+          <Border Height="1" Background="{DynamicResource DividerBrush}" Margin="10,4,10,6" />
           <Button
             x:Name="NavSettings"
             Tag="Settings"
-            Theme="{StaticResource NavButtonStyle}"
-            Background="Transparent"
-            HorizontalAlignment="Stretch"
-            HorizontalContentAlignment="Left"
             Click="NavItem_Click"
+            Background="Transparent"
+            BorderThickness="0"
+            Width="40" Height="40"
+            Padding="0"
+            HorizontalAlignment="Center"
+            ToolTip.Tip="{x:Static props:Resources.Nav_Settings}"
+            Cursor="Hand"
           >
-            <StackPanel Orientation="Horizontal">
-              <ui:SymbolIcon Symbol="Settings" FontSize="16" VerticalAlignment="Center" />
-              <TextBlock Text="{x:Static props:Resources.Nav_Settings}" FontSize="13" Margin="10,0,0,0" VerticalAlignment="Center" />
-            </StackPanel>
+            <ui:SymbolIcon Symbol="Settings" FontSize="20" Foreground="{DynamicResource MutedBrush}" />
           </Button>
-        </Border>
+        </StackPanel>
 
-        <Border
-          DockPanel.Dock="Bottom"
-          Height="1"
-          Background="{DynamicResource DividerBrush}"
-          Margin="16,0,16,8"
-        />
-
-        <StackPanel Margin="10,0,10,0">
+        <!-- Main nav items -->
+        <StackPanel VerticalAlignment="Top" Spacing="2" Margin="0,4,0,0">
           <Button
             x:Name="NavImages"
             Tag="Images"
-            Theme="{StaticResource NavButtonStyle}"
-            Background="Transparent"
-            HorizontalAlignment="Stretch"
-            HorizontalContentAlignment="Left"
             Click="NavItem_Click"
+            Background="Transparent"
+            BorderThickness="0"
+            Width="40" Height="40"
+            Padding="0"
+            HorizontalAlignment="Center"
+            ToolTip.Tip="{x:Static props:Resources.Nav_Marketplace}"
+            Cursor="Hand"
           >
-            <StackPanel Orientation="Horizontal">
-              <ui:SymbolIcon Symbol="Shop" FontSize="16" VerticalAlignment="Center" />
-              <TextBlock Text="{x:Static props:Resources.Nav_Marketplace}" FontSize="13" Margin="10,0,0,0" VerticalAlignment="Center" />
-            </StackPanel>
+            <ui:SymbolIcon Symbol="Shop" FontSize="20" Foreground="{DynamicResource MutedBrush}" />
           </Button>
           <Button
             x:Name="NavMyVMs"
             Tag="MyVMs"
-            Theme="{StaticResource NavButtonStyle}"
-            Background="Transparent"
-            HorizontalAlignment="Stretch"
-            HorizontalContentAlignment="Left"
             Click="NavItem_Click"
+            Background="Transparent"
+            BorderThickness="0"
+            Width="40" Height="40"
+            Padding="0"
+            HorizontalAlignment="Center"
+            ToolTip.Tip="{x:Static props:Resources.Nav_MyVms}"
+            Cursor="Hand"
           >
-            <StackPanel Orientation="Horizontal">
-              <ui:SymbolIcon Symbol="List" FontSize="16" VerticalAlignment="Center" />
-              <TextBlock Text="{x:Static props:Resources.Nav_MyVms}" FontSize="13" Margin="10,0,0,0" VerticalAlignment="Center" />
-            </StackPanel>
+            <ui:SymbolIcon Symbol="List" FontSize="20" Foreground="{DynamicResource MutedBrush}" />
+          </Button>
+          <Button
+            x:Name="NavSessions"
+            Tag="Sessions"
+            Click="NavItem_Click"
+            Background="Transparent"
+            BorderThickness="0"
+            Width="40" Height="40"
+            Padding="0"
+            HorizontalAlignment="Center"
+            IsVisible="False"
+            ToolTip.Tip="Sessions"
+            Cursor="Hand"
+          >
+            <ui:SymbolIcon Symbol="People" FontSize="20" Foreground="{DynamicResource MutedBrush}" />
           </Button>
           <Button
             x:Name="NavUsers"
             Tag="Users"
-            Theme="{StaticResource NavButtonStyle}"
-            Background="Transparent"
-            HorizontalAlignment="Stretch"
-            HorizontalContentAlignment="Left"
             Click="NavItem_Click"
+            Background="Transparent"
+            BorderThickness="0"
+            Width="40" Height="40"
+            Padding="0"
+            HorizontalAlignment="Center"
             IsVisible="False"
+            ToolTip.Tip="Users"
+            Cursor="Hand"
           >
-            <StackPanel Orientation="Horizontal">
-              <ui:SymbolIcon Symbol="People" FontSize="16" VerticalAlignment="Center" />
-              <TextBlock Text="Users" FontSize="13" Margin="10,0,0,0" VerticalAlignment="Center" />
-            </StackPanel>
+            <ui:SymbolIcon Symbol="People" FontSize="20" Foreground="{DynamicResource MutedBrush}" />
           </Button>
         </StackPanel>
       </DockPanel>
     </Border>
 
-    <ContentControl x:Name="ContentArea" Grid.Row="0" Grid.Column="1" />
+    <!-- Main content area -->
+    <Grid Grid.Column="1" RowDefinitions="*,Auto">
 
-    <Border
-      x:Name="StatusBarArea"
-      x:DataType="vm:MainWindowViewModel"
-      Grid.Row="1"
-      Grid.Column="1"
-      Background="{DynamicResource SurfaceBrush}"
-      BorderBrush="{DynamicResource DividerBrush}"
-      BorderThickness="0,1,0,0"
-      Padding="16,6,16,6"
-    >
-      <DockPanel>
-        <TextBlock
-          DockPanel.Dock="Right"
-          Text="{Binding VersionText}"
-          FontSize="11"
-          Foreground="{DynamicResource AccentBrush}"
-          VerticalAlignment="Center"
-          Cursor="Hand"
-          PointerPressed="VersionText_Click"
-          ToolTip.Tip="{x:Static props:Resources.Tooltip_OpenGitHub}"
-          TextDecorations="Underline"
-        />
+      <!-- Page content -->
+      <ContentControl x:Name="ContentArea" Grid.Row="0" />
 
-        <Button
-          x:Name="TaskIndicatorButton"
-          DockPanel.Dock="Right"
-          Click="TaskIndicator_Click"
-          VerticalAlignment="Center"
-          Margin="16,0,0,0"
-          Padding="6,3"
-          Cursor="Hand"
-          ToolTip.Tip="Background tasks"
-          IsVisible="{Binding HasTasks}"
-          Background="Transparent"
-          BorderBrush="Transparent"
-          BorderThickness="0"
-        >
-          <Button.Template>
-            <ControlTemplate TargetType="Button">
-              <Border
-                Background="{TemplateBinding Background}"
-                Padding="{TemplateBinding Padding}"
-                CornerRadius="3"
-              >
-                <ContentPresenter />
-              </Border>
-            </ControlTemplate>
-          </Button.Template>
-          <StackPanel Orientation="Horizontal">
-            <ui:SymbolIcon
-              Symbol="Download"
-              FontSize="13"
-              VerticalAlignment="Center"
-              Foreground="{DynamicResource MutedBrush}"
-            />
-            <TextBlock
-              Text="{Binding TaskStatusDisplayText}"
-              FontSize="11"
-              Margin="5,0,0,0"
-              VerticalAlignment="Center"
-              Foreground="{DynamicResource MutedBrush}"
-            />
-          </StackPanel>
-        </Button>
-
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-          <StackPanel
-            Orientation="Horizontal"
-            Margin="0,0,20,0"
+      <!-- Status bar -->
+      <Border
+        x:Name="StatusBarArea"
+        x:DataType="vm:MainWindowViewModel"
+        Grid.Row="1"
+        Background="{DynamicResource BgBrush}"
+        BorderBrush="{DynamicResource DividerBrush}"
+        BorderThickness="0,1,0,0"
+        Padding="20,5"
+      >
+        <DockPanel>
+          <TextBlock
+            DockPanel.Dock="Right"
+            Text="{Binding VersionText}"
+            FontSize="11"
+            Foreground="{DynamicResource HintBrush}"
+            VerticalAlignment="Center"
             Cursor="Hand"
-            PointerPressed="FeedStatus_Click"
-            ToolTip.Tip="{x:Static props:Resources.Tooltip_GoToImageSources}"
-          >
-            <Panel Width="8" Height="8" Margin="0,0,6,0">
-              <Ellipse Width="8" Height="8" Fill="#107C10" IsVisible="{Binding FeedIndicatorActive}" />
-              <Ellipse Width="8" Height="8" Fill="#999999" IsVisible="{Binding !FeedIndicatorActive}" />
-            </Panel>
-            <TextBlock
-              Text="{Binding FeedStatusText}"
-              FontSize="11"
-              Foreground="{DynamicResource MutedBrush}"
-              VerticalAlignment="Center"
-            />
-          </StackPanel>
+            PointerPressed="VersionText_Click"
+            ToolTip.Tip="{x:Static props:Resources.Tooltip_OpenGitHub}"
+          />
 
-          <StackPanel Orientation="Horizontal">
-            <Panel Width="8" Height="8" Margin="0,0,6,0">
-              <Ellipse Width="8" Height="8" Fill="#107C10" IsVisible="{Binding BackendAvailable}" />
-              <Ellipse Width="8" Height="8" Fill="#C8102E" IsVisible="{Binding !BackendAvailable}" />
-            </Panel>
-            <TextBlock
-              Text="{Binding BackendStatusText}"
-              FontSize="11"
-              Foreground="{DynamicResource MutedBrush}"
+          <Button
+            x:Name="TaskIndicatorButton"
+            DockPanel.Dock="Right"
+            Click="TaskIndicator_Click"
+            VerticalAlignment="Center"
+            Margin="12,0,0,0"
+            Padding="8,3"
+            Cursor="Hand"
+            ToolTip.Tip="Background tasks"
+            IsVisible="{Binding HasTasks}"
+            Background="Transparent"
+            BorderThickness="0"
+          >
+            <StackPanel Orientation="Horizontal" Spacing="5">
+              <ui:SymbolIcon Symbol="Download" FontSize="12" Foreground="{DynamicResource MutedBrush}" />
+              <TextBlock Text="{Binding TaskStatusDisplayText}" FontSize="11" Foreground="{DynamicResource MutedBrush}" />
+            </StackPanel>
+          </Button>
+
+          <StackPanel Orientation="Horizontal" Spacing="16">
+            <Button
+              Background="Transparent"
+              BorderThickness="0"
+              Padding="0"
+              Cursor="Hand"
               VerticalAlignment="Center"
-            />
+            >
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <ui:SymbolIcon Symbol="Globe" FontSize="12" Foreground="{DynamicResource MutedBrush}" />
+                <TextBlock x:Name="EnvironmentLabel" Text="Local" FontSize="11" Foreground="{DynamicResource MutedBrush}" />
+              </StackPanel>
+              <Button.Flyout>
+                <Flyout Placement="TopEdgeAlignedLeft">
+                  <StackPanel Spacing="8" MinWidth="240">
+                    <TextBlock Text="Switch Environment" FontSize="13" FontWeight="SemiBold" />
+                    <ComboBox
+                      x:Name="EnvironmentSelector"
+                      FontSize="12"
+                      HorizontalAlignment="Stretch"
+                      SelectionChanged="EnvironmentSelector_Changed"
+                    />
+                  </StackPanel>
+                </Flyout>
+              </Button.Flyout>
+            </Button>
+
+            <Border Width="1" Height="12" Background="{DynamicResource DividerBrush}" VerticalAlignment="Center" />
+
+            <StackPanel
+              Orientation="Horizontal" Spacing="6"
+              Cursor="Hand"
+              PointerPressed="FeedStatus_Click"
+              ToolTip.Tip="{x:Static props:Resources.Tooltip_GoToImageSources}"
+            >
+              <Ellipse Width="7" Height="7" Fill="{DynamicResource StateRunningBrush}" IsVisible="{Binding FeedIndicatorActive}" />
+              <Ellipse Width="7" Height="7" Fill="{DynamicResource HintBrush}" IsVisible="{Binding !FeedIndicatorActive}" />
+              <TextBlock Text="{Binding FeedStatusText}" FontSize="11" Foreground="{DynamicResource HintBrush}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Ellipse Width="7" Height="7" Fill="{DynamicResource StateRunningBrush}" IsVisible="{Binding BackendAvailable}" />
+              <Ellipse Width="7" Height="7" Fill="{DynamicResource ErrorBrush}" IsVisible="{Binding !BackendAvailable}" />
+              <TextBlock Text="{Binding BackendStatusText}" FontSize="11" Foreground="{DynamicResource HintBrush}" />
+            </StackPanel>
           </StackPanel>
-        </StackPanel>
-      </DockPanel>
-    </Border>
-    <WindowNotificationManager
-      x:Name="NotificationManager"
-      Grid.Column="1"
-      Grid.Row="0"
-      Position="BottomRight"
-      MaxItems="3"
-      Margin="0,0,16,48"
-    />
-    <Popup
-      x:Name="TaskPanelPopup"
-      Placement="Top"
-      PlacementTarget="{Binding ElementName=TaskIndicatorButton}"
-      IsLightDismissEnabled="True"
-      HorizontalOffset="-300"
-      VerticalOffset="-4"
-    >
-      <ContentControl x:Name="TaskPanelHost" />
-    </Popup>
+        </DockPanel>
+      </Border>
+
+      <!-- Notifications -->
+      <WindowNotificationManager
+        x:Name="NotificationManager"
+        Grid.Row="0"
+        Position="BottomRight"
+        MaxItems="3"
+        Margin="0,0,16,40"
+      />
+
+      <!-- Task panel popup -->
+      <Popup
+        x:Name="TaskPanelPopup"
+        Placement="Top"
+        PlacementTarget="{Binding ElementName=TaskIndicatorButton}"
+        IsLightDismissEnabled="True"
+        HorizontalOffset="-300"
+        VerticalOffset="-4"
+      >
+        <ContentControl x:Name="TaskPanelHost" />
+      </Popup>
+    </Grid>
   </Grid>
 </Window>

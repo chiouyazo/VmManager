@@ -1,0 +1,144 @@
+<UserControl
+  x:Class="VmManager.Views.Controls.VmCard"
+  xmlns="https://github.com/avaloniaui"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:ui="using:FluentAvalonia.UI.Controls"
+  xmlns:vm="clr-namespace:VmManager.ViewModels"
+  x:DataType="vm:VmInstanceViewModel"
+  x:CompileBindings="False"
+>
+  <Border
+    Theme="{StaticResource CardStyle}"
+    Margin="0,0,0,6"
+    Padding="14,12"
+    PointerPressed="Card_PointerPressed"
+    Cursor="Hand"
+  >
+    <Border.ContextMenu>
+      <ContextMenu x:CompileBindings="False">
+        <MenuItem Header="Connect"
+          Command="{Binding $parent[UserControl].Tag.ConnectVmCommand}"
+          CommandParameter="{Binding}"
+          IsEnabled="{Binding State, Converter={StaticResource VmStateIsRunningConverter}}"
+        >
+          <MenuItem.Icon><ui:SymbolIcon Symbol="Play" FontSize="14" /></MenuItem.Icon>
+        </MenuItem>
+        <Separator />
+        <MenuItem Header="Start"
+          Command="{Binding $parent[UserControl].Tag.StartVmCommand}"
+          CommandParameter="{Binding}"
+          IsEnabled="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+        >
+          <MenuItem.Icon><ui:SymbolIcon Symbol="Play" FontSize="14" /></MenuItem.Icon>
+        </MenuItem>
+        <MenuItem Header="Stop"
+          Command="{Binding $parent[UserControl].Tag.StopVmCommand}"
+          CommandParameter="{Binding}"
+          IsEnabled="{Binding State, Converter={StaticResource VmStateIsRunningConverter}}"
+        >
+          <MenuItem.Icon><ui:SymbolIcon Symbol="Stop" FontSize="14" /></MenuItem.Icon>
+        </MenuItem>
+        <Separator />
+        <MenuItem Header="Rename"
+          Click="Rename_Click"
+          IsEnabled="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+        >
+          <MenuItem.Icon><ui:SymbolIcon Symbol="Rename" FontSize="14" /></MenuItem.Icon>
+        </MenuItem>
+        <MenuItem Header="Share"
+          Click="Share_Click"
+        >
+          <MenuItem.Icon><ui:SymbolIcon Symbol="People" FontSize="14" /></MenuItem.Icon>
+        </MenuItem>
+        <MenuItem Header="Apply Locale"
+          Command="{Binding $parent[UserControl].Tag.ApplyLocaleCommand}"
+          CommandParameter="{Binding}"
+          IsEnabled="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+        >
+          <MenuItem.Icon><ui:SymbolIcon Symbol="Globe" FontSize="14" /></MenuItem.Icon>
+        </MenuItem>
+        <MenuItem Header="Details"
+          Command="{Binding $parent[UserControl].Tag.ToggleExpandCommand}"
+          CommandParameter="{Binding}"
+        >
+          <MenuItem.Icon><ui:SymbolIcon Symbol="More" FontSize="14" /></MenuItem.Icon>
+        </MenuItem>
+        <Separator />
+        <MenuItem Header="Delete"
+          Command="{Binding $parent[UserControl].Tag.DeleteVmCommand}"
+          CommandParameter="{Binding}"
+          IsEnabled="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+          Foreground="{DynamicResource ErrorBrush}"
+        >
+          <MenuItem.Icon><ui:SymbolIcon Symbol="Delete" FontSize="14" Foreground="{DynamicResource ErrorBrush}" /></MenuItem.Icon>
+        </MenuItem>
+      </ContextMenu>
+    </Border.ContextMenu>
+
+    <Grid ColumnDefinitions="*,Auto">
+      <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="4">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Text="{Binding Name}" Classes="body-strong" VerticalAlignment="Center" />
+          <Border
+            Theme="{StaticResource StateBadgeStyle}"
+            Background="{Binding State, Converter={StaticResource VmStateToBrushConverter}}"
+          >
+            <TextBlock Text="{Binding State}" FontSize="11" Foreground="White" FontWeight="Medium" />
+          </Border>
+          <TextBlock
+            Text="{Binding StatusMessage}"
+            Classes="caption"
+            VerticalAlignment="Center"
+            IsVisible="{Binding StatusMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+          />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="16">
+          <TextBlock Classes="caption">
+            <Run Text="{Binding Owner, Mode=OneWay}" />
+          </TextBlock>
+          <TextBlock Text="{Binding MemoryDisplay}" Classes="caption" />
+          <TextBlock Classes="caption" IsVisible="{Binding IsRunning}">
+            <Run Text="{Binding Uptime, StringFormat='{}{0:hh\\:mm\\:ss}', Mode=OneWay}" />
+          </TextBlock>
+        </StackPanel>
+      </StackPanel>
+
+      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="6">
+        <Button
+          Theme="{StaticResource FilledAccentButton}"
+          Padding="10,6"
+          FontSize="12"
+          Command="{Binding $parent[UserControl].Tag.ConnectVmCommand}"
+          CommandParameter="{Binding}"
+          IsVisible="{Binding State, Converter={StaticResource VmStateIsRunningConverter}}"
+        >
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ui:SymbolIcon Symbol="Play" FontSize="12" />
+            <TextBlock Text="Connect" FontSize="12" />
+          </StackPanel>
+        </Button>
+        <Button
+          Padding="8,6"
+          FontSize="12"
+          Command="{Binding $parent[UserControl].Tag.StartVmCommand}"
+          CommandParameter="{Binding}"
+          IsVisible="{Binding State, Converter={StaticResource VmStateIsOffConverter}}"
+        >
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ui:SymbolIcon Symbol="Play" FontSize="12" />
+            <TextBlock Text="Start" FontSize="12" />
+          </StackPanel>
+        </Button>
+        <Button
+          Padding="8,6"
+          FontSize="12"
+          Command="{Binding $parent[UserControl].Tag.StopVmCommand}"
+          CommandParameter="{Binding}"
+          IsVisible="{Binding State, Converter={StaticResource VmStateIsRunningConverter}}"
+        >
+          <ui:SymbolIcon Symbol="Stop" FontSize="12" />
+        </Button>
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

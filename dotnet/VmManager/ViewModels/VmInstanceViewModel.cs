@@ -145,5 +145,20 @@ public partial class VmInstanceViewModel : ObservableObject
     [ObservableProperty]
     private bool _snapshotsExpanded;
 
+    [ObservableProperty]
+    private bool _isExpanded;
+
+    public bool ShowSnapshots => IsExpanded && SnapshotsLoaded;
+
+    partial void OnIsExpandedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowSnapshots));
+    }
+
+    partial void OnSnapshotsLoadedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowSnapshots));
+    }
+
     public ObservableCollection<VmSnapshot> Snapshots { get; } = [];
 }
