@@ -17,6 +17,7 @@ public class AppSettings
 
     public string DefaultVmUsername { get; set; } = "Administrator";
     public string DefaultVmPassword { get; set; } = "Admin123!";
+    public string RdpDomainSuffix { get; set; } = "";
 
     public string VmBackend { get; set; } = "HyperV";
 

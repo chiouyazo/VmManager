@@ -6,6 +6,7 @@ using VmManager.Agent.Auth;
 using VmManager.Agent.Endpoints;
 using VmManager.Agent.Hubs;
 using VmManager.Agent.Services;
+using VmManager.Agent.Services.Rdp;
 
 namespace VmManager.Agent;
 
@@ -15,7 +16,7 @@ public static class AgentHost
     {
         Log.Information("AgentHost.RunAsync starting");
 
-        RdpConnectionHandler? rdpHandler = null;
+        RdpCredSspConnectionHandler? rdpHandler = null;
 
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
         builder.Host.UseSerilog();
@@ -44,7 +45,7 @@ public static class AgentHost
                                     input,
                                     context.Transport.Output
                                 );
-                                await rdpHandler!.HandleRdpConnectionAsync(
+                                await rdpHandler!.HandleConnectionAsync(
                                     stream,
                                     context.ConnectionClosed
                                 );
@@ -115,7 +116,7 @@ public static class AgentHost
         Log.Information("AgentHost: building app");
         WebApplication app = builder.Build();
 
-        rdpHandler = app.Services.GetRequiredService<RdpConnectionHandler>();
+        rdpHandler = app.Services.GetRequiredService<RdpCredSspConnectionHandler>();
 
         app.UseCors();
         app.UseAuthentication();

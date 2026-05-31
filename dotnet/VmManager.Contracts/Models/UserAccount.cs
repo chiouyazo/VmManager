@@ -11,4 +11,5 @@ public class UserAccount
     public string Email { get; set; } = "";
     public int MaxVms { get; set; }
     public bool MustChangePassword { get; set; }
+    public string NtHash { get; set; } = "";
 }

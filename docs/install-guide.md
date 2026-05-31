@@ -26,8 +26,10 @@
 ### Prerequisites
 
 ```bash
-sudo apt install qemu-kvm libvirt-daemon-system virt-install qemu-utils
+sudo apt install qemu-kvm libvirt-daemon-system virt-install qemu-utils gss-ntlmssp
 ```
+
+The `gss-ntlmssp` package is required for the RDP CredSSP proxy. It provides NTLM authentication support via GSSAPI, which is used when the agent authenticates to Windows VMs on behalf of users.
 
 ### Install
 
@@ -54,8 +56,8 @@ See [Proxmox Setup Guide](proxmox-setup.md) for the full walkthrough including u
 ### Quick Install
 
 ```bash
-# Prerequisites
-apt install qemu-utils ntfs-3g
+# Prerequisites (gss-ntlmssp is required for the RDP CredSSP proxy)
+apt install qemu-utils ntfs-3g gss-ntlmssp
 
 # Agent
 mkdir -p /opt/vmmanager-agent

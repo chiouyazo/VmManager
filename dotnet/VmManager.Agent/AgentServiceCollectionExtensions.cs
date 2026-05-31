@@ -1,4 +1,5 @@
 using VmManager.Agent.Services;
+using VmManager.Agent.Services.Rdp;
 using VmManager.Backends.Kvm;
 using VmManager.Backends.Proxmox;
 using VmManager.Catalog.Shared;
@@ -56,9 +57,12 @@ public static class AgentServiceCollectionExtensions
         }
 
         services.AddSingleton<RdpTcpRelay>();
-        services.AddSingleton<RdpConnectionHandler>();
         services.AddSingleton<RdpSessionStore>();
         services.AddSingleton<RdpProxyListener>();
+        services.AddSingleton<CertificateFactory>();
+        services.AddSingleton<ClientCredSspHandler>();
+        services.AddSingleton<VmCredSspHandler>();
+        services.AddSingleton<RdpCredSspConnectionHandler>();
         services.AddSingleton<NetworkTrackingService>();
         services.AddSingleton<NetworkProvisioningService>();
 

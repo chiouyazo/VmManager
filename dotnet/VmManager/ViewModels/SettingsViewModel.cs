@@ -86,6 +86,9 @@ public partial class SettingsViewModel : ObservableObject
     private string _password = "";
 
     [ObservableProperty]
+    private string _rdpDomainSuffix = "";
+
+    [ObservableProperty]
     private bool _applyLocale;
 
     [ObservableProperty]
@@ -245,6 +248,7 @@ public partial class SettingsViewModel : ObservableObject
         CpuCount = Math.Min(settings.DefaultCpuCount, Environment.ProcessorCount);
         Username = settings.DefaultVmUsername;
         Password = settings.DefaultVmPassword;
+        RdpDomainSuffix = settings.RdpDomainSuffix;
         ApplyLocale = settings.ApplyLocaleOnCreate;
         SelectedLocale = LocaleMap.FirstOrDefault(kv => kv.Value == settings.DefaultLocale).Key;
         SelectedKeyboard = KeyboardMap
@@ -401,6 +405,7 @@ public partial class SettingsViewModel : ObservableObject
                 existing.DefaultCpuCount = CpuCount;
                 existing.DefaultVmUsername = Username.Trim();
                 existing.DefaultVmPassword = Password;
+                existing.RdpDomainSuffix = RdpDomainSuffix.Trim();
                 existing.ApplyLocaleOnCreate = ApplyLocale;
                 existing.DefaultLocale = localeId;
                 existing.DefaultKeyboardLayout = keyboardId;

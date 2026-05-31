@@ -63,15 +63,6 @@ public partial class MyVmsPage : UserControl
             mainWindow.PendingMarketplaceImageId = imageId;
             mainWindow.NavigateToPage("Images");
         };
-
-        _viewModel.RequestConnectionSettings = async (vmName, defaults) =>
-        {
-            ConnectionSettingsDialog dialog = new ConnectionSettingsDialog(vmName, defaults);
-            bool? result = await dialog.ShowDialog<bool?>(GetOwnerWindow());
-            if (result != true || dialog.Settings == null)
-                throw new TaskCanceledException();
-            return (dialog.Settings, dialog.RememberAsDefault);
-        };
     }
 
     private Window GetOwnerWindow()

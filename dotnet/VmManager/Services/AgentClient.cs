@@ -11,6 +11,8 @@ public sealed class AgentClient : IDisposable
 {
     private readonly HttpClient _http;
     private readonly string _baseUrl;
+    private readonly string? _username;
+    private readonly string? _password;
     private readonly ILogger<AgentClient> _logger;
     private HubConnection? _hubConnection;
 
@@ -32,6 +34,8 @@ public sealed class AgentClient : IDisposable
         ArgumentNullException.ThrowIfNull(baseUrl);
         ArgumentNullException.ThrowIfNull(logger);
         _baseUrl = baseUrl.TrimEnd('/');
+        _username = username;
+        _password = password;
         RdpProxyHost = rdpProxyHost;
         _logger = logger;
 
@@ -155,121 +159,70 @@ public sealed class AgentClient : IDisposable
         await PutAsync("/api/vms/" + Uri.EscapeDataString(name) + "/notes", new { notes });
     }
 
-    public async Task ConnectToVmAsync(string name, RdpConnectionSettings settings)
+    public Task ConnectToVmAsync(string name, string? rdpDomainSuffix = null)
     {
-        RdpSessionResponse? session = await PostJsonAsync<RdpSessionResponse>(
-            "/api/rdp-sessions/" + Uri.EscapeDataString(name)
-        );
+        string rdpAddress;
+        string rdpUsername;
 
-        if (session == null || string.IsNullOrEmpty(session.Token))
-            throw new InvalidOperationException("Failed to create RDP session for " + name);
-
-        string rdpHost;
-        int rdpPort;
-
-        if (!string.IsNullOrEmpty(RdpProxyHost))
+        if (!string.IsNullOrEmpty(rdpDomainSuffix))
         {
-            Uri rdpUri = new Uri(
-                RdpProxyHost.Contains("://") ? RdpProxyHost : "tcp://" + RdpProxyHost
-            );
-            rdpHost = rdpUri.Host;
-            rdpPort = rdpUri.Port > 0 && rdpUri.Port != 80 ? rdpUri.Port : session.RdpPort;
+            // DNS wildcard mode: vmName.lab.domain
+            string suffix = rdpDomainSuffix.TrimStart('.');
+            rdpAddress = name + "." + suffix;
+            rdpUsername = _username ?? "";
         }
         else
         {
+            // Username-prefix mode: connect to agent, vmName:username
             Uri baseUri = new Uri(_baseUrl);
-            rdpHost = baseUri.Host;
-            rdpPort = session.RdpPort;
-        }
+            string host = baseUri.Host;
+            int port = 13389;
 
-        string rdpContent = BuildRdpContent(rdpHost, rdpPort, session.Token, settings);
-
-        string tempDir = Path.Combine(Path.GetTempPath(), "VmManager");
-        Directory.CreateDirectory(tempDir);
-
-        string[] oldFiles = Directory.GetFiles(tempDir, name + "*.rdp");
-        foreach (string oldFile in oldFiles)
-        {
-            try
+            if (!string.IsNullOrEmpty(RdpProxyHost))
             {
-                File.Delete(oldFile);
+                Uri proxyUri = new Uri(
+                    RdpProxyHost.Contains("://") ? RdpProxyHost : "tcp://" + RdpProxyHost
+                );
+                host = proxyUri.Host;
+                if (proxyUri.Port > 0 && proxyUri.Port != 80)
+                    port = proxyUri.Port;
             }
-            catch { }
+
+            rdpAddress = host + ":" + port;
+            rdpUsername = name + ":" + (_username ?? "");
         }
 
-        string tempPath = Path.Combine(tempDir, name + "-" + session.Token[..8] + ".rdp");
-        await File.WriteAllTextAsync(tempPath, rdpContent, Encoding.Unicode);
-
-        LaunchRdpFile(tempPath);
+        LaunchRdpClient(rdpAddress, rdpUsername);
+        return Task.CompletedTask;
     }
 
-    private static string BuildRdpContent(
-        string host,
-        int port,
-        string token,
-        RdpConnectionSettings settings
-    )
-    {
-        List<string> lines =
-        [
-            "full address:s:" + host + ":" + port,
-            "username:s:Administrator",
-            "loadbalanceinfo:s:cookie: mstshash=" + token,
-            "autoreconnection enabled:i:1",
-            "prompt for credentials:i:1",
-            "screen mode id:i:" + (settings.Fullscreen ? 2 : 1),
-            "desktopwidth:i:" + settings.DesktopWidth,
-            "desktopheight:i:" + settings.DesktopHeight,
-            "use multimon:i:" + (settings.UseMultiMon ? 1 : 0),
-            "session bpp:i:" + settings.SessionBpp,
-            "audiomode:i:" + (int)settings.AudioMode,
-            "audiocapturemode:i:" + (settings.AudioCapture ? 1 : 0),
-            "redirectclipboard:i:" + (settings.RedirectClipboard ? 1 : 0),
-            "redirectprinters:i:" + (settings.RedirectPrinters ? 1 : 0),
-            "keyboardhook:i:" + (int)settings.KeyboardHook,
-            "smart sizing:i:" + (settings.SmartSizing ? 1 : 0),
-            "dynamic resolution:i:" + (settings.DynamicResolution ? 1 : 0),
-            "allow font smoothing:i:" + (settings.AllowFontSmoothing ? 1 : 0),
-            "disable wallpaper:i:" + (settings.ShowWallpaper ? 0 : 1),
-            "connection type:i:" + (int)settings.ConnectionType,
-            "networkautodetect:i:"
-                + (settings.ConnectionType == NetworkConnectionType.AutoDetect ? 1 : 0),
-            "bandwidthautodetect:i:"
-                + (settings.ConnectionType == NetworkConnectionType.AutoDetect ? 1 : 0),
-        ];
-
-        if (!string.IsNullOrEmpty(settings.DrivesToRedirect))
-            lines.Add("drivestoredirect:s:" + settings.DrivesToRedirect);
-
-        if (settings.RedirectCameras)
-            lines.Add("camerastoredirect:s:*");
-
-        if (settings.RedirectUsb)
-            lines.Add("usbdevicestoredirect:s:*");
-
-        lines.Add("");
-        return string.Join("\r\n", lines);
-    }
-
-    private static void LaunchRdpFile(string rdpPath)
+    private static void LaunchRdpClient(string address, string username)
     {
         if (OperatingSystem.IsWindows())
         {
             Process.Start(
-                new ProcessStartInfo("mstsc.exe", "\"" + rdpPath + "\"") { UseShellExecute = true }
+                new ProcessStartInfo("mstsc.exe", "/v:" + address) { UseShellExecute = true }
             );
             return;
         }
+
         if (OperatingSystem.IsMacOS())
         {
-            string? app = FindMacOsRdpApp();
-            if (app != null)
-            {
-                Process.Start("open", new[] { "-a", app, rdpPath });
-                return;
-            }
+            string encodedAddress = Uri.EscapeDataString(address);
+            string encodedUsername = Uri.EscapeDataString(username);
+            string rdpUri =
+                "rdp://full%20address=s:" + encodedAddress + "&username=s:" + encodedUsername;
+            Process.Start("open", new[] { rdpUri });
+            return;
         }
-        Process.Start(new ProcessStartInfo(rdpPath) { UseShellExecute = true });
+
+        // Linux: try xfreerdp
+        Process.Start(
+            new ProcessStartInfo("xfreerdp", "/v:" + address + " /u:" + username + " /cert:ignore")
+            {
+                UseShellExecute = true,
+            }
+        );
     }
 
     private static string? FindMacOsRdpApp()
@@ -674,12 +627,32 @@ public sealed class AgentClient : IDisposable
         );
     }
 
-    public static void LaunchShadowSession(string vmIp, int sessionId, bool noConsentPrompt)
+    public void LaunchShadowSession(string vmName, int sessionId, bool noConsentPrompt)
     {
+        string address = GetRdpProxyAddress(vmName);
         string arguments = noConsentPrompt
-            ? "/v:" + vmIp + " /shadow:" + sessionId + " /control /noConsentPrompt /prompt"
-            : "/v:" + vmIp + " /shadow:" + sessionId + " /control /prompt";
+            ? "/v:" + address + " /shadow:" + sessionId + " /control /noConsentPrompt"
+            : "/v:" + address + " /shadow:" + sessionId + " /control";
         Process.Start(new ProcessStartInfo("mstsc.exe", arguments) { UseShellExecute = true });
+    }
+
+    private string GetRdpProxyAddress(string vmName)
+    {
+        Uri baseUri = new Uri(_baseUrl);
+        string host = baseUri.Host;
+        int port = 13389;
+
+        if (!string.IsNullOrEmpty(RdpProxyHost))
+        {
+            Uri proxyUri = new Uri(
+                RdpProxyHost.Contains("://") ? RdpProxyHost : "tcp://" + RdpProxyHost
+            );
+            host = proxyUri.Host;
+            if (proxyUri.Port > 0 && proxyUri.Port != 80)
+                port = proxyUri.Port;
+        }
+
+        return host + ":" + port;
     }
 
     public async Task TransferVmOwnershipAsync(string vmName, string newOwnerUsername)
@@ -848,13 +821,6 @@ public sealed class AgentClient : IDisposable
     private sealed class TroubleshootResponse
     {
         public string Report { get; set; } = "";
-    }
-
-    private sealed class RdpSessionResponse
-    {
-        public string Token { get; set; } = "";
-        public string VmName { get; set; } = "";
-        public int RdpPort { get; set; }
     }
 
     private sealed class ActiveSessionCountResponse

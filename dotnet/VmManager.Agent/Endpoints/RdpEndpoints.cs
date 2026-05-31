@@ -7,52 +7,6 @@ public static class RdpEndpoints
     public static IEndpointRouteBuilder MapRdpEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints
-            .MapPost(
-                "/api/rdp-sessions/{vmName}",
-                async (
-                    HttpContext context,
-                    string vmName,
-                    IVmIpResolver resolver,
-                    RdpSessionStore sessionStore,
-                    AuthorizationService authorizationService,
-                    IConfiguration config
-                ) =>
-                {
-                    if (
-                        !authorizationService.CanAccessVm(
-                            context.User,
-                            vmName,
-                            Permission.RdpConnect
-                        )
-                    )
-                        return Results.Forbid();
-
-                    string? ip = await resolver.ResolveIpAsync(vmName, context.RequestAborted);
-                    if (ip == null)
-                    {
-                        return Results.Json(
-                            new { error = "VM not found or IP not available. Is the VM running?" },
-                            statusCode: 503
-                        );
-                    }
-
-                    string username = context.User.Identity?.Name ?? "";
-                    RdpSession session = sessionStore.CreateSession(vmName, ip, username);
-                    int rdpPort = config.GetValue("VmManager:HttpPort", 18275);
-
-                    return Results.Ok(
-                        new
-                        {
-                            token = session.Token,
-                            vmName = session.VmName,
-                            rdpPort,
-                        }
-                    );
-                }
-            )
-            .RequireAuthorization();
-
-        endpoints
             .MapGet(
                 "/api/rdp-sessions",
                 (RdpSessionStore sessionStore) =>
@@ -62,9 +16,10 @@ public static class RdpEndpoints
                         sessions.Select(s => new
                         {
                             s.VmName,
+                            s.Username,
                             s.State,
                             s.CreatedAt,
-                            tokenPrefix = s.Token[..8] + "...",
+                            s.CompletedAt,
                         })
                     );
                 }

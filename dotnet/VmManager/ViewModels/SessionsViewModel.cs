@@ -126,7 +126,7 @@ public partial class SessionsViewModel : ViewModelBase
             }
 
             RdpShadowSession target = response.Sessions[0];
-            AgentClient.LaunchShadowSession(response.VmIp, target.SessionId, noConsent);
+            _agentClient.LaunchShadowSession(vmName, target.SessionId, noConsent);
         }
         catch (Exception ex)
         {

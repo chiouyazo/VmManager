@@ -1,15 +1,19 @@
 using System.Net;
 using System.Net.Sockets;
+using VmManager.Agent.Services.Rdp;
 
 namespace VmManager.Agent.Services;
 
 public sealed class RdpProxyListener
 {
-    private readonly RdpConnectionHandler _rdpHandler;
+    private readonly RdpCredSspConnectionHandler _rdpHandler;
     private readonly ILogger<RdpProxyListener> _logger;
     private TcpListener? _listener;
 
-    public RdpProxyListener(RdpConnectionHandler rdpHandler, ILogger<RdpProxyListener> logger)
+    public RdpProxyListener(
+        RdpCredSspConnectionHandler rdpHandler,
+        ILogger<RdpProxyListener> logger
+    )
     {
         ArgumentNullException.ThrowIfNull(rdpHandler);
         ArgumentNullException.ThrowIfNull(logger);
@@ -67,7 +71,7 @@ public sealed class RdpProxyListener
             using (client)
             {
                 NetworkStream stream = client.GetStream();
-                await _rdpHandler.HandleRdpConnectionAsync(stream, cancellationToken);
+                await _rdpHandler.HandleConnectionAsync(stream, cancellationToken);
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

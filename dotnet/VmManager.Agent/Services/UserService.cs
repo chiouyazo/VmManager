@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using VmManager.Agent.Services.Rdp.Crypto;
 
 namespace VmManager.Agent.Services;
 
@@ -76,6 +78,7 @@ public class UserService
                 Permissions = permissions,
                 CreatedAt = DateTime.UtcNow,
                 MustChangePassword = !isAdmin,
+                NtHash = ComputeNtHashHex(password),
             };
 
             users.Add(account);
@@ -189,10 +192,18 @@ public class UserService
             if (user == null)
                 return false;
             string hash = HashPassword(password, user.Salt);
-            return CryptographicOperations.FixedTimeEquals(
-                System.Text.Encoding.UTF8.GetBytes(hash),
-                System.Text.Encoding.UTF8.GetBytes(user.PasswordHash)
+            bool valid = CryptographicOperations.FixedTimeEquals(
+                Encoding.UTF8.GetBytes(hash),
+                Encoding.UTF8.GetBytes(user.PasswordHash)
             );
+
+            if (valid && string.IsNullOrEmpty(user.NtHash))
+            {
+                user.NtHash = ComputeNtHashHex(password);
+                SaveUsers(users);
+            }
+
+            return valid;
         }
     }
 
@@ -234,10 +245,32 @@ public class UserService
                 throw new InvalidOperationException("User not found: " + username);
             user.Salt = GenerateSalt();
             user.PasswordHash = HashPassword(newPassword, user.Salt);
+            user.NtHash = ComputeNtHashHex(newPassword);
             user.MustChangePassword = false;
             SaveUsers(users);
             _logger.LogInformation("Changed password for user {Username}", username);
         }
+    }
+
+    public byte[]? GetNtHash(string username)
+    {
+        lock (FileLock)
+        {
+            List<UserAccount> users = LoadUsers();
+            UserAccount? user = users.FirstOrDefault(u =>
+                string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase)
+            );
+            if (user == null || string.IsNullOrEmpty(user.NtHash))
+                return null;
+
+            return Convert.FromHexString(user.NtHash);
+        }
+    }
+
+    private static string ComputeNtHashHex(string password)
+    {
+        byte[] ntHash = Md4.ComputeNtHash(password);
+        return Convert.ToHexString(ntHash).ToLowerInvariant();
     }
 
     private void EnsureAdminExists()
@@ -259,6 +292,7 @@ public class UserService
                 IsAdmin = true,
                 Permissions = [],
                 CreatedAt = DateTime.UtcNow,
+                NtHash = ComputeNtHashHex(password),
             };
 
             users.Add(admin);

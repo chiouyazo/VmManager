@@ -11,30 +11,20 @@ public partial class MyVmsViewModel : ViewModelBase
 {
     private readonly ILogger<MyVmsViewModel> _logger;
     private readonly PermissionService _permissionService;
-    private readonly RdpPreferencesService _rdpPreferences;
     private readonly NativeNotificationService _nativeNotifications;
 
     private AgentClient _agentClient => App.AgentClient!;
 
-    public Func<
-        string,
-        RdpConnectionSettings,
-        Task<(RdpConnectionSettings Settings, bool Remember)>
-    >? RequestConnectionSettings { get; set; }
-
     public MyVmsViewModel(
         PermissionService permissionService,
-        RdpPreferencesService rdpPreferences,
         NativeNotificationService nativeNotifications,
         ILogger<MyVmsViewModel> logger
     )
     {
         ArgumentNullException.ThrowIfNull(permissionService);
-        ArgumentNullException.ThrowIfNull(rdpPreferences);
         ArgumentNullException.ThrowIfNull(nativeNotifications);
         ArgumentNullException.ThrowIfNull(logger);
         _permissionService = permissionService;
-        _rdpPreferences = rdpPreferences;
         _nativeNotifications = nativeNotifications;
         _logger = logger;
     }
@@ -370,25 +360,13 @@ public partial class MyVmsViewModel : ViewModelBase
     {
         try
         {
-            RdpConnectionSettings defaults = _rdpPreferences.Load();
+            AppSettings agentSettings = await _agentClient.GetSettingsAsync();
+            string? domainSuffix = string.IsNullOrEmpty(agentSettings.RdpDomainSuffix)
+                ? null
+                : agentSettings.RdpDomainSuffix;
 
-            if (RequestConnectionSettings == null)
-            {
-                await _agentClient.ConnectToVmAsync(vm.Name, defaults);
-                return;
-            }
-
-            (RdpConnectionSettings settings, bool remember) = await RequestConnectionSettings(
-                vm.Name,
-                defaults
-            );
-
-            if (remember)
-                _rdpPreferences.Save(settings);
-
-            await _agentClient.ConnectToVmAsync(vm.Name, settings);
+            await _agentClient.ConnectToVmAsync(vm.Name, domainSuffix);
         }
-        catch (TaskCanceledException) { }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to connect to VM {VmName}", vm.Name);
@@ -916,7 +894,7 @@ public partial class MyVmsViewModel : ViewModelBase
     {
         try
         {
-            AgentClient.LaunchShadowSession(vm.SessionsVmIp, session.SessionId, noConsentPrompt);
+            _agentClient.LaunchShadowSession(vm.Name, session.SessionId, noConsentPrompt);
         }
         catch (Exception ex)
         {

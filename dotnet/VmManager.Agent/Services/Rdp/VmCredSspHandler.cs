@@ -1,0 +1,227 @@
+using System.Buffers;
+using System.Net;
+using System.Net.Security;
+using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using VmManager.Agent.Services.Rdp.Crypto;
+
+namespace VmManager.Agent.Services.Rdp;
+
+public sealed class VmCredSspHandler
+{
+    private readonly ILogger<VmCredSspHandler> _logger;
+
+    public VmCredSspHandler(ILogger<VmCredSspHandler> logger)
+    {
+        ArgumentNullException.ThrowIfNull(logger);
+        _logger = logger;
+    }
+
+    public async Task<(
+        TcpClient TcpClient,
+        NetworkStream NetStream,
+        int SelectedProtocol,
+        byte NegFlags
+    )> ConnectAndNegotiateX224Async(string vmIp, int vmPort, CancellationToken cancellationToken)
+    {
+        TcpClient tcpClient = new TcpClient();
+        await tcpClient.ConnectAsync(vmIp, vmPort, cancellationToken);
+        NetworkStream netStream = tcpClient.GetStream();
+
+        await netStream.WriteAsync(X224Handler.BuildConnectionRequest(), cancellationToken);
+        byte[] x224Payload = await X224Handler.ReadPayloadAsync(netStream, cancellationToken);
+        (int selectedProtocol, byte negFlags) = X224Handler.ParseConfirmResponse(x224Payload);
+
+        _logger.LogDebug(
+            "VM X.224 negotiated: protocol=0x{Protocol:X}, flags=0x{Flags:X2}",
+            selectedProtocol,
+            negFlags
+        );
+
+        return (tcpClient, netStream, selectedProtocol, negFlags);
+    }
+
+    public async Task<(SslStream SslStream, NegotiateAuthentication Auth)> AuthenticateAsync(
+        NetworkStream netStream,
+        string vmIp,
+        string vmUser,
+        string vmPassword,
+        string vmDomain,
+        CancellationToken cancellationToken
+    )
+    {
+        SslStream vmSsl = new SslStream(
+            netStream,
+            leaveInnerStreamOpen: false,
+            (_, _, _, _) => true
+        );
+        await vmSsl.AuthenticateAsClientAsync(vmIp);
+        _logger.LogDebug("VM TLS handshake complete: {Protocol}", vmSsl.SslProtocol);
+
+        NegotiateAuthentication nego = new NegotiateAuthentication(
+            new NegotiateAuthenticationClientOptions
+            {
+                Credential = new NetworkCredential(vmUser, vmPassword, vmDomain),
+                TargetName = "TERMSRV/" + vmIp,
+                RequiredProtectionLevel = ProtectionLevel.EncryptAndSign,
+            }
+        );
+
+        // Step 1: Send SPNEGO NEGOTIATE
+        byte[]? token1 = nego.GetOutgoingBlob(
+            ReadOnlySpan<byte>.Empty,
+            out NegotiateAuthenticationStatusCode status1
+        );
+        if (token1 == null)
+            throw new InvalidOperationException("SPNEGO NEGOTIATE failed: " + status1);
+
+        await vmSsl.WriteAsync(CredSspMessageBuilder.WrapNtlmToken(token1), cancellationToken);
+
+        // Step 2: Read SPNEGO CHALLENGE
+        byte[] challengeResponse = await X224Handler.ReadAvailableAsync(vmSsl, cancellationToken);
+        byte[] spnegoChallenge = CredSspMessageParser.ExtractNegoToken(challengeResponse);
+
+        // Step 3: Process challenge, get auth token
+        byte[]? spnegoToken = nego.GetOutgoingBlob(
+            spnegoChallenge,
+            out NegotiateAuthenticationStatusCode status3
+        );
+        if (spnegoToken == null)
+            throw new InvalidOperationException("SPNEGO AUTHENTICATE failed: " + status3);
+
+        _logger.LogDebug(
+            "SPNEGO auth token: {Length} bytes, status={Status}",
+            spnegoToken.Length,
+            status3
+        );
+
+        // On Linux (gss-ntlmssp), auth may need extra round trips before reaching Completed
+        if (status3 == NegotiateAuthenticationStatusCode.ContinueNeeded)
+        {
+            // Send the auth token without pubKeyAuth first
+            await vmSsl.WriteAsync(
+                CredSspMessageBuilder.WrapNtlmToken(spnegoToken),
+                cancellationToken
+            );
+
+            // Read VM's response and process additional legs until Completed
+            while (status3 == NegotiateAuthenticationStatusCode.ContinueNeeded)
+            {
+                byte[] legResponse = await X224Handler.ReadAvailableAsync(vmSsl, cancellationToken);
+                byte[] legToken = CredSspMessageParser.ExtractNegoToken(legResponse);
+                spnegoToken = nego.GetOutgoingBlob(legToken, out status3);
+                _logger.LogDebug("SPNEGO additional leg: status={Status}", status3);
+
+                if (
+                    spnegoToken != null
+                    && status3 == NegotiateAuthenticationStatusCode.ContinueNeeded
+                )
+                    await vmSsl.WriteAsync(
+                        CredSspMessageBuilder.WrapNtlmToken(spnegoToken),
+                        cancellationToken
+                    );
+            }
+        }
+
+        if (status3 != NegotiateAuthenticationStatusCode.Completed)
+            throw new InvalidOperationException("SPNEGO auth failed with status: " + status3);
+
+        // Step 4: Compute pubKeyAuth binding
+        X509Certificate2 vmCert = new X509Certificate2(
+            vmSsl.RemoteCertificate!.Export(X509ContentType.Cert)
+        );
+        byte[] vmSubjectPubKey = Asn1Helper.ExtractSubjectPublicKey(
+            vmCert.PublicKey.ExportSubjectPublicKeyInfo()
+        );
+
+        byte[] vmNonce = RandomNumberGenerator.GetBytes(32);
+        byte[] vmClientHash = NtlmCrypto.ComputeClientServerHash(vmNonce, vmSubjectPubKey);
+
+        ArrayBufferWriter<byte> pubKeyBuf = new ArrayBufferWriter<byte>();
+        NegotiateAuthenticationStatusCode wrapStatus = nego.Wrap(
+            vmClientHash,
+            pubKeyBuf,
+            true,
+            out _
+        );
+        if (wrapStatus != NegotiateAuthenticationStatusCode.Completed)
+            throw new InvalidOperationException("Wrap pubKeyAuth failed: " + wrapStatus);
+
+        byte[] sealedPubKeyAuth = pubKeyBuf.WrittenSpan.ToArray();
+
+        // Step 5: Build TSRequest with pubKeyAuth + nonce (and final spnegoToken if present)
+        byte[] tsRequest;
+        if (spnegoToken != null && spnegoToken.Length > 0)
+        {
+            tsRequest = CredSspMessageBuilder.BuildAuthenticateRequest(
+                spnegoToken,
+                sealedPubKeyAuth,
+                vmNonce
+            );
+        }
+        else
+        {
+            tsRequest = CredSspMessageBuilder.BuildPubKeyResponse(sealedPubKeyAuth, vmNonce);
+        }
+        await vmSsl.WriteAsync(tsRequest, cancellationToken);
+
+        // Step 6: Read VM's pubKeyAuth response
+        byte[] vmResponse = await X224Handler.ReadAvailableAsync(vmSsl, cancellationToken);
+        if (CredSspMessageParser.HasErrorCode(vmResponse, out uint errorCode))
+            throw new InvalidOperationException(
+                "VM rejected CredSSP authentication with error 0x" + errorCode.ToString("X8")
+            );
+
+        _logger.LogDebug("VM accepted CredSSP authentication");
+
+        // Step 7: Send TSCredentials
+        byte[] tsCredentials = CredSspMessageBuilder.BuildTsCredentials(
+            vmUser,
+            vmPassword,
+            vmDomain
+        );
+        ArrayBufferWriter<byte> credsBuf = new ArrayBufferWriter<byte>();
+        nego.Wrap(tsCredentials, credsBuf, true, out _);
+        byte[] credsTsRequest = CredSspMessageBuilder.BuildTsCredentialsTsRequest(
+            credsBuf.WrittenSpan.ToArray()
+        );
+        await vmSsl.WriteAsync(credsTsRequest, cancellationToken);
+
+        _logger.LogDebug("VM CredSSP credentials sent");
+
+        return (vmSsl, nego);
+    }
+
+    public async Task HandleEarlyAuthResultAsync(
+        SslStream clientSsl,
+        SslStream vmSsl,
+        byte vmNegFlags,
+        CancellationToken cancellationToken
+    )
+    {
+        bool vmSendsEarlyAuth = (vmNegFlags & 0x08) != 0 || (vmNegFlags & 0x10) != 0;
+        if (!vmSendsEarlyAuth)
+        {
+            _logger.LogDebug(
+                "VM does not send Early User Auth Result (flags=0x{Flags:X2})",
+                vmNegFlags
+            );
+            return;
+        }
+
+        byte[] earlyAuthResult = new byte[4];
+        await X224Handler.ReadExactAsync(vmSsl, earlyAuthResult, cancellationToken);
+        uint authResult = BitConverter.ToUInt32(earlyAuthResult);
+
+        if (authResult != 0)
+            throw new InvalidOperationException(
+                "VM denied access: Early User Auth Result 0x" + authResult.ToString("X8")
+            );
+
+        _logger.LogDebug("VM Early User Auth Result: SUCCESS");
+
+        // Forward to client (client expects it since we forwarded matching flags)
+        await clientSsl.WriteAsync(earlyAuthResult, cancellationToken);
+    }
+}
