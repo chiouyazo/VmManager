@@ -29,15 +29,27 @@
 
     <!-- Filter Bar -->
     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="32,16,32,8" Spacing="6">
-      <Border CornerRadius="16" Padding="12,5" Cursor="Hand" Background="{DynamicResource AccentLightBrush}" PointerPressed="FilterAll_Click">
-        <TextBlock x:Name="FilterAll" Text="All" FontSize="12" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" />
-      </Border>
-      <Border x:Name="FilterRunningBorder" CornerRadius="16" Padding="12,5" Cursor="Hand" Background="{DynamicResource SubtleBrush}" PointerPressed="FilterRunning_Click">
-        <TextBlock x:Name="FilterRunning" Text="Running" FontSize="12" Foreground="{DynamicResource MutedBrush}" />
-      </Border>
-      <Border x:Name="FilterStoppedBorder" CornerRadius="16" Padding="12,5" Cursor="Hand" Background="{DynamicResource SubtleBrush}" PointerPressed="FilterStopped_Click">
-        <TextBlock x:Name="FilterStopped" Text="Stopped" FontSize="12" Foreground="{DynamicResource MutedBrush}" />
-      </Border>
+      <Button
+        Command="{Binding SetFilterCommand}" CommandParameter="All"
+        Background="{Binding StateFilter, Converter={StaticResource FilterBgConverter}, ConverterParameter=All}"
+        Foreground="{Binding StateFilter, Converter={StaticResource FilterFgConverter}, ConverterParameter=All}"
+        Padding="12,5" CornerRadius="16" FontSize="12" BorderThickness="0" Cursor="Hand"
+        Content="All"
+      />
+      <Button
+        Command="{Binding SetFilterCommand}" CommandParameter="Running"
+        Background="{Binding StateFilter, Converter={StaticResource FilterBgConverter}, ConverterParameter=Running}"
+        Foreground="{Binding StateFilter, Converter={StaticResource FilterFgConverter}, ConverterParameter=Running}"
+        Padding="12,5" CornerRadius="16" FontSize="12" BorderThickness="0" Cursor="Hand"
+        Content="Running"
+      />
+      <Button
+        Command="{Binding SetFilterCommand}" CommandParameter="Off"
+        Background="{Binding StateFilter, Converter={StaticResource FilterBgConverter}, ConverterParameter=Off}"
+        Foreground="{Binding StateFilter, Converter={StaticResource FilterFgConverter}, ConverterParameter=Off}"
+        Padding="12,5" CornerRadius="16" FontSize="12" BorderThickness="0" Cursor="Hand"
+        Content="Stopped"
+      />
     </StackPanel>
 
     <!-- Content -->

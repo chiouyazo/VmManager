@@ -15,4 +15,11 @@
   <conv:VmStateIsOffConverter x:Key="VmStateIsOffConverter" />
   <conv:VmStateIsRunningConverter x:Key="VmStateIsRunningConverter" />
   <conv:NonZeroCountToVisibilityConverter x:Key="NonZeroCountToVisibilityConverter" />
+  <conv:StringEqualConverter x:Key="StringEqualConverter" />
+  <conv:FilterActiveBrushConverter x:Key="FilterBgConverter"
+    ActiveBrush="{StaticResource AccentLightBrush}"
+    InactiveBrush="{StaticResource SubtleBrush}" />
+  <conv:FilterActiveBrushConverter x:Key="FilterFgConverter"
+    ActiveBrush="{StaticResource AccentBrush}"
+    InactiveBrush="{StaticResource MutedBrush}" />
 </ResourceDictionary>

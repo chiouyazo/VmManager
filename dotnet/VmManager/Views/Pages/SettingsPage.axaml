@@ -17,7 +17,7 @@
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
     <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
-      <StackPanel Margin="24,20,24,16" MaxWidth="750">
+      <StackPanel Margin="32,28,32,20" MaxWidth="800">
         <TextBlock
           Text="{x:Static props:Resources.Settings_PageTitle}"
           Classes="heading-large"
@@ -26,7 +26,7 @@
 
         <!-- Status bar -->
         <Border
-          CornerRadius="6"
+          CornerRadius="{DynamicResource RoundMd}"
           Padding="12,8"
           Margin="0,0,0,12"
           IsVisible="{Binding ShowStatus}"
@@ -40,12 +40,9 @@
               Background="Transparent"
               Padding="8,4"
               VerticalAlignment="Center"
+              BorderThickness="0"
             >
-              <ui:SymbolIcon
-                Symbol="Copy"
-                FontSize="14"
-                Foreground="White"
-              />
+              <ui:SymbolIcon Symbol="Copy" FontSize="14" Foreground="White" />
             </Button>
             <TextBlock
               Text="{Binding StatusMessage, Mode=OneWay}"
@@ -590,10 +587,10 @@
     <!-- Sticky save bar -->
     <Border
       Grid.Row="1"
-      Background="{DynamicResource SurfaceBrush}"
+      Background="{DynamicResource BgBrush}"
       BorderBrush="{DynamicResource DividerBrush}"
       BorderThickness="0,1,0,0"
-      Padding="24,10"
+      Padding="32,10"
     >
       <Button
         Content="{x:Static props:Resources.Settings_Save}"

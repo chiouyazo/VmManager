@@ -32,8 +32,26 @@ public class AgentSettingsService
             );
             if (agents == null)
                 return CreateDefault();
-            if (agents.Count == 0)
-                return agents;
+
+            bool needsResave = false;
+            foreach (AgentConfiguration agent in agents)
+            {
+                if (!string.IsNullOrEmpty(agent.Password))
+                {
+                    if (SecureStorage.IsProtected(agent.Password))
+                    {
+                        agent.Password = SecureStorage.Unprotect(agent.Password);
+                    }
+                    else
+                    {
+                        needsResave = true;
+                    }
+                }
+            }
+
+            if (needsResave)
+                Save(agents);
+
             return agents;
         }
         catch
@@ -55,9 +73,22 @@ public class AgentSettingsService
                 agent.IsLocal = false;
         }
 
+        List<AgentConfiguration> toSerialize = agents
+            .Select(a => new AgentConfiguration
+            {
+                Id = a.Id,
+                Name = a.Name,
+                Url = a.Url,
+                RdpProxyHost = a.RdpProxyHost,
+                Username = a.Username,
+                Password = SecureStorage.Protect(a.Password),
+                IsLocal = a.IsLocal,
+            })
+            .ToList();
+
         string directory = Path.GetDirectoryName(_filePath)!;
         Directory.CreateDirectory(directory);
-        string json = JsonSerializer.Serialize(agents, JsonOptions);
+        string json = JsonSerializer.Serialize(toSerialize, JsonOptions);
         File.WriteAllText(_filePath, json);
     }
 
