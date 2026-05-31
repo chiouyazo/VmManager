@@ -1,0 +1,49 @@
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Input" Class="mr-3 mb-n1"/>
+            Please enter a new name for your Vm
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4" Dense="true">@_error</MudAlert>
+        }
+        <MudTextField @bind-Value="_newName" Label="New Name" Immediate="true" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Error" OnClick="RenameVm">Rename</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string _error = "";
+    private string _newName = "";
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    [Parameter]
+    public VmInstance Vm { get; set; }
+
+    protected override void OnInitialized()
+    {
+        _newName = Vm.Name;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void RenameVm()
+    {
+        string? validationError = VmNameValidator.GetError(_newName);
+        if (validationError != null)
+        {
+            _error = validationError;
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok(_newName));
+    }
+}

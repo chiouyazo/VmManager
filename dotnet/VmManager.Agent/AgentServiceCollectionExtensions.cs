@@ -27,7 +27,12 @@ public static class AgentServiceCollectionExtensions
         services.AddSingleton<SnapshotPushService>();
         services.AddSingleton<FeedResolutionService>();
 
-        if (string.Equals(backendOverride, "Proxmox", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(backendOverride, "Fake", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddSingleton<IVmBackend, FakeVmBackend>();
+            services.AddSingleton<IVmIpResolver>(sp => new FakeIpResolver());
+        }
+        else if (string.Equals(backendOverride, "Proxmox", StringComparison.OrdinalIgnoreCase))
         {
             services.AddSingleton<ProxmoxApiClient>(sp =>
             {

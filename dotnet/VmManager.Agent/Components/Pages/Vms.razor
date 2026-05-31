@@ -1,0 +1,126 @@
+@page "/vms"
+@page "/"
+@using System.Security.Claims
+@using Microsoft.JSInterop
+@using VmManager.Agent.Services
+@attribute [Authorize]
+@inject IVmBackend VmBackend                                                                                                                                                                                                                                                                                      
+@inject AuthorizationService AuthService                                                                                                                                                                                                                                                                        
+@inject Components.Auth.BasicAuthStateProvider AuthState
+@inject IDialogService DialogService
+@inject NavigationManager NavigationManager
+@inject SettingsService SettingsService
+@inject IJSRuntime JS
+
+<MudStack Row="true">
+    <MudSpacer />                                                                                                                                                                                                                                                                                                 
+    <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="LoadVms" />
+</MudStack>
+<MudGrid>
+    @foreach (VmInstance vm in _vms)
+    {
+        <MudItem xs="12" sm="12" md="6" lg="6">
+            <MudCard Elevation="2">
+                <MudCardHeader>
+                    <MudText Typo="Typo.h6">@vm.Name</MudText>
+                    <MudChip T="string" Color="@(vm.State == "Running" ? Color.Success : Color.Default)"
+                             Size="Size.Small" Class="pr-3 mx-3 pl-3">
+                        @vm.State
+                    </MudChip>
+                    <MudSpacer />
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.PlayArrow" IconSize="Size.Large" Size="Size.Small" Color="Color.Primary" Disabled="@(!CanDo(vm, Permission.RdpConnect))" OnClick="() => Connect(vm)">
+                        Connect
+                    </MudButton>
+                </MudCardHeader>
+                <MudCardActions>
+                    
+                    <MudSpacer />
+                    
+                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Color="Color.Default">
+                        <MudMenuItem Disabled="@(!CanDo(vm, Permission.VmStart))" OnClick="() => Start(vm)">Start</MudMenuItem>
+                        <MudMenuItem Disabled="@(!CanDo(vm, Permission.VmStop))" OnClick="() => Stop(vm)">Stop</MudMenuItem>
+                        @* <MudMenuItem OnClick="() => Reset(vm)">Reset</MudMenuItem> *@
+                        <MudMenuItem Disabled="@(!CanDo(vm, Permission.VmRename))" OnClick="() => Rename(vm)">Rename</MudMenuItem>
+                        <MudMenuItem Disabled="@(!CanDo(vm, Permission.VmDelete))" OnClick="() => Delete(vm)">Delete</MudMenuItem>
+                    </MudMenu>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+    }
+</MudGrid>
+
+@code
+{
+    private List<VmInstance> _vms = [];
+    private ClaimsPrincipal _user = new ClaimsPrincipal();                                                                                                                                                                                                                                                                              
+    private string _domainSuffix = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        AppSettings settings = await SettingsService.LoadAsync();
+        _domainSuffix = settings.RdpDomainSuffix;
+        await LoadVms();
+    }
+
+    private async Task LoadVms()
+    {
+        _user = (await AuthState.GetAuthenticationStateAsync()).User;
+        List<VmInstance> vmInstances = await VmBackend.GetVmsAsync();
+        _vms = vmInstances.Where(vm => AuthService.CanViewVm(_user, vm.Name)).ToList();
+    }
+
+    private async Task Connect(VmInstance vm)                                                                                                                                                                                                                                                                         
+    {
+        string username = _user.Identity?.Name ?? "";                                                                                                                                                                                                                                                                 
+        string address;                                                                                                                                                                                                                                                                                             
+        string displayUsername;                                                                                                                                                                                                                                                                                     
+
+        if (!string.IsNullOrEmpty(_domainSuffix))
+        {
+            address = vm.Name + "." + _domainSuffix;
+            displayUsername = username;
+        }
+        else
+        {
+            string host = new Uri(NavigationManager.BaseUri).Host;
+            address = host + ":13389";
+            displayUsername = vm.Name + ":" + username;
+        }
+
+        DialogParameters<DialogConnect> parameters = new DialogParameters<DialogConnect>
+        {
+            { x => x.Address, address },
+            { x => x.Username, displayUsername },
+        };
+
+        await DialogService.ShowAsync<DialogConnect>("Connect to " + vm.Name, parameters);
+    }
+    
+    private async Task Start(VmInstance vm)
+    {
+        await VmBackend.StartVmAsync(vm.Name);
+    }
+
+    private async Task Stop(VmInstance vm) { await VmBackend.StopVmAsync(vm.Name); }
+    private async Task Delete(VmInstance vm) { await VmBackend.DeleteVmAsync(vm.Name); }
+
+    private async Task Rename(VmInstance vm)
+    {
+        DialogParameters<DialogRenameVm> parameters = new DialogParameters<DialogRenameVm> { { x => x.Vm, vm } };
+
+        IDialogReference dialog = await DialogService.ShowAsync<DialogRenameVm>("Rename Vm", parameters);
+        DialogResult? result = await dialog.Result;
+
+        if (!(result?.Canceled ?? true) && result.Data is string renameResult)
+        {
+            await VmBackend.RenameVmAsync(vm.Name, renameResult);
+            vm.Name = renameResult;
+            StateHasChanged();
+        }
+    }
+    
+    private bool CanDo(VmInstance vm, string permission)                                                                                                                                                                                                                                                              
+    {
+        return AuthService.CanAccessVm(_user, vm.Name, permission);
+    }
+}

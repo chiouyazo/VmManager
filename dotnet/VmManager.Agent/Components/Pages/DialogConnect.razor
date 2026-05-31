@@ -1,0 +1,55 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+<MudDialog>
+    <DialogContent>
+        <MudText Typo="Typo.body1" Class="mb-4">
+            To connect to this VM, open your RDP client and connect to:
+        </MudText>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudTextField Value="@Address" ReadOnly="true" Variant="Variant.Outlined"
+                          Style="font-family: monospace;" />
+            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" OnClick="CopyAddress" />
+        </MudStack>
+        <MudText Typo="Typo.body1" Class="mb-2">
+            Log in using your VmManager credentials:
+        </MudText>
+        <MudStack Row="true" AlignItems="AlignItems.Center">
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Username:</MudText>
+            <MudText Typo="Typo.body2" Style="font-family: monospace; font-weight: bold;">@Username</MudText>
+            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
+                           OnClick="CopyUsername" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    [Parameter]
+    public string Address { get; set; } = "";
+
+    [Parameter]
+    public string Username { get; set; } = "";
+
+    private async Task CopyAddress()
+    {
+        await CopyToClipboard(Address);
+    }
+
+    private async Task CopyUsername()
+    {
+        await CopyToClipboard(Username);
+    }
+
+    private async Task CopyToClipboard(string text)
+    {
+        await JS.InvokeVoidAsync("copyToClipboard", text);
+    }
+
+    private void Close() => MudDialog.Close();
+}

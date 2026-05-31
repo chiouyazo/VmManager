@@ -1,0 +1,66 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+@inject Components.Auth.BasicAuthStateProvider AuthState
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@inject ProtectedLocalStorage Storage
+
+<MudLayout>
+    <MudDrawer Elevation="2" Open="true" Fixed="true" Width="100px" Variant="DrawerVariant.Persistent" Breakpoint="Breakpoint.None">
+        <MudNavMenu Style="display: flex; flex-direction: column; height: 100%;">
+            <MudNavLink Href="/vms" Match="NavLinkMatch.Prefix">
+                <MudStack AlignItems="AlignItems.Center" Spacing="0" Style="width: 95%" Class="pr-1">
+                    <MudIcon Size="Size.Large" Icon="@Icons.Material.Filled.Computer" />
+                    <MudText Typo="Typo.caption">My VMs</MudText>
+                </MudStack>
+            </MudNavLink>
+            <MudNavLink Href="/images" Match="NavLinkMatch.Prefix">
+                <MudStack AlignItems="AlignItems.Center" Spacing="0" Style="width: 95%" Class="pr-1">
+                    <MudIcon Size="Size.Large" Icon="@Icons.Material.Filled.Inventory2" />
+                    <MudText Typo="Typo.caption">Images</MudText>
+                </MudStack>
+            </MudNavLink>
+            <MudNavLink Href="/sessions" Match="NavLinkMatch.Prefix">
+                <MudStack AlignItems="AlignItems.Center" Spacing="0" Style="width: 95%" Class="pr-1">
+                    <MudIcon Size="Size.Large" Icon="@Icons.Material.Filled.ScreenShare" />
+                    <MudText Typo="Typo.caption">Sessions</MudText>
+                </MudStack>
+            </MudNavLink>
+            <MudNavLink Href="/users" Match="NavLinkMatch.Prefix">
+                <MudStack AlignItems="AlignItems.Center" Spacing="0" Style="width: 95%" Class="pr-1">
+                    <MudIcon Size="Size.Large" Icon="@Icons.Material.Filled.People" />
+                    <MudText Typo="Typo.caption">Users</MudText>
+                </MudStack>
+            </MudNavLink>
+            
+            <MudSpacer />
+            
+            <MudNavLink Match="NavLinkMatch.Prefix" OnClick="Logout">                                                                                                                                                                                                                                                    
+                <MudStack AlignItems="AlignItems.Center" Spacing="0" Style="width: 95%" Class="pr-1 pb-1">                                                                                                                                                                                                                    
+                    <MudIcon Size="Size.Large" Icon="@Icons.Material.Filled.Logout" />                                                                                                                                                                                                                                        
+                    <MudText Typo="Typo.caption">Logout</MudText>                                                                                                                                                                                                                                                           
+                </MudStack>
+            </MudNavLink>
+            
+            <MudNavLink Href="/settings" Match="NavLinkMatch.Prefix">
+                <MudStack AlignItems="AlignItems.Center" Spacing="0" Style="width: 95%" Class="pr-1 pb-1">
+                    <MudIcon Size="Size.Large" Icon="@Icons.Material.Filled.Settings" />
+                    <MudText Typo="Typo.caption">Settings</MudText>
+                </MudStack>
+            </MudNavLink>
+        </MudNavMenu>
+    </MudDrawer>
+
+    <MudMainContent Class="pa-4">
+        @Body
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private async Task Logout()
+    {
+        await Storage.DeleteAsync("auth_user");
+        await Storage.DeleteAsync("auth_pass");
+        AuthState.Logout();
+        Navigation.NavigateTo("/login", forceLoad: true);
+    }
+}

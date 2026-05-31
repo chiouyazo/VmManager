@@ -13,7 +13,11 @@ public static class BackendServiceCollectionExtensions
         string? backendOverride = null
     )
     {
-        if (string.Equals(backendOverride, "Proxmox", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(backendOverride, "Fake", StringComparison.OrdinalIgnoreCase))
+        {
+            // No-op: FakeVmBackend registered in Agent project
+        }
+        else if (string.Equals(backendOverride, "Proxmox", StringComparison.OrdinalIgnoreCase))
         {
             services.AddSingleton<ShellRunner>();
             services.AddSingleton<ProxmoxVmService>();

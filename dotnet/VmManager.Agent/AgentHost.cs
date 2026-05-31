@@ -1,8 +1,12 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Components.Authorization;
+using MudBlazor.Services;
 using Serilog;
 using VmManager.Agent.Auth;
+using VmManager.Agent.Components;
+using VmManager.Agent.Components.Auth;
 using VmManager.Agent.Endpoints;
 using VmManager.Agent.Hubs;
 using VmManager.Agent.Services;
@@ -20,6 +24,7 @@ public static class AgentHost
 
         WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
         builder.Host.UseSerilog();
+        builder.WebHost.UseStaticWebAssets();
 
         int httpPort = builder.Configuration.GetValue("VmManager:HttpPort", 18275);
 
@@ -94,6 +99,12 @@ public static class AgentHost
         builder.Services.AddControllers().AddApplicationPart(typeof(AgentHost).Assembly);
         builder.Services.AddSignalR();
         builder.Services.AddHealthChecks();
+        builder.Services.AddRazorComponents().AddInteractiveServerComponents();
+        builder.Services.AddMudServices();
+        builder.Services.AddScoped<BasicAuthStateProvider>();
+        builder.Services.AddScoped<AuthenticationStateProvider>(sp =>
+            sp.GetRequiredService<BasicAuthStateProvider>()
+        );
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen(options =>
         {
@@ -122,12 +133,15 @@ public static class AgentHost
         app.UseAuthentication();
         app.UseMiddleware<Auth.MustChangePasswordMiddleware>();
         app.UseAuthorization();
+        app.UseAntiforgery();
+        app.MapStaticAssets();
         app.UseSwagger();
         app.UseSwaggerUI();
         app.MapControllers();
         app.MapHub<ProgressHub>("/hubs/progress");
         app.MapHealthChecks("/health").AllowAnonymous();
         app.MapRdpEndpoints();
+        app.MapRazorComponents<App>().AddInteractiveServerRenderMode().AllowAnonymous();
 
         int rdpProxyPort = builder.Configuration.GetValue("VmManager:RdpProxyPort", 13389);
         if (rdpProxyPort > 0)

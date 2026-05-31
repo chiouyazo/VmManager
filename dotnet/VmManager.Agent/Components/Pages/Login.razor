@@ -1,0 +1,114 @@
+@page "/login"
+@layout Components.Layout.LoginLayout
+@attribute [AllowAnonymous]
+@inject Components.Auth.BasicAuthStateProvider AuthState
+@inject NavigationManager Navigation
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@inject ProtectedLocalStorage Storage
+
+<MudCard Width="500px" Class="pa-5">
+    <MudCardHeader>
+        <MudText Typo="Typo.h5">VmManager</MudText>
+    </MudCardHeader>
+    <MudCardContent>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4" Dense="true">@_error</MudAlert>
+        }
+        <MudTextField @bind-Value="_username"
+                      Label="Username"
+                      Variant="Variant.Text"
+                      Immediate="true"
+                      Class="mb-4"
+                      Disabled="_loading"
+                      OnKeyDown="OnKeyDown" />
+        <MudTextField @bind-Value="_password"
+                      Label="Password"
+                      Variant="Variant.Text"
+                      InputType="InputType.Password"
+                      Immediate="true"
+                      Disabled="_loading"
+                      OnKeyDown="OnKeyDown" />
+    </MudCardContent>
+    <MudCardActions Class="px-4 pb-4">
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   OnClick="LoginAsync"
+                   Disabled="_loading">
+            @if (_loading)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Login
+        </MudButton>
+    </MudCardActions>
+</MudCard>
+
+@code {
+    private string _username = "";
+    private string _password = "";
+    private string _error = "";
+    private bool _loading;
+    private bool _initialized;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _initialized)
+            return;
+
+        _initialized = true;
+
+        try
+        {
+            ProtectedBrowserStorageResult<string> storedUser = await Storage.GetAsync<string>("auth_user");
+            ProtectedBrowserStorageResult<string> storedPass = await Storage.GetAsync<string>("auth_pass");
+
+            if (storedUser.Success && storedPass.Success
+                && !string.IsNullOrEmpty(storedUser.Value)
+                && !string.IsNullOrEmpty(storedPass.Value))
+            {
+                AuthState.RestoreSession(storedUser.Value, storedPass.Value);
+                Navigation.NavigateTo("/vms");
+            }
+        }
+        catch
+        {
+            // Storage unavailable or corrupted
+        }
+    }
+
+    private async Task LoginAsync()
+    {
+        _error = "";
+        _loading = true;
+
+        await Task.Yield();
+
+        if (AuthState.TryLogin(_username, _password))
+        {
+            try
+            {
+                await Storage.SetAsync("auth_user", _username);
+                await Storage.SetAsync("auth_pass", _password);
+            }
+            catch
+            {
+                // Storage write failed, session still works
+            }
+
+            Navigation.NavigateTo("/vms");
+        }
+        else
+        {
+            _error = "Invalid username or password";
+            _loading = false;
+        }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter" && !_loading)
+            await LoginAsync();
+    }
+}

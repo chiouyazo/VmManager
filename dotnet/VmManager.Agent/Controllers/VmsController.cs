@@ -263,6 +263,10 @@ public class VmsController : ControllerBase
         )
             return Forbid();
 
+        string? nameError = VmNameValidator.GetError(request.NewName);
+        if (nameError != null)
+            return BadRequest(new { error = nameError });
+
         _logger.LogInformation("Renaming VM {VmName} to {NewName}", name, request.NewName);
         await _backend.RenameVmAsync(name, request.NewName);
 
