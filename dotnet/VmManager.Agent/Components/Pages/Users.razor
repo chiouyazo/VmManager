@@ -1,0 +1,129 @@
+@page "/users"
+@using VmManager.Agent.Services
+@attribute [Authorize]
+@inject UserService UserService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h5">Users</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+               StartIcon="@Icons.Material.Filled.PersonAdd"
+               OnClick="ShowCreateDialog">
+        New User
+    </MudButton>
+</MudStack>
+
+<MudGrid>
+    @foreach (UserAccount user in _users)
+    {
+        <MudItem xs="12" md="6" lg="4">
+            <MudCard Elevation="2">
+                <MudCardHeader>
+                    <MudText Typo="Typo.body1" Style="font-weight: 600;">@user.Username</MudText>
+                    @if (user.IsAdmin)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="ml-2">Admin</MudChip>
+                    }
+                    <MudSpacer />
+                    @if (!user.IsAdmin)
+                    {
+                        <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
+                            <MudMenuItem OnClick="() => ShowEditPermissions(user)">Permissions</MudMenuItem>
+                            <MudMenuItem OnClick="() => ShowResetPassword(user)">Reset Password</MudMenuItem>
+                            <MudMenuItem OnClick="() => DeleteUser(user)">Delete</MudMenuItem>
+                        </MudMenu>
+                    }
+                </MudCardHeader>
+                <MudCardContent Class="pt-0">
+                    @if (!string.IsNullOrEmpty(user.Email))
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@user.Email</MudText>
+                    }
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Max VMs: @(user.MaxVms == 0 ? "Unlimited" : user.MaxVms.ToString())
+                    </MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Permissions: @user.Permissions.Count
+                    </MudText>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    }
+</MudGrid>
+
+@code {
+    private List<UserAccount> _users = new List<UserAccount>();
+
+    protected override void OnInitialized()
+    {
+        LoadUsers();
+    }
+
+    private void LoadUsers()
+    {
+        _users = UserService.GetAll();
+    }
+
+    private async Task ShowCreateDialog()
+    {
+        IDialogReference dialog = await DialogService.ShowAsync<DialogCreateUser>("Create User");
+        DialogResult? result = await dialog.Result;
+        if (!(result?.Canceled ?? true))
+        {
+            LoadUsers();
+            StateHasChanged();
+            Snackbar.Add("User created", Severity.Success);
+        }
+    }
+
+    private async Task ShowEditPermissions(UserAccount user)
+    {
+        DialogParameters<DialogEditPermissions> parameters = new DialogParameters<DialogEditPermissions>
+        {
+            { x => x.User, user },
+        };
+        IDialogReference dialog = await DialogService.ShowAsync<DialogEditPermissions>(
+            "Edit Permissions: " + user.Username, parameters);
+        DialogResult? result = await dialog.Result;
+        if (!(result?.Canceled ?? true))
+        {
+            LoadUsers();
+            StateHasChanged();
+            Snackbar.Add("Permissions updated", Severity.Success);
+        }
+    }
+
+    private async Task ShowResetPassword(UserAccount user)
+    {
+        DialogParameters<DialogResetPassword> parameters = new DialogParameters<DialogResetPassword>
+        {
+            { x => x.Username, user.Username },
+        };
+        IDialogReference dialog = await DialogService.ShowAsync<DialogResetPassword>(
+            "Reset Password: " + user.Username, parameters);
+        DialogResult? result = await dialog.Result;
+        if (!(result?.Canceled ?? true))
+            Snackbar.Add("Password reset", Severity.Success);
+    }
+
+    private async Task DeleteUser(UserAccount user)
+    {
+        DialogParameters<DialogConfirm> parameters = new DialogParameters<DialogConfirm>
+        {
+            { x => x.Message, "Are you sure you want to delete " + user.Username + "?" },
+            { x => x.ConfirmText, "Delete" },
+        };
+        IDialogReference dialog = await DialogService.ShowAsync<DialogConfirm>("Delete User", parameters);
+        DialogResult? result = await dialog.Result;
+
+        if (!(result?.Canceled ?? true))
+        {
+            UserService.DeleteUser(user.Username);
+            LoadUsers();
+            StateHasChanged();
+            Snackbar.Add("User deleted", Severity.Success);
+        }
+    }
+}

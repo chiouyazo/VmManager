@@ -88,12 +88,24 @@ public sealed class RdpCredSspConnectionHandler
             );
             authResult.SniHostname = sniHostname;
 
-            (string vmName, string username) = ResolveVmAndUsername(authResult);
+            string vmName;
+            string username;
+            try
+            {
+                (vmName, username) = ResolveVmAndUsername(authResult);
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning("VM resolution failed: {Message}", ex.Message);
+                return;
+            }
+
             _logger.LogInformation(
-                "RDP CredSSP: user={Username}, vm={VmName}, mode={Mode}",
+                "RDP CredSSP: user={Username}, vm={VmName}, ntlmUser={NtlmUser}, ntlmDomain={NtlmDomain}",
                 username,
                 vmName,
-                sniHostname != null ? "SNI" : "username-prefix"
+                authResult.Username,
+                authResult.Domain
             );
 
             byte[]? ntHash = _userService.GetNtHash(username);
@@ -103,12 +115,24 @@ public sealed class RdpCredSspConnectionHandler
                     "User {Username} has no NT hash (needs password reset or login)",
                     username
                 );
+                await SendCredSspError(clientSsl, 0x8009030C, cancellationToken);
                 return;
             }
 
             if (!_clientHandler.DeriveSessionKey(authResult, ntHash))
             {
                 _logger.LogWarning("Failed to derive session key for user {Username}", username);
+                await SendCredSspError(clientSsl, 0x8009030C, cancellationToken);
+                return;
+            }
+
+            if (!_clientHandler.VerifyClientPubKeyAuth(authResult, authResult.RawCredSspAuth, cert))
+            {
+                _logger.LogWarning(
+                    "Invalid credentials for user {Username} (pubKeyAuth verification failed)",
+                    username
+                );
+                await SendCredSspError(clientSsl, 0x8009030C, cancellationToken);
                 return;
             }
 
@@ -130,15 +154,6 @@ public sealed class RdpCredSspConnectionHandler
             }
 
             ClaimsPrincipal principal = BuildClaimsPrincipal(user);
-
-            if (!_authorizationService.HasPermission(principal, Permission.RdpConnect))
-            {
-                _logger.LogWarning(
-                    "User {Username} does not have rdp.connect permission",
-                    username
-                );
-                return;
-            }
 
             if (!_authorizationService.CanAccessVm(principal, vmName, Permission.RdpConnect))
             {
@@ -245,6 +260,36 @@ public sealed class RdpCredSspConnectionHandler
         throw new InvalidOperationException(
             "Cannot determine VM name. Use vmName:username format or configure RdpDomainSuffix for DNS mode."
         );
+    }
+
+    private static async Task SendCredSspError(
+        SslStream clientSsl,
+        uint errorCode,
+        CancellationToken cancellationToken
+    )
+    {
+        // TSRequest with errorCode [4]: SEQUENCE { [0] version, [4] errorCode }
+        byte[] errorBytes = new byte[4];
+        errorBytes[0] = (byte)(errorCode >> 24);
+        errorBytes[1] = (byte)(errorCode >> 16);
+        errorBytes[2] = (byte)(errorCode >> 8);
+        errorBytes[3] = (byte)errorCode;
+
+        byte[] version = Crypto.Asn1Helper.Wrap(
+            0xA0,
+            Crypto.Asn1Helper.Wrap(0x02, new byte[] { 0x06 })
+        );
+        byte[] error = Crypto.Asn1Helper.Wrap(0xA4, Crypto.Asn1Helper.Wrap(0x02, errorBytes));
+        byte[] tsRequest = Crypto.Asn1Helper.Wrap(0x30, Crypto.Asn1Helper.Concat(version, error));
+
+        try
+        {
+            await clientSsl.WriteAsync(tsRequest, cancellationToken);
+        }
+        catch
+        {
+            // Client may have already disconnected
+        }
     }
 
     private static ClaimsPrincipal BuildClaimsPrincipal(UserAccount user)

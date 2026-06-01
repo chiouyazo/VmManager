@@ -1,51 +1,63 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Navigation
-@inject Components.Auth.BasicAuthStateProvider AuthState
+@inject BasicAuthStateProvider AuthState
+@using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
-@inject ProtectedLocalStorage Storage
+@using VmManager.Agent.Services
+@inject ProtectedLocalStorage Storage                                                                                                                                                                                                                                                                      
+@inject AuthorizationService AuthService
+@inject IBackgroundTaskManager TaskManager
+@implements IDisposable
 
 <MudLayout>
-    <MudDrawer Elevation="2" Open="true" Fixed="true" Width="100px" Variant="DrawerVariant.Persistent" Breakpoint="Breakpoint.None">
-        <MudNavMenu Style="display: flex; flex-direction: column; height: 100%;">
-            <MudNavLink Href="/vms" Match="NavLinkMatch.Prefix">
-                <MudStack AlignItems="AlignItems.Center" Spacing="0" Style="width: 95%" Class="pr-1">
-                    <MudIcon Size="Size.Large" Icon="@Icons.Material.Filled.Computer" />
-                    <MudText Typo="Typo.caption">My VMs</MudText>
-                </MudStack>
+    <MudDrawer Elevation="2" Open="true" Fixed="true" Width="250px" Class="py-3" Variant="DrawerVariant.Persistent"
+               Breakpoint="Breakpoint.None">
+        <MudNavMenu Style="display: flex; flex-direction: column;" Color="Color.Primary">
+            <MudText Typo="Typo.h6" Class="px-4">VM Manager</MudText>
+            <MudText Typo="Typo.body2" Class="px-4 mud-text-secondary">@AuthState.CurrentUsername</MudText>
+            <MudDivider Class="my-2"/>
+
+            <MudNavLink Href="/vms" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Computer">
+                <MudText Typo="Typo.caption">My VMs</MudText>
             </MudNavLink>
-            <MudNavLink Href="/images" Match="NavLinkMatch.Prefix">
-                <MudStack AlignItems="AlignItems.Center" Spacing="0" Style="width: 95%" Class="pr-1">
-                    <MudIcon Size="Size.Large" Icon="@Icons.Material.Filled.Inventory2" />
+            
+            @if(AuthService.HasPermission(_user, Permission.CatalogBrowse))
+            {
+                <MudNavLink Href="/images" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Inventory2">
                     <MudText Typo="Typo.caption">Images</MudText>
-                </MudStack>
-            </MudNavLink>
-            <MudNavLink Href="/sessions" Match="NavLinkMatch.Prefix">
-                <MudStack AlignItems="AlignItems.Center" Spacing="0" Style="width: 95%" Class="pr-1">
-                    <MudIcon Size="Size.Large" Icon="@Icons.Material.Filled.ScreenShare" />
+                </MudNavLink>
+            }
+            
+            @if (AuthService.HasPermission(_user, Permission.UsersManage))
+            {
+                <MudNavLink Href="/sessions" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ScreenShare">
                     <MudText Typo="Typo.caption">Sessions</MudText>
-                </MudStack>
-            </MudNavLink>
-            <MudNavLink Href="/users" Match="NavLinkMatch.Prefix">
-                <MudStack AlignItems="AlignItems.Center" Spacing="0" Style="width: 95%" Class="pr-1">
-                    <MudIcon Size="Size.Large" Icon="@Icons.Material.Filled.People" />
-                    <MudText Typo="Typo.caption">Users</MudText>
-                </MudStack>
-            </MudNavLink>
+                </MudNavLink>
+            }
+
+            <MudNavGroup Title="Options" Icon="@Icons.Material.Filled.Hardware">
             
-            <MudSpacer />
-            
-            <MudNavLink Match="NavLinkMatch.Prefix" OnClick="Logout">                                                                                                                                                                                                                                                    
-                <MudStack AlignItems="AlignItems.Center" Spacing="0" Style="width: 95%" Class="pr-1 pb-1">                                                                                                                                                                                                                    
-                    <MudIcon Size="Size.Large" Icon="@Icons.Material.Filled.Logout" />                                                                                                                                                                                                                                        
-                    <MudText Typo="Typo.caption">Logout</MudText>                                                                                                                                                                                                                                                           
-                </MudStack>
-            </MudNavLink>
-            
-            <MudNavLink Href="/settings" Match="NavLinkMatch.Prefix">
-                <MudStack AlignItems="AlignItems.Center" Spacing="0" Style="width: 95%" Class="pr-1 pb-1">
-                    <MudIcon Size="Size.Large" Icon="@Icons.Material.Filled.Settings" />
+                <MudNavLink Href="/settings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Settings">
                     <MudText Typo="Typo.caption">Settings</MudText>
-                </MudStack>
+                </MudNavLink>
+
+            @if (AuthService.HasPermission(_user, Permission.UsersManage))
+                {
+                    <MudNavLink Href="/users" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.People">
+                        <MudText Typo="Typo.caption">Users</MudText>
+                    </MudNavLink>
+                }
+                
+            @if (AuthService.HasPermission(_user, Permission.SettingsView))
+                {
+                    <MudNavLink Href="/agent-settings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Commit">
+                        <MudText Typo="Typo.caption">Agent Settings</MudText>
+                    </MudNavLink>
+                }
+            </MudNavGroup>
+
+            <MudNavLink Match="NavLinkMatch.Prefix" OnClick="Logout" Icon="@Icons.Material.Filled.Logout">
+                <MudText Typo="Typo.caption">Logout</MudText>
             </MudNavLink>
         </MudNavMenu>
     </MudDrawer>
@@ -55,12 +67,134 @@
     </MudMainContent>
 </MudLayout>
 
+@if (_visibleTasks.Count > 0)
+{
+    <MudPaper Elevation="8" Class="pa-3"
+              Style="position: fixed; bottom: 16px; right: 16px; z-index: 1300; width: 360px; border-radius: 8px;">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+            <MudIcon Icon="@Icons.Material.Filled.Task" Size="Size.Small" />
+            <MudText Typo="Typo.subtitle2">Tasks</MudText>
+            <MudSpacer />
+            <MudIconButton Icon="@(_taskPanelOpen ? Icons.Material.Filled.ExpandMore : Icons.Material.Filled.ExpandLess)"
+                           Size="Size.Small" OnClick="() => _taskPanelOpen = !_taskPanelOpen" />
+        </MudStack>
+        @if (_taskPanelOpen)
+        {
+            @foreach (IBackgroundTask task in _visibleTasks)
+            {
+                <MudStack Spacing="0" Class="mb-2">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        @if (!task.IsComplete && !task.IsFailed && !task.IsCancelled)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="@(task.Progress < 0)"
+                                                 Value="@((int)(task.Progress * 100))" />
+                        }
+                        else if (task.IsComplete)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                        }
+                        else if (task.IsFailed)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Error" Color="Color.Error" Size="Size.Small" />
+                        }
+                        else
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Cancel" Color="Color.Warning" Size="Size.Small" />
+                        }
+                        <MudText Typo="Typo.body2" Style="flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            @task.Title
+                        </MudText>
+                        @if (task.IsCancellable && !task.IsComplete && !task.IsFailed && !task.IsCancelled)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small"
+                                           Color="Color.Error" OnClick="task.Cancel" />
+                        }
+                        @if (task.IsComplete || task.IsFailed || task.IsCancelled)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                           OnClick="() => DismissTask(task)" />
+                        }
+                    </MudStack>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="ml-7">@task.Status</MudText>
+                    @if (task.IsFailed && task.ErrorMessage != null)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Error" Class="ml-7">@task.ErrorMessage</MudText>
+                    }
+                </MudStack>
+            }
+        }
+    </MudPaper>
+}
+
 @code {
+    private ClaimsPrincipal _user = new ClaimsPrincipal();
+    private List<IBackgroundTask> _visibleTasks = new List<IBackgroundTask>();
+    private HashSet<string> _hiddenTaskIds = new HashSet<string>();
+    private bool _taskPanelOpen = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AuthenticationState state = await AuthState.GetAuthenticationStateAsync();
+        _user = state.User;
+        TaskManager.TasksChanged += OnTasksChanged;
+        RefreshTasks();
+    }
+
+    private void OnTasksChanged()
+    {
+        InvokeAsync(() =>
+        {
+            RefreshTasks();
+            ScheduleHideCompleted();
+            StateHasChanged();
+        });
+    }
+
+    private void RefreshTasks()
+    {
+        string username = _user.Identity?.Name ?? "";
+        _visibleTasks = TaskManager.GetTasksForUser(username)
+            .Where(t => !_hiddenTaskIds.Contains(t.Id))
+            .ToList();
+    }
+
+    private void ScheduleHideCompleted()
+    {
+        foreach (IBackgroundTask task in _visibleTasks)
+        {
+            if (task.IsComplete || task.IsCancelled)
+            {
+                string taskId = task.Id;
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(5000);
+                    _hiddenTaskIds.Add(taskId);
+                    await InvokeAsync(() =>
+                    {
+                        RefreshTasks();
+                        StateHasChanged();
+                    });
+                });
+            }
+        }
+    }
+
+    private void DismissTask(IBackgroundTask task)
+    {
+        _hiddenTaskIds.Add(task.Id);
+        RefreshTasks();
+    }
+
     private async Task Logout()
     {
         await Storage.DeleteAsync("auth_user");
         await Storage.DeleteAsync("auth_pass");
         AuthState.Logout();
         Navigation.NavigateTo("/login", forceLoad: true);
+    }
+
+    public void Dispose()
+    {
+        TaskManager.TasksChanged -= OnTasksChanged;
     }
 }

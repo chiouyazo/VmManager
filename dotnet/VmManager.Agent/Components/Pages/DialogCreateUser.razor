@@ -1,0 +1,143 @@
+@using VmManager.Agent.Services
+@inject UserService UserService
+@inject EmailService EmailService
+
+<MudDialog>
+    <DialogContent>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4" Dense="true">@_error</MudAlert>
+        }
+        <MudTextField @bind-Value="_email" Label="Email" Immediate="true" Class="mb-2" />
+        <MudTextField @bind-Value="_password" Label="Password" InputType="InputType.Password" Immediate="true" Class="mb-2" />
+        <MudCheckBox @bind-Value="_isAdmin" Label="Administrator" Class="mb-2" />
+        <MudNumericField @bind-Value="_maxVms" Label="Max VMs (0 = unlimited)" Min="0" Class="mb-4" />
+
+        <MudText Typo="Typo.subtitle2" Class="mb-2">VM Permissions</MudText>
+        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="0">
+            @foreach (string perm in _vmPermissions)
+            {
+                <MudCheckBox T="bool" Value="_permissions.Contains(perm)"
+                             ValueChanged="v => TogglePermission(perm, v)"
+                             Label="@FormatPermission(perm)" />
+            }
+        </MudStack>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-2 mb-2">Snapshot Permissions</MudText>
+        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="0">
+            @foreach (string perm in _snapshotPermissions)
+            {
+                <MudCheckBox T="bool" Value="_permissions.Contains(perm)"
+                             ValueChanged="v => TogglePermission(perm, v)"
+                             Label="@FormatPermission(perm)" />
+            }
+        </MudStack>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-2 mb-2">Other Permissions</MudText>
+        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="0">
+            @foreach (string perm in _otherPermissions)
+            {
+                <MudCheckBox T="bool" Value="_permissions.Contains(perm)"
+                             ValueChanged="v => TogglePermission(perm, v)"
+                             Label="@FormatPermission(perm)" />
+            }
+        </MudStack>
+
+        <MudCheckBox @bind-Value="_sendInvite" Label="Send invite email" Class="mt-4" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Create">Create</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string _email = "";
+    private string _password = "";
+    private bool _isAdmin;
+    private int _maxVms;
+    private bool _sendInvite = true;
+    private string _error = "";
+    private HashSet<string> _permissions = new HashSet<string>(Permission.DefaultUser);
+
+    private static readonly string[] _vmPermissions =
+    {
+        Permission.VmCreate, Permission.VmDelete, Permission.VmStart, Permission.VmStop,
+        Permission.VmRename, Permission.VmReset, Permission.VmApplyLocale, Permission.VmViewAll,
+    };
+
+    private static readonly string[] _snapshotPermissions =
+    {
+        Permission.SnapshotCreate, Permission.SnapshotRestore, Permission.SnapshotDelete,
+        Permission.SnapshotClone, Permission.SnapshotPush,
+    };
+
+    private static readonly string[] _otherPermissions =
+    {
+        Permission.CatalogBrowse, Permission.CatalogImport, Permission.CatalogDeleteLocal,
+        Permission.SettingsView, Permission.SettingsEditVmDefaults, Permission.SettingsManageFeeds,
+        Permission.SettingsEditScripts, Permission.RdpConnect, Permission.UsersManage,
+    };
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void TogglePermission(string permission, bool enabled)
+    {
+        if (enabled)
+            _permissions.Add(permission);
+        else
+            _permissions.Remove(permission);
+    }
+
+    private static string FormatPermission(string permission)
+    {
+        return permission.Replace(".", " ").Replace("-", " ");
+    }
+
+    private async Task Create()
+    {
+        if (string.IsNullOrWhiteSpace(_email))
+        {
+            _error = "Email is required.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_password) || _password.Length < 6)
+        {
+            _error = "Password must be at least 6 characters.";
+            return;
+        }
+
+        try
+        {
+            UserAccount account = UserService.CreateUser(_email.Trim(), _password, _permissions, _isAdmin);
+            if (_maxVms > 0)
+                UserService.UpdateMaxVms(account.Username, _maxVms);
+
+            if (_sendInvite)
+            {
+                try
+                {
+                    await EmailService.SendAsync(
+                        _email.Trim(),
+                        "VmManager Invitation",
+                        "<p>You have been invited to VmManager.</p>"
+                        + "<p>Your temporary password is: <b>" + _password + "</b></p>"
+                        + "<p>Please change your password after logging in.</p>");
+                }
+                catch
+                {
+                    // Email send failure should not block user creation
+                }
+            }
+
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

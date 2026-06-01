@@ -13,6 +13,7 @@ public partial class BackgroundTaskViewModel : ObservableObject, IBackgroundTask
     private readonly CancellationTokenSource _cts;
 
     public string Id { get; }
+    public string Username { get; }
 
     [ObservableProperty]
     private string _title;
@@ -61,12 +62,18 @@ public partial class BackgroundTaskViewModel : ObservableObject, IBackgroundTask
 
     public IReadOnlyList<string> LogLines => LogEntries;
 
-    public BackgroundTaskViewModel(string title, CancellationTokenSource cts, bool isCancellable)
+    public BackgroundTaskViewModel(
+        string title,
+        CancellationTokenSource cts,
+        bool isCancellable,
+        string username = ""
+    )
     {
         ArgumentNullException.ThrowIfNull(title);
         ArgumentNullException.ThrowIfNull(cts);
         Id = Guid.NewGuid().ToString("N");
         _title = title;
+        Username = username;
         _cts = cts;
         _isCancellable = isCancellable;
     }

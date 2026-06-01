@@ -1,0 +1,80 @@
+@page "/settings"
+@using VmManager.Agent.Services
+@attribute [Authorize]
+@inject BasicAuthStateProvider AuthState
+@inject UserService UserService
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h5" Class="mb-4">My Settings</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="6">
+        <MudCard Elevation="2">
+            <MudCardHeader>
+                <MudText Typo="Typo.h6">Profile</MudText>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudTextField Value="@AuthState.CurrentUsername" Label="Email" ReadOnly="true" Class="mb-2" />
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <MudItem xs="12" md="6">
+        <MudCard Elevation="2">
+            <MudCardHeader>
+                <MudText Typo="Typo.h6">Change Password</MudText>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (!string.IsNullOrEmpty(_passwordError))
+                {
+                    <MudAlert Severity="Severity.Error" Class="mb-4" Dense="true">@_passwordError</MudAlert>
+                }
+                <MudTextField @bind-Value="_newPassword" Label="New Password"
+                              InputType="InputType.Password" Immediate="true" Class="mb-2" />
+                <MudTextField @bind-Value="_confirmPassword" Label="Confirm Password"
+                              InputType="InputType.Password" Immediate="true" Class="mb-2" />
+            </MudCardContent>
+            <MudCardActions>
+                <MudSpacer />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ChangePassword">
+                    Change Password
+                </MudButton>
+            </MudCardActions>
+        </MudCard>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private string _newPassword = "";
+    private string _confirmPassword = "";
+    private string _passwordError = "";
+
+    private void ChangePassword()
+    {
+        _passwordError = "";
+
+        if (string.IsNullOrWhiteSpace(_newPassword) || _newPassword.Length < 6)
+        {
+            _passwordError = "Password must be at least 6 characters.";
+            return;
+        }
+
+        if (_newPassword != _confirmPassword)
+        {
+            _passwordError = "Passwords do not match.";
+            return;
+        }
+
+        try
+        {
+            UserService.ChangePassword(AuthState.CurrentUsername, _newPassword);
+            _newPassword = "";
+            _confirmPassword = "";
+            Snackbar.Add("Password changed", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _passwordError = ex.Message;
+        }
+    }
+}

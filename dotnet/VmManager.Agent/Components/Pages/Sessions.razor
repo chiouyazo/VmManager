@@ -1,0 +1,101 @@
+@page "/sessions"
+@using VmManager.Agent.Services
+@attribute [Authorize]
+@inject RdpSessionStore SessionStore
+@inject ISnackbar Snackbar
+@implements IDisposable
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h5">Active Sessions</MudText>
+    @if (_sessions.Count > 0)
+    {
+        <MudChip T="string" Size="Size.Small" Color="Color.Info">@_sessions.Count sessions</MudChip>
+    }
+    <MudSpacer />
+    <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="LoadSessions" />
+</MudStack>
+
+@if (_sessions.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">No active sessions</MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (IGrouping<string, RdpSession> group in _sessions.GroupBy(s => s.VmName))
+        {
+            <MudItem xs="12" md="6">
+                <MudCard Elevation="2">
+                    <MudCardHeader>
+                        <MudText Typo="Typo.h6">@group.Key</MudText>
+                        <MudSpacer />
+                        <MudChip T="string" Size="Size.Small">@group.Count() sessions</MudChip>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudSimpleTable Dense="true" Hover="true">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>State</th>
+                                    <th>Connected</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (RdpSession session in group)
+                                {
+                                    <tr>
+                                        <td>@session.Username</td>
+                                        <td>
+                                            <MudChip T="string" Size="Size.Small"
+                                                     Color="@(session.State == RdpSessionState.Active ? Color.Success : Color.Default)">
+                                                @session.State
+                                            </MudChip>
+                                        </td>
+                                        <td>@session.CreatedAt.ToLocalTime().ToString("HH:mm:ss")</td>
+                                        <td>
+                                            <MudIconButton Icon="@Icons.Material.Filled.Close"
+                                                           Size="Size.Small" Color="Color.Error"
+                                                           OnClick="() => Disconnect(session)" />
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </MudSimpleTable>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private List<RdpSession> _sessions = new List<RdpSession>();
+    private Timer? _pollTimer;
+
+    protected override void OnInitialized()
+    {
+        LoadSessions();
+        _pollTimer = new Timer(_ => InvokeAsync(LoadSessions), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+    }
+
+    private void LoadSessions()
+    {
+        _sessions = SessionStore.GetAllSessions()
+            .Where(s => s.State == RdpSessionState.Active)
+            .ToList();
+        StateHasChanged();
+    }
+
+    private void Disconnect(RdpSession session)
+    {
+        SessionStore.ForceDisconnect(session.Token);
+        Snackbar.Add("Session disconnected", Severity.Success);
+        LoadSessions();
+    }
+
+    public void Dispose()
+    {
+        _pollTimer?.Dispose();
+    }
+}

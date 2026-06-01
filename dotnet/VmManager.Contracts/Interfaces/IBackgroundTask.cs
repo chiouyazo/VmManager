@@ -4,6 +4,7 @@ public interface IBackgroundTask
 {
     string Id { get; }
     string Title { get; }
+    string Username { get; }
     string Status { get; }
     double Progress { get; } // 0.0 - 1.0, -1 for indeterminate
     bool IsComplete { get; }

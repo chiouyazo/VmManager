@@ -69,6 +69,7 @@ public sealed class ClientCredSspHandler
 
         ClientAuthResult authResult = NtlmType3Parser.Parse(credSspAuth, authOffset);
         authResult.ClientNonce = CredSspMessageParser.ExtractNonce(credSspAuth);
+        authResult.RawCredSspAuth = credSspAuth;
 
         _logger.LogInformation("CredSSP client authenticated as: {Username}", authResult.Username);
 
@@ -77,6 +78,13 @@ public sealed class ClientCredSspHandler
 
     public bool DeriveSessionKey(ClientAuthResult authResult, byte[] ntHash)
     {
+        _logger.LogDebug(
+            "DeriveSessionKey: username={Username}, domain={Domain}, ntHash={NtHash}",
+            authResult.Username,
+            authResult.Domain,
+            Convert.ToHexString(ntHash)
+        );
+
         byte[] ntv2Hash = NtlmCrypto.ComputeNtv2Hash(
             ntHash,
             authResult.Username,
@@ -100,6 +108,55 @@ public sealed class ClientCredSspHandler
         }
 
         return true;
+    }
+
+    public bool VerifyClientPubKeyAuth(
+        ClientAuthResult authResult,
+        byte[] credSspAuth,
+        X509Certificate2 certificate
+    )
+    {
+        byte[] subjectPublicKey = Asn1Helper.ExtractSubjectPublicKey(
+            certificate.PublicKey.ExportSubjectPublicKeyInfo()
+        );
+
+        byte[] expectedClientHash = NtlmCrypto.ComputeClientServerHash(
+            authResult.ClientNonce ?? Array.Empty<byte>(),
+            subjectPublicKey
+        );
+
+        byte[]? clientPubKeyAuth = CredSspMessageParser.ExtractPubKeyAuth(credSspAuth, 0);
+        if (clientPubKeyAuth == null)
+        {
+            _logger.LogWarning("No pubKeyAuth in client TSRequest");
+            return false;
+        }
+
+        _logger.LogInformation(
+            "Client pubKeyAuth: {Length} bytes (should be 48 = 16 sig + 32 encrypted)",
+            clientPubKeyAuth.Length
+        );
+
+        byte[] decrypted = NtlmCrypto.Unseal(
+            authResult.ExportedSessionKey,
+            clientPubKeyAuth,
+            clientToServer: true
+        );
+
+        bool match = decrypted.SequenceEqual(expectedClientHash);
+        _logger.LogInformation("Client pubKeyAuth verification: {Match}", match);
+        if (!match)
+        {
+            _logger.LogWarning(
+                "Session key mismatch. Decrypted={Decrypted}, Expected={Expected}",
+                Convert.ToHexString(decrypted).Substring(0, Math.Min(20, decrypted.Length * 2)),
+                Convert
+                    .ToHexString(expectedClientHash)
+                    .Substring(0, Math.Min(20, expectedClientHash.Length * 2))
+            );
+        }
+
+        return match;
     }
 
     public async Task SendPubKeyResponseAsync(

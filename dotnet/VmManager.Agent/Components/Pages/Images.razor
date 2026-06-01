@@ -1,0 +1,297 @@
+@page "/images"
+@using System.Security.Claims
+@using VmManager.Agent.Services
+@attribute [Authorize]
+@inject CatalogAggregator CatalogAggregator
+@inject IVmBackend VmBackend
+@inject SettingsService SettingsService
+@inject ILocalImageMetadataService LocalImageService
+@inject BasicAuthStateProvider AuthState
+@inject AuthorizationService AuthService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IBackgroundTaskManager TaskManager
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h5">Images</MudText>
+    <MudSpacer />
+    <MudTextField @bind-Value="_searchQuery" Placeholder="Search images..."
+                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                  Immediate="true" DebounceInterval="300" Class="mt-0" Style="max-width: 300px;" />
+    <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="LoadAll" />
+</MudStack>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    @if (_localImages.Count > 0)
+    {
+        <MudText Typo="Typo.h6" Class="mb-2 mt-4">Local Images</MudText>
+        <MudGrid Class="mb-6">
+            @foreach (LocalImage local in _localImages)
+            {
+                <MudItem xs="12" md="6">
+                    <MudCard Elevation="2">
+                        <MudCardHeader>
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.body1" Style="font-weight: 600;">@local.DisplayName</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @local.SizeGb.ToString("F1") GB | Extracted @local.ExtractedAt.ToString("yyyy-MM-dd")
+                                </MudText>
+                            </MudStack>
+                            <MudSpacer />
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                       OnClick="() => CreateVmFromLocal(local)"
+                                       Disabled="@(!_canImport)">
+                                Create VM
+                            </MudButton>
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                           Color="Color.Error" Class="ml-1"
+                                           Disabled="@(!_canDeleteLocal)"
+                                           OnClick="() => DeleteLocalImage(local)" />
+                        </MudCardHeader>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+
+    @if (_images.Count == 0 && _localImages.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">No images available. Configure feeds in Agent Settings.</MudAlert>
+    }
+
+    @if (_images.Count > 0)
+    {
+        <MudText Typo="Typo.h6" Class="mb-2">Catalog</MudText>
+        <MudGrid>
+            @foreach (VmImage image in FilteredImages)
+            {
+                <MudItem xs="12" md="6">
+                    <MudCard Elevation="2">
+                        <MudCardHeader>
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.body1" Style="font-weight: 600;">@image.Name</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@image.SourceLabel</MudText>
+                            </MudStack>
+                            <MudSpacer />
+                            <MudChip T="string" Size="Size.Small" Color="Color.Info">@image.ImageType</MudChip>
+                        </MudCardHeader>
+                        <MudCardContent Class="pt-0">
+                            @if (!string.IsNullOrEmpty(image.Description))
+                            {
+                                <MudText Typo="Typo.body2" Class="mb-2">@image.Description</MudText>
+                            }
+                            @if (image.Features.Count > 0)
+                            {
+                                <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1" Class="mb-2">
+                                    @foreach (string feature in image.Features)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@feature</MudChip>
+                                    }
+                                </MudStack>
+                            }
+                            @if (image.Versions.Count > 0)
+                            {
+                                <MudSimpleTable Dense="true" Hover="true">
+                                    <thead>
+                                        <tr>
+                                            <th>Version</th>
+                                            <th>Size</th>
+                                            <th>Date</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (VmImageVersion version in image.Versions)
+                                        {
+                                            <tr>
+                                                <td>@version.Version</td>
+                                                <td>@version.SizeGb.ToString("F1") GB</td>
+                                                <td>@version.Date.ToString("yyyy-MM-dd")</td>
+                                                <td>
+                                                    <MudStack Row="true" Spacing="1">
+                                                        @if (_canImport)
+                                                        {
+                                                            <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                                                                       OnClick="() => ImportVersion(image, version)">
+                                                                Import
+                                                            </MudButton>
+                                                        }
+                                                    </MudStack>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </MudSimpleTable>
+                            }
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+}
+
+@code {
+    private List<VmImage> _images = new List<VmImage>();
+    private List<LocalImage> _localImages = new List<LocalImage>();
+    private string _searchQuery = "";
+    private bool _loading = true;
+    private bool _canImport;
+    private bool _canDeleteLocal;
+    private ClaimsPrincipal _user = new ClaimsPrincipal();
+
+    private IEnumerable<VmImage> FilteredImages
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_searchQuery))
+                return _images;
+
+            string query = _searchQuery.Trim();
+            return _images.Where(i =>
+                i.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                i.Description.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                i.Features.Any(f => f.Contains(query, StringComparison.OrdinalIgnoreCase)));
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        AuthenticationState state = await AuthState.GetAuthenticationStateAsync();
+        _user = state.User;
+        _canImport = AuthService.HasPermission(_user, Permission.CatalogImport);
+        _canDeleteLocal = AuthService.HasPermission(_user, Permission.CatalogDeleteLocal);
+        await LoadAll();
+    }
+
+    private async Task LoadAll()
+    {
+        _loading = true;
+        try
+        {
+            _images = await CatalogAggregator.LoadCatalogAsync();
+            LoadLocalImages();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Failed to load catalog: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void LoadLocalImages()
+    {
+        AppSettings settings = SettingsService.Load();
+        string extractedDir = Path.Combine(settings.LocalVmPath, "extracted");
+        _localImages = new List<LocalImage>();
+
+        if (!Directory.Exists(extractedDir))
+            return;
+
+        foreach (string dir in Directory.GetDirectories(extractedDir))
+        {
+            string[] diskFiles = Directory.GetFiles(dir, "*.vhdx", SearchOption.AllDirectories)
+                .Concat(Directory.GetFiles(dir, "*.qcow2", SearchOption.AllDirectories))
+                .ToArray();
+            if (diskFiles.Length == 0)
+                continue;
+
+            DirectoryInfo dirInfo = new DirectoryInfo(dir);
+            long totalSize = diskFiles.Sum(f => new FileInfo(f).Length);
+            string displayName = dirInfo.Name;
+            string? parentImageName = null;
+            string? imageVersion = null;
+
+            LocalImageMetadata? meta = LocalImageService.LoadMetadata(dir);
+            if (meta != null)
+            {
+                if (!string.IsNullOrEmpty(meta.Name))
+                    displayName = meta.Name;
+                parentImageName = meta.ParentImageName;
+                imageVersion = meta.Version;
+            }
+
+            _localImages.Add(new LocalImage
+            {
+                Name = displayName,
+                Path = dir,
+                SizeGb = totalSize / 1073741824.0,
+                ExtractedAt = dirInfo.CreationTime,
+                ParentImageName = parentImageName,
+                ImageVersion = imageVersion,
+            });
+        }
+
+        _localImages = _localImages.OrderByDescending(l => l.ExtractedAt).ToList();
+    }
+
+    private async Task ImportVersion(VmImage image, VmImageVersion version)
+    {
+        Snackbar.Add("Import started for " + image.Name + " " + version.Version + ". This runs in the background.", Severity.Info);
+        // Long-running import would use BackgroundTaskManager + SignalR hub in full implementation
+    }
+
+    private async Task CreateVmFromLocal(LocalImage local)
+    {
+        DialogParameters<DialogCreateVm> parameters = new DialogParameters<DialogCreateVm>
+        {
+            { x => x.LocalImage, local },
+        };
+        IDialogReference dialog = await DialogService.ShowAsync<DialogCreateVm>("Create VM", parameters);
+        DialogResult? result = await dialog.Result;
+
+        if (!(result?.Canceled ?? true) && result.Data is string vmName)
+        {
+            string username = _user.Identity?.Name ?? "";
+            AppSettings settings = SettingsService.Load();
+            TaskManager.StartTask("Creating VM: " + vmName, username, async ctx =>
+            {
+                ctx.ReportProgress(0.0, "Importing disk image...");
+                await VmBackend.ImportVmAsync(
+                    local.Path,
+                    settings.LocalVmPath,
+                    settings.DefaultMemoryMb,
+                    settings.DefaultCpuCount,
+                    vmName,
+                    onStatus: status => ctx.ReportProgress(-1, status),
+                    cancellationToken: ctx.Token);
+                ctx.ReportProgress(1.0, "VM created");
+            });
+            Snackbar.Add("Creating VM '" + vmName + "' in background...", Severity.Info);
+        }
+    }
+
+    private async Task DeleteLocalImage(LocalImage local)
+    {
+        DialogParameters<DialogConfirm> parameters = new DialogParameters<DialogConfirm>
+        {
+            { x => x.Message, "Delete local image '" + local.DisplayName + "'? The extracted files will be removed." },
+            { x => x.ConfirmText, "Delete" },
+        };
+        IDialogReference dialog = await DialogService.ShowAsync<DialogConfirm>("Delete Local Image", parameters);
+        DialogResult? result = await dialog.Result;
+
+        if (!(result?.Canceled ?? true))
+        {
+            try
+            {
+                if (Directory.Exists(local.Path))
+                    Directory.Delete(local.Path, true);
+                LoadLocalImages();
+                Snackbar.Add("Image deleted", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add("Failed: " + ex.Message, Severity.Error);
+            }
+        }
+    }
+}

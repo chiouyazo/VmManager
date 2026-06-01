@@ -60,10 +60,15 @@ public sealed class BasicAuthStateProvider : AuthenticationStateProvider
     }
 
     public string CurrentUsername => _currentUser.Identity?.Name ?? "";
+    public string CurrentEmail => _currentUser.FindFirst(ClaimTypes.Email)?.Value ?? "";
 
     private static ClaimsPrincipal BuildPrincipal(UserAccount account)
     {
-        List<Claim> claims = new List<Claim> { new Claim(ClaimTypes.Name, account.Username) };
+        List<Claim> claims = new List<Claim>
+        {
+            new Claim(ClaimTypes.Name, account.Username),
+            new Claim(ClaimTypes.Email, account.Email),
+        };
 
         if (account.IsAdmin)
             claims.Add(new Claim(ClaimTypes.Role, "Admin"));

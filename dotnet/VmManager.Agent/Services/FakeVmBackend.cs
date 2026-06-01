@@ -57,20 +57,20 @@ public sealed class FakeVmBackend : IVmBackend
 
     public Task<List<VmInstance>> GetVmsAsync() => Task.FromResult(_vms.ToList());
 
-    public Task StartVmAsync(string name)
+    public async Task StartVmAsync(string name)
     {
+        await Task.Delay(3000);
         VmInstance? vm = _vms.Find(v => v.Name == name);
         if (vm != null)
             vm.State = "Running";
-        return Task.CompletedTask;
     }
 
-    public Task StopVmAsync(string name)
+    public async Task StopVmAsync(string name)
     {
+        await Task.Delay(2000);
         VmInstance? vm = _vms.Find(v => v.Name == name);
         if (vm != null)
             vm.State = "Off";
-        return Task.CompletedTask;
     }
 
     public Task DeleteVmAsync(string name)
@@ -126,7 +126,7 @@ public sealed class FakeVmBackend : IVmBackend
 
     public Task<string?> TroubleshootAsync() => Task.FromResult<string?>(null);
 
-    public Task ImportVmAsync(
+    public async Task ImportVmAsync(
         string extractedFolder,
         string localVmPath,
         int memoryMb,
@@ -135,7 +135,29 @@ public sealed class FakeVmBackend : IVmBackend
         bool skipDefaultNetwork = false,
         Action<string>? onStatus = null,
         CancellationToken cancellationToken = default
-    ) => Task.CompletedTask;
+    )
+    {
+        onStatus?.Invoke("Copying disk image...");
+        await Task.Delay(3000, cancellationToken);
+        onStatus?.Invoke("Configuring VM...");
+        await Task.Delay(2000, cancellationToken);
+        onStatus?.Invoke("Creating snapshot...");
+        await Task.Delay(1000, cancellationToken);
+
+        if (!string.IsNullOrEmpty(vmName))
+        {
+            _vms.Add(
+                new VmInstance
+                {
+                    Name = vmName,
+                    State = "Off",
+                    MemoryAssigned = memoryMb * 1024L * 1024,
+                    IsManaged = true,
+                    Backend = "Fake",
+                }
+            );
+        }
+    }
 
     public Task ConfigureLocaleAsync(
         string vmName,

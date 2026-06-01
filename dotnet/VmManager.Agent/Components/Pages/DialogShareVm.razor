@@ -1,0 +1,141 @@
+@using VmManager.Agent.Services
+@inject VmSharingService SharingService
+@inject UserService UserService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4" Dense="true">@_error</MudAlert>
+        }
+
+        <MudText Typo="Typo.subtitle2" Class="mb-2">Share with user</MudText>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudTextField @bind-Value="_shareUsername" Label="Username" Immediate="true" Style="flex-grow: 1;" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="AddShare"
+                       Disabled="@string.IsNullOrWhiteSpace(_shareUsername)">
+                Share
+            </MudButton>
+        </MudStack>
+
+        <MudText Typo="Typo.caption" Class="mb-2">Permissions to grant:</MudText>
+        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="0" Class="mb-4">
+            @foreach (string perm in Permission.Shareable)
+            {
+                <MudCheckBox T="bool" Value="_sharePermissions.Contains(perm)"
+                             ValueChanged="v => ToggleSharePermission(perm, v)"
+                             Label="@perm.Replace(".", " ")" />
+            }
+        </MudStack>
+
+        @if (_currentShares.Count > 0)
+        {
+            <MudDivider Class="my-2" />
+            <MudText Typo="Typo.subtitle2" Class="mb-2">Current shares</MudText>
+            @foreach (VmShareEntry share in _currentShares)
+            {
+                <MudStack Class="mb-3">
+                    <MudStack Row="true" AlignItems="AlignItems.Center">
+                        <MudText Typo="Typo.body2" Style="font-weight: 600;">@share.SharedWithUsername</MudText>
+                        <MudSpacer />
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                       Color="Color.Error" OnClick="() => RemoveShare(share)" />
+                    </MudStack>
+                    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="0">
+                        @foreach (string perm in Permission.Shareable)
+                        {
+                            <MudCheckBox T="bool" Value="share.GrantedPermissions.Contains(perm)"
+                                         ValueChanged="v => UpdateSharePermission(share, perm, v)"
+                                         Label="@perm.Replace(".", " ")" Dense="true" />
+                        }
+                    </MudStack>
+                </MudStack>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string _shareUsername = "";
+    private string _error = "";
+    private HashSet<string> _sharePermissions = new HashSet<string>(Permission.Shareable);
+    private List<VmShareEntry> _currentShares = new List<VmShareEntry>();
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    [Parameter]
+    public string VmName { get; set; } = "";
+
+    [Parameter]
+    public string OwnerUsername { get; set; } = "";
+
+    protected override void OnInitialized()
+    {
+        LoadShares();
+    }
+
+    private void LoadShares()
+    {
+        _currentShares = SharingService.GetSharesForVm(VmName);
+    }
+
+    private void ToggleSharePermission(string permission, bool enabled)
+    {
+        if (enabled)
+            _sharePermissions.Add(permission);
+        else
+            _sharePermissions.Remove(permission);
+    }
+
+    private void AddShare()
+    {
+        _error = "";
+        if (string.IsNullOrWhiteSpace(_shareUsername))
+            return;
+
+        UserAccount? targetUser = UserService.GetByUsername(_shareUsername.Trim());
+        if (targetUser == null)
+        {
+            _error = "User not found: " + _shareUsername;
+            return;
+        }
+
+        try
+        {
+            SharingService.ShareVm(VmName, OwnerUsername, _shareUsername.Trim(), new HashSet<string>(_sharePermissions));
+            _shareUsername = "";
+            LoadShares();
+            Snackbar.Add("VM shared", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private void UpdateSharePermission(VmShareEntry share, string permission, bool enabled)
+    {
+        if (enabled)
+            share.GrantedPermissions.Add(permission);
+        else
+            share.GrantedPermissions.Remove(permission);
+
+        SharingService.ShareVm(VmName, OwnerUsername, share.SharedWithUsername,
+            new HashSet<string>(share.GrantedPermissions));
+        Snackbar.Add("Permissions updated", Severity.Success);
+    }
+
+    private void RemoveShare(VmShareEntry share)
+    {
+        SharingService.UnshareVm(VmName, share.SharedWithUsername);
+        LoadShares();
+        Snackbar.Add("Share removed", Severity.Success);
+    }
+
+    private void Close() => MudDialog.Close();
+}

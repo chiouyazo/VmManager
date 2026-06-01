@@ -1,0 +1,46 @@
+<MudDialog>
+    <DialogContent>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4" Dense="true">@_error</MudAlert>
+        }
+        <MudTextField @bind-Value="_vmName" Label="VM Name" Immediate="true" Class="mb-2" />
+        <MudText Typo="Typo.caption" Color="Color.Secondary">
+            Creating from: @LocalImage.DisplayName
+        </MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Create">Create VM</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string _vmName = "";
+    private string _error = "";
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    [Parameter]
+    public LocalImage LocalImage { get; set; }
+
+    protected override void OnInitialized()
+    {
+        _vmName = LocalImage.Name;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Create()
+    {
+        string? validationError = VmNameValidator.GetError(_vmName);
+        if (validationError != null)
+        {
+            _error = validationError;
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok(_vmName.Trim()));
+    }
+}

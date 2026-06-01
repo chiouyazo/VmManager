@@ -31,13 +31,28 @@ public class BackgroundTaskManager : IBackgroundTaskManager
         bool isCancellable = true
     )
     {
+        return StartTask(title, "", work, isCancellable);
+    }
+
+    public IBackgroundTask StartTask(
+        string title,
+        string username,
+        Func<BackgroundTaskContext, Task> work,
+        bool isCancellable = true
+    )
+    {
         ArgumentNullException.ThrowIfNull(title);
         ArgumentNullException.ThrowIfNull(work);
 
         CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(
             _appShutdownToken
         );
-        BackgroundTaskViewModel task = new BackgroundTaskViewModel(title, cts, isCancellable);
+        BackgroundTaskViewModel task = new BackgroundTaskViewModel(
+            title,
+            cts,
+            isCancellable,
+            username
+        );
 
         DispatchToUi(() => _tasks.Add(task));
         RaiseTasksChanged();
@@ -84,6 +99,13 @@ public class BackgroundTaskManager : IBackgroundTaskManager
     private void RaiseTasksChanged()
     {
         TasksChanged?.Invoke();
+    }
+
+    public IEnumerable<IBackgroundTask> GetTasksForUser(string username)
+    {
+        return _tasks.Where(t =>
+            string.Equals(t.Username, username, StringComparison.OrdinalIgnoreCase)
+        );
     }
 
     public void RemoveTask(IBackgroundTask task)

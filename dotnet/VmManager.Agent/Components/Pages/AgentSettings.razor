@@ -1,0 +1,273 @@
+@page "/agent-settings"
+@using System.Security.Claims
+@using VmManager.Agent.Services
+@attribute [Authorize]
+@inject SettingsService SettingsService
+@inject BasicAuthStateProvider AuthState
+@inject AuthorizationService AuthService
+@inject EmailService EmailService
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h5" Class="mb-4">Agent Settings</MudText>
+
+@if (!_canView)
+{
+    <MudAlert Severity="Severity.Warning">You do not have permission to view agent settings.</MudAlert>
+}
+else
+{
+    <MudStack Spacing="4">
+        <MudCard Elevation="2">
+            <MudCardHeader>
+                <MudText Typo="Typo.h6">VM Defaults</MudText>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudGrid>
+                    <MudItem xs="12" md="6">
+                        <MudTextField @bind-Value="_settings.LocalVmPath" Label="Local VM Storage Path" Class="mb-2" />
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudNumericField @bind-Value="_settings.DefaultMemoryMb" Label="Default Memory (MB)" Min="512" Step="512" />
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudNumericField @bind-Value="_settings.DefaultCpuCount" Label="Default CPUs" Min="1" Max="32" />
+                    </MudItem>
+                </MudGrid>
+                <MudGrid Class="mt-2">
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="_settings.DefaultVmUsername" Label="VM Username" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="_settings.DefaultVmPassword" Label="VM Password" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="_settings.RdpDomainSuffix" Label="RDP Domain Suffix"
+                                      HelperText="e.g. vms.domain.com" />
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+
+        <MudCard Elevation="2">
+            <MudCardHeader>
+                <MudText Typo="Typo.h6">Locale</MudText>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudCheckBox @bind-Value="_settings.ApplyLocaleOnCreate" Label="Apply locale on VM creation" Class="mb-2" />
+                <MudGrid>
+                    <MudItem xs="12" md="4">
+                        <MudSelect T="string" @bind-Value="_selectedLocale" Label="Locale">
+                            @foreach (string name in LocaleMap.Keys)
+                            {
+                                <MudSelectItem Value="@name">@name</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudSelect T="string" @bind-Value="_selectedKeyboard" Label="Keyboard Layout">
+                            @foreach (string name in KeyboardMap.Keys)
+                            {
+                                <MudSelectItem Value="@name">@name</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudSelect T="string" @bind-Value="_selectedTimezone" Label="Timezone">
+                            @foreach (string name in TimezoneMap.Keys)
+                            {
+                                <MudSelectItem Value="@name">@name</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                </MudGrid>
+                <MudCheckBox @bind-Value="_settings.RenameComputerToVmName" Label="Rename guest computer to VM name" Class="mt-2" />
+            </MudCardContent>
+        </MudCard>
+
+        <MudCard Elevation="2">
+            <MudCardHeader>
+                <MudText Typo="Typo.h6">Scripts</MudText>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudTextField @bind-Value="_settings.PostCreationScript" Label="Post-Creation Script"
+                              Lines="4" Variant="Variant.Outlined" Class="mb-4" />
+                <MudTextField @bind-Value="_settings.PostStartupScript" Label="Post-Startup Script"
+                              Lines="4" Variant="Variant.Outlined" />
+            </MudCardContent>
+        </MudCard>
+
+        <MudCard Elevation="2">
+            <MudCardHeader>
+                <MudText Typo="Typo.h6">Email (SMTP)</MudText>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudCheckBox @bind-Value="_settings.SmtpEnabled" Label="Enable SMTP" Class="mb-2" />
+                <MudGrid>
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="_settings.SmtpHost" Label="SMTP Host" Disabled="@(!_settings.SmtpEnabled)" />
+                    </MudItem>
+                    <MudItem xs="12" md="2">
+                        <MudNumericField @bind-Value="_settings.SmtpPort" Label="Port" Disabled="@(!_settings.SmtpEnabled)" />
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudTextField @bind-Value="_settings.SmtpUsername" Label="Username" Disabled="@(!_settings.SmtpEnabled)" />
+                    </MudItem>
+                    <MudItem xs="12" md="3">
+                        <MudTextField @bind-Value="_settings.SmtpPassword" Label="Password"
+                                      InputType="InputType.Password" Disabled="@(!_settings.SmtpEnabled)" />
+                    </MudItem>
+                </MudGrid>
+                <MudGrid Class="mt-2">
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="_settings.SmtpFromAddress" Label="From Address" Disabled="@(!_settings.SmtpEnabled)" />
+                    </MudItem>
+                    <MudItem xs="12" md="2">
+                        <MudCheckBox @bind-Value="_settings.SmtpUseTls" Label="Use TLS" Disabled="@(!_settings.SmtpEnabled)" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudTextField @bind-Value="_testEmailAddress" Label="Test Email To" Disabled="@(!_settings.SmtpEnabled)"
+                                      Placeholder="recipient@example.com" />
+                    </MudItem>
+                    <MudItem xs="12" md="2" Class="d-flex align-end">
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                                   Disabled="@(!_settings.SmtpEnabled || string.IsNullOrWhiteSpace(_testEmailAddress))"
+                                   OnClick="TestEmail">
+                            Send Test
+                        </MudButton>
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+
+        <MudCard Elevation="2">
+            <MudCardHeader>
+                <MudText Typo="Typo.h6">Resource Limits</MudText>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudGrid>
+                    <MudItem xs="12" md="4">
+                        <MudNumericField @bind-Value="_settings.MaxTotalVms" Label="Max Total VMs (0 = unlimited)" Min="0" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudNumericField @bind-Value="_settings.DefaultUserMaxVms" Label="Default User Max VMs" Min="0" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudNumericField @bind-Value="_settings.StaleVmReminderDays" Label="Stale VM Reminder (days)" Min="0" />
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveSettings"
+                   StartIcon="@Icons.Material.Filled.Save" Class="align-self-end">
+            Save Settings
+        </MudButton>
+    </MudStack>
+}
+
+@code {
+    private AppSettings _settings = new AppSettings();
+    private bool _canView;
+    private string _testEmailAddress = "";
+    private string _selectedLocale = "";
+    private string _selectedKeyboard = "";
+    private string _selectedTimezone = "";
+
+    public static readonly Dictionary<string, string> LocaleMap = new Dictionary<string, string>
+    {
+        { "English (United States)", "en-US" },
+        { "German (Germany)", "de-DE" },
+        { "French (France)", "fr-FR" },
+        { "Spanish (Spain)", "es-ES" },
+        { "Italian (Italy)", "it-IT" },
+        { "Dutch (Netherlands)", "nl-NL" },
+        { "Portuguese (Brazil)", "pt-BR" },
+        { "Polish (Poland)", "pl-PL" },
+        { "Czech (Czech Republic)", "cs-CZ" },
+        { "Swedish (Sweden)", "sv-SE" },
+        { "Russian (Russia)", "ru-RU" },
+        { "Turkish (Turkey)", "tr-TR" },
+        { "Japanese (Japan)", "ja-JP" },
+    };
+
+    public static readonly Dictionary<string, string> KeyboardMap = new Dictionary<string, string>
+    {
+        { "US (QWERTY)", "00000409" },
+        { "German (QWERTZ)", "00000407" },
+        { "UK", "00000809" },
+        { "French (AZERTY)", "0000040C" },
+        { "Spanish", "0000040A" },
+        { "Italian", "00000410" },
+        { "Dutch", "00000413" },
+        { "Swiss German", "00000807" },
+        { "Polish", "00000415" },
+        { "Czech", "00000405" },
+        { "Swedish", "0000041D" },
+        { "Russian", "00000419" },
+        { "Turkish", "0000041F" },
+    };
+
+    public static readonly Dictionary<string, string> TimezoneMap = TimeZoneInfo
+        .GetSystemTimeZones()
+        .GroupBy(tz => tz.DisplayName)
+        .ToDictionary(g => g.Key, g => g.First().Id);
+
+    protected override async Task OnInitializedAsync()
+    {
+        AuthenticationState state = await AuthState.GetAuthenticationStateAsync();
+        ClaimsPrincipal user = state.User;
+        _canView = AuthService.HasPermission(user, Permission.SettingsView);
+
+        if (_canView)
+        {
+            _settings = SettingsService.Load();
+            _selectedLocale = LocaleMap.FirstOrDefault(kv => kv.Value == _settings.DefaultLocale).Key ?? "";
+            _selectedKeyboard = KeyboardMap.FirstOrDefault(kv => kv.Value == _settings.DefaultKeyboardLayout).Key ?? "";
+            _selectedTimezone = TimezoneMap.FirstOrDefault(kv => kv.Value == _settings.DefaultTimezone).Key ?? "";
+        }
+    }
+
+    private void SaveSettings()
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(_selectedLocale) && LocaleMap.TryGetValue(_selectedLocale, out string? localeId))
+                _settings.DefaultLocale = localeId;
+            if (!string.IsNullOrEmpty(_selectedKeyboard) && KeyboardMap.TryGetValue(_selectedKeyboard, out string? keyboardId))
+                _settings.DefaultKeyboardLayout = keyboardId;
+            if (!string.IsNullOrEmpty(_selectedTimezone) && TimezoneMap.TryGetValue(_selectedTimezone, out string? timezoneId))
+                _settings.DefaultTimezone = timezoneId;
+
+            SettingsService.Save(_settings);
+            Snackbar.Add("Settings saved", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Failed to save: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task TestEmail()
+    {
+        try
+        {
+            EmailTestResult result = await EmailService.TestAsync(
+                _testEmailAddress,
+                _settings.SmtpHost,
+                _settings.SmtpPort,
+                _settings.SmtpUsername ?? "",
+                _settings.SmtpPassword ?? "",
+                _settings.SmtpFromAddress ?? "",
+                _settings.SmtpUseTls);
+
+            if (result.Success)
+                Snackbar.Add("Test email sent", Severity.Success);
+            else
+                Snackbar.Add("Email failed: " + result.Error, Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Email failed: " + ex.Message, Severity.Error);
+        }
+    }
+}

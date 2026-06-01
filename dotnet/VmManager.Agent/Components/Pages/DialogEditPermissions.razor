@@ -1,0 +1,131 @@
+@using VmManager.Agent.Services
+@inject UserService UserService
+
+<MudDialog>
+    <DialogContent>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4" Dense="true">@_error</MudAlert>
+        }
+
+        <MudCheckBox @bind-Value="_isAdmin" Label="Administrator" Class="mb-4" />
+        <MudNumericField @bind-Value="_maxVms" Label="Max VMs (0 = unlimited)" Min="0" Class="mb-4" />
+
+        <MudText Typo="Typo.subtitle2" Class="mb-2">VM Permissions</MudText>
+        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="0">
+            @foreach (string perm in _vmPermissions)
+            {
+                <MudCheckBox T="bool" Value="_permissions.Contains(perm)"
+                             ValueChanged="v => TogglePermission(perm, v)"
+                             Label="@FormatPermission(perm)" />
+            }
+        </MudStack>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Snapshot Permissions</MudText>
+        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="0">
+            @foreach (string perm in _snapshotPermissions)
+            {
+                <MudCheckBox T="bool" Value="_permissions.Contains(perm)"
+                             ValueChanged="v => TogglePermission(perm, v)"
+                             Label="@FormatPermission(perm)" />
+            }
+        </MudStack>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Catalog Permissions</MudText>
+        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="0">
+            @foreach (string perm in _catalogPermissions)
+            {
+                <MudCheckBox T="bool" Value="_permissions.Contains(perm)"
+                             ValueChanged="v => TogglePermission(perm, v)"
+                             Label="@FormatPermission(perm)" />
+            }
+        </MudStack>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Other Permissions</MudText>
+        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="0">
+            @foreach (string perm in _otherPermissions)
+            {
+                <MudCheckBox T="bool" Value="_permissions.Contains(perm)"
+                             ValueChanged="v => TogglePermission(perm, v)"
+                             Label="@FormatPermission(perm)" />
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Save">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string _error = "";
+    private bool _isAdmin;
+    private int _maxVms;
+    private HashSet<string> _permissions = new HashSet<string>();
+
+    private static readonly string[] _vmPermissions =
+    {
+        Permission.VmCreate, Permission.VmDelete, Permission.VmStart, Permission.VmStop,
+        Permission.VmRename, Permission.VmReset, Permission.VmApplyLocale, Permission.VmViewAll,
+    };
+
+    private static readonly string[] _snapshotPermissions =
+    {
+        Permission.SnapshotCreate, Permission.SnapshotRestore, Permission.SnapshotDelete,
+        Permission.SnapshotClone, Permission.SnapshotPush,
+    };
+
+    private static readonly string[] _catalogPermissions =
+    {
+        Permission.CatalogBrowse, Permission.CatalogImport, Permission.CatalogDeleteLocal,
+    };
+
+    private static readonly string[] _otherPermissions =
+    {
+        Permission.SettingsView, Permission.SettingsEditVmDefaults, Permission.SettingsManageFeeds,
+        Permission.SettingsEditScripts, Permission.RdpConnect, Permission.UsersManage,
+    };
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    [Parameter]
+    public UserAccount User { get; set; }
+
+    protected override void OnInitialized()
+    {
+        _isAdmin = User.IsAdmin;
+        _maxVms = User.MaxVms;
+        _permissions = new HashSet<string>(User.Permissions);
+    }
+
+    private void TogglePermission(string permission, bool enabled)
+    {
+        if (enabled)
+            _permissions.Add(permission);
+        else
+            _permissions.Remove(permission);
+    }
+
+    private static string FormatPermission(string permission)
+    {
+        return permission.Replace(".", " ").Replace("-", " ");
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Save()
+    {
+        try
+        {
+            UserService.UpdatePermissions(User.Username, _permissions);
+            UserService.UpdateAdmin(User.Username, _isAdmin);
+            UserService.UpdateMaxVms(User.Username, _maxVms);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

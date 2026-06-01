@@ -4,76 +4,252 @@
 @using Microsoft.JSInterop
 @using VmManager.Agent.Services
 @attribute [Authorize]
-@inject IVmBackend VmBackend                                                                                                                                                                                                                                                                                      
-@inject AuthorizationService AuthService                                                                                                                                                                                                                                                                        
-@inject Components.Auth.BasicAuthStateProvider AuthState
+@inject IVmBackend VmBackend
+@inject AuthorizationService AuthService
+@inject BasicAuthStateProvider AuthState
+@inject VmOwnershipService OwnershipService
 @inject IDialogService DialogService
 @inject NavigationManager NavigationManager
 @inject SettingsService SettingsService
+@inject IVmTrackingService TrackingService
+@inject ISnackbar Snackbar
 @inject IJSRuntime JS
+@inject IBackgroundTaskManager TaskManager
 
-<MudStack Row="true">
-    <MudSpacer />                                                                                                                                                                                                                                                                                                 
+<MudStack Row="true" AlignItems="AlignItems.Stretch" Class="mb-4">
+    <MudText Typo="Typo.h5" Class="py-2">My VMs</MudText>
+    <MudTextField @bind-Value="_searchQuery" Placeholder="Search..."
+                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                  Immediate="true" DebounceInterval="300" Class="mt-0 py-2" Style="max-width: 250px;" />
     <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="LoadVms" />
 </MudStack>
-<MudGrid>
-    @foreach (VmInstance vm in _vms)
-    {
-        <MudItem xs="12" sm="12" md="6" lg="6">
-            <MudCard Elevation="2">
-                <MudCardHeader>
-                    <MudText Typo="Typo.h6">@vm.Name</MudText>
-                    <MudChip T="string" Color="@(vm.State == "Running" ? Color.Success : Color.Default)"
-                             Size="Size.Small" Class="pr-3 mx-3 pl-3">
-                        @vm.State
-                    </MudChip>
-                    <MudSpacer />
-                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Outlined.PlayArrow" IconSize="Size.Large" Size="Size.Small" Color="Color.Primary" Disabled="@(!CanDo(vm, Permission.RdpConnect))" OnClick="() => Connect(vm)">
-                        Connect
-                    </MudButton>
-                </MudCardHeader>
-                <MudCardActions>
-                    
-                    <MudSpacer />
-                    
-                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Color="Color.Default">
-                        <MudMenuItem Disabled="@(!CanDo(vm, Permission.VmStart))" OnClick="() => Start(vm)">Start</MudMenuItem>
-                        <MudMenuItem Disabled="@(!CanDo(vm, Permission.VmStop))" OnClick="() => Stop(vm)">Stop</MudMenuItem>
-                        @* <MudMenuItem OnClick="() => Reset(vm)">Reset</MudMenuItem> *@
-                        <MudMenuItem Disabled="@(!CanDo(vm, Permission.VmRename))" OnClick="() => Rename(vm)">Rename</MudMenuItem>
-                        <MudMenuItem Disabled="@(!CanDo(vm, Permission.VmDelete))" OnClick="() => Delete(vm)">Delete</MudMenuItem>
-                    </MudMenu>
-                </MudCardActions>
-            </MudCard>
-        </MudItem>
-    }
-</MudGrid>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (FilteredVms.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">No VMs found.</MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (VmInstance vm in FilteredVms)
+        {
+            <MudItem xs="12" sm="12" md="12" lg="6">
+                <MudCard Elevation="2">
+                    <MudCardHeader>
+                        <MudText Typo="Typo.body1" Style="font-weight: 600;">@vm.Name</MudText>
+                        <MudChip T="string" Color="@GetStateColor(vm.State)" Size="Size.Small" Class="mx-3">
+                            @vm.State
+                        </MudChip>
+                        <MudSpacer />
+                        @if (CanDo(vm, Permission.RdpConnect) && vm.State == "Running")
+                        {
+                            <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Outlined.PlayArrow"
+                                       Size="Size.Small" Color="Color.Info" OnClick="() => Connect(vm)">
+                                Connect
+                            </MudButton>
+                        }
+                        <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Color="Color.Default" Class="ml-2">
+                            @if (vm.State != "Running" && CanDo(vm, Permission.VmStart))
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.PlayArrow" OnClick="() => Start(vm)">Start</MudMenuItem>
+                            }
+                            @if (vm.State == "Running" && CanDo(vm, Permission.VmStop))
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.Stop" OnClick="() => Stop(vm)">Stop</MudMenuItem>
+                            }
+                            @if (CanDo(vm, Permission.VmRename))
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="() => Rename(vm)">Rename</MudMenuItem>
+                            }
+                            @if (IsOwnerOrAdmin(vm))
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.Share" OnClick="() => Share(vm)">Share</MudMenuItem>
+                            }
+                            @if (CanDo(vm, Permission.VmReset))
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.RestartAlt" OnClick="() => ResetToBase(vm)">Reset to Base</MudMenuItem>
+                            }
+                            @if (CanDo(vm, Permission.VmDelete))
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.Delete" IconColor="Color.Error" OnClick="() => Delete(vm)">Delete</MudMenuItem>
+                            }
+                        </MudMenu>
+                    </MudCardHeader>
+
+                    @if (_expandedVm == vm.Name)
+                    {
+                        <MudCardContent>
+                            <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-2">
+                                <MudTabPanel Text="Snapshots" Icon="@Icons.Material.Filled.Camera">
+                                    @if (_snapshotsLoading)
+                                    {
+                                        <MudProgressLinear Indeterminate="true" />
+                                    }
+                                    else
+                                    {
+                                        @if (CanDo(vm, Permission.SnapshotCreate))
+                                        {
+                                            <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+                                                <MudTextField @bind-Value="_newSnapshotName" Placeholder="Snapshot name"
+                                                              Size="Size.Small" Immediate="true" Style="max-width: 250px;" />
+                                                <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                                                           Disabled="@string.IsNullOrWhiteSpace(_newSnapshotName)"
+                                                           OnClick="() => CreateSnapshot(vm)">
+                                                    Create
+                                                </MudButton>
+                                            </MudStack>
+                                        }
+                                        @if (_snapshots.Count == 0)
+                                        {
+                                            <MudText Typo="Typo.body2" Color="Color.Secondary">No snapshots</MudText>
+                                        }
+                                        else
+                                        {
+                                            <MudSimpleTable Dense="true" Hover="true">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Name</th>
+                                                        <th>Created</th>
+                                                        <th></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (VmSnapshot snapshot in _snapshots)
+                                                    {
+                                                        <tr>
+                                                            <td>
+                                                                @snapshot.Name
+                                                                @if (snapshot.IsBase)
+                                                                {
+                                                                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="ml-1">Base</MudChip>
+                                                                }
+                                                            </td>
+                                                            <td>@snapshot.CreationTime.ToString("yyyy-MM-dd HH:mm")</td>
+                                                            <td>
+                                                                <MudStack Row="true" Spacing="0">
+                                                                    @if (CanDo(vm, Permission.SnapshotRestore))
+                                                                    {
+                                                                        <MudIconButton Icon="@Icons.Material.Filled.Restore" Size="Size.Small"
+                                                                                       OnClick="() => RestoreSnapshot(vm, snapshot)" />
+                                                                    }
+                                                                    @if (snapshot.IsNotBase && CanDo(vm, Permission.SnapshotDelete))
+                                                                    {
+                                                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                                                                       Color="Color.Error"
+                                                                                       OnClick="() => DeleteSnapshot(vm, snapshot)" />
+                                                                    }
+                                                                </MudStack>
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </MudSimpleTable>
+                                        }
+                                    }
+                                </MudTabPanel>
+                                <MudTabPanel Text="Notes" Icon="@Icons.Material.Filled.Notes">
+                                    <MudTextField @bind-Value="_currentNotes" Lines="4" Variant="Variant.Outlined"
+                                                  Placeholder="Add notes about this VM..."
+                                                  DebounceInterval="1000"
+                                                  OnDebounceIntervalElapsed="() => SaveNotes(vm)" />
+                                </MudTabPanel>
+                            </MudTabs>
+                        </MudCardContent>
+                    }
+
+                    <MudCardActions Class="pa-1">
+                        <MudButton Size="Size.Small" Variant="Variant.Text"
+                                   OnClick="() => ToggleExpand(vm)"
+                                   EndIcon="@(_expandedVm == vm.Name ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)">
+                            @(_expandedVm == vm.Name ? "Less" : "More")
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
 
 @code
 {
-    private List<VmInstance> _vms = [];
-    private ClaimsPrincipal _user = new ClaimsPrincipal();                                                                                                                                                                                                                                                                              
+    private List<VmInstance> _vms = new List<VmInstance>();
+    private ClaimsPrincipal _user = new ClaimsPrincipal();
     private string _domainSuffix = "";
+    private string _searchQuery = "";
+    private string _stateFilter = "All";
+    private string? _expandedVm;
+    private bool _loading = true;
+
+    private List<VmSnapshot> _snapshots = new List<VmSnapshot>();
+    private bool _snapshotsLoading;
+    private string _newSnapshotName = "";
+    private string _currentNotes = "";
+
+    private List<VmInstance> FilteredVms
+    {
+        get
+        {
+            IEnumerable<VmInstance> result = _vms;
+
+            if (_stateFilter != "All")
+                result = result.Where(v => v.State == _stateFilter);
+
+            if (!string.IsNullOrWhiteSpace(_searchQuery))
+                result = result.Where(v => v.Name.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase));
+
+            return result.ToList();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
-        AppSettings settings = await SettingsService.LoadAsync();
+        AppSettings settings = SettingsService.Load();
         _domainSuffix = settings.RdpDomainSuffix;
         await LoadVms();
     }
 
     private async Task LoadVms()
     {
+        _loading = true;
         _user = (await AuthState.GetAuthenticationStateAsync()).User;
         List<VmInstance> vmInstances = await VmBackend.GetVmsAsync();
         _vms = vmInstances.Where(vm => AuthService.CanViewVm(_user, vm.Name)).ToList();
+        _loading = false;
     }
 
-    private async Task Connect(VmInstance vm)                                                                                                                                                                                                                                                                         
+    private async Task ToggleExpand(VmInstance vm)
     {
-        string username = _user.Identity?.Name ?? "";                                                                                                                                                                                                                                                                 
-        string address;                                                                                                                                                                                                                                                                                             
-        string displayUsername;                                                                                                                                                                                                                                                                                     
+        if (_expandedVm == vm.Name)
+        {
+            _expandedVm = null;
+            return;
+        }
+
+        _expandedVm = vm.Name;
+        _snapshotsLoading = true;
+        _newSnapshotName = "";
+        _currentNotes = TrackingService.LoadNotes().GetValueOrDefault(vm.Name, "");
+
+        try
+        {
+            _snapshots = await VmBackend.GetSnapshotsAsync(vm.Name);
+        }
+        catch
+        {
+            _snapshots = new List<VmSnapshot>();
+        }
+        _snapshotsLoading = false;
+    }
+
+    private async Task Connect(VmInstance vm)
+    {
+        string username = _user.Identity?.Name ?? "";
+        string address;
+        string displayUsername;
 
         if (!string.IsNullOrEmpty(_domainSuffix))
         {
@@ -95,32 +271,185 @@
 
         await DialogService.ShowAsync<DialogConnect>("Connect to " + vm.Name, parameters);
     }
-    
-    private async Task Start(VmInstance vm)
+
+    private void Start(VmInstance vm)
     {
-        await VmBackend.StartVmAsync(vm.Name);
+        string username = _user.Identity?.Name ?? "";
+        TaskManager.StartTask("Starting " + vm.Name, username, async ctx =>
+        {
+            ctx.ReportProgress(0, "Sending start command...");
+            await VmBackend.StartVmAsync(vm.Name);
+            vm.State = "Running";
+            ctx.ReportProgress(1.0, "Started");
+            await InvokeAsync(StateHasChanged);
+        });
     }
 
-    private async Task Stop(VmInstance vm) { await VmBackend.StopVmAsync(vm.Name); }
-    private async Task Delete(VmInstance vm) { await VmBackend.DeleteVmAsync(vm.Name); }
+    private void Stop(VmInstance vm)
+    {
+        string username = _user.Identity?.Name ?? "";
+        TaskManager.StartTask("Stopping " + vm.Name, username, async ctx =>
+        {
+            ctx.ReportProgress(0, "Sending stop command...");
+            await VmBackend.StopVmAsync(vm.Name);
+            vm.State = "Off";
+            ctx.ReportProgress(1.0, "Stopped");
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private async Task Delete(VmInstance vm)
+    {
+        if (await Confirm("Delete VM", "Are you sure you want to delete " + vm.Name + "? This cannot be undone.", "Delete"))
+        {
+            try
+            {
+                await VmBackend.DeleteVmAsync(vm.Name);
+                _vms.Remove(vm);
+                Snackbar.Add(vm.Name + " deleted", Severity.Success);
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add("Failed: " + ex.Message, Severity.Error);
+            }
+        }
+    }
 
     private async Task Rename(VmInstance vm)
     {
         DialogParameters<DialogRenameVm> parameters = new DialogParameters<DialogRenameVm> { { x => x.Vm, vm } };
-
-        IDialogReference dialog = await DialogService.ShowAsync<DialogRenameVm>("Rename Vm", parameters);
+        IDialogReference dialog = await DialogService.ShowAsync<DialogRenameVm>("Rename VM", parameters);
         DialogResult? result = await dialog.Result;
 
-        if (!(result?.Canceled ?? true) && result.Data is string renameResult)
+        if (!(result?.Canceled ?? true) && result.Data is string newName)
         {
-            await VmBackend.RenameVmAsync(vm.Name, renameResult);
-            vm.Name = renameResult;
-            StateHasChanged();
+            try
+            {
+                await VmBackend.RenameVmAsync(vm.Name, newName);
+                OwnershipService.RenameVm(vm.Name, newName);
+                vm.Name = newName;
+                Snackbar.Add("Renamed to " + newName, Severity.Success);
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add("Failed: " + ex.Message, Severity.Error);
+            }
         }
     }
-    
-    private bool CanDo(VmInstance vm, string permission)                                                                                                                                                                                                                                                              
+
+    private async Task Share(VmInstance vm)
+    {
+        string owner = OwnershipService.GetOwner(vm.Name);
+        DialogParameters<DialogShareVm> parameters = new DialogParameters<DialogShareVm>
+        {
+            { x => x.VmName, vm.Name },
+            { x => x.OwnerUsername, owner },
+        };
+        await DialogService.ShowAsync<DialogShareVm>("Share " + vm.Name, parameters);
+    }
+
+    private async Task ResetToBase(VmInstance vm)
+    {
+        if (await Confirm("Reset to Base", "Reset " + vm.Name + " to its base snapshot? All changes will be lost.", "Reset"))
+        {
+            try
+            {
+                await VmBackend.ResetDiskAsync(vm.Name);
+                Snackbar.Add(vm.Name + " reset to base", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add("Failed: " + ex.Message, Severity.Error);
+            }
+        }
+    }
+
+    private async Task CreateSnapshot(VmInstance vm)
+    {
+        try
+        {
+            await VmBackend.CreateSnapshotAsync(vm.Name, _newSnapshotName.Trim());
+            _newSnapshotName = "";
+            _snapshots = await VmBackend.GetSnapshotsAsync(vm.Name);
+            Snackbar.Add("Snapshot created", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Failed: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task RestoreSnapshot(VmInstance vm, VmSnapshot snapshot)
+    {
+        if (await Confirm("Restore Snapshot", "Restore " + vm.Name + " to snapshot '" + snapshot.Name + "'?", "Restore"))
+        {
+            try
+            {
+                await VmBackend.RestoreSnapshotAsync(vm.Name, snapshot.Id);
+                Snackbar.Add("Snapshot restored", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add("Failed: " + ex.Message, Severity.Error);
+            }
+        }
+    }
+
+    private async Task DeleteSnapshot(VmInstance vm, VmSnapshot snapshot)
+    {
+        if (await Confirm("Delete Snapshot", "Delete snapshot '" + snapshot.Name + "' from " + vm.Name + "?", "Delete"))
+        {
+            try
+            {
+                await VmBackend.DeleteSnapshotAsync(vm.Name, snapshot.Id);
+                _snapshots = await VmBackend.GetSnapshotsAsync(vm.Name);
+                Snackbar.Add("Snapshot deleted", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add("Failed: " + ex.Message, Severity.Error);
+            }
+        }
+    }
+
+    private void SaveNotes(VmInstance vm)
+    {
+        TrackingService.SaveNote(vm.Name, _currentNotes);
+    }
+
+    private bool CanDo(VmInstance vm, string permission)
     {
         return AuthService.CanAccessVm(_user, vm.Name, permission);
+    }
+
+    private bool IsOwnerOrAdmin(VmInstance vm)
+    {
+        return AuthService.IsOwnerOrAdmin(_user, vm.Name);
+    }
+
+    private async Task<bool> Confirm(string title, string message, string confirmText = "Confirm")
+    {
+        DialogParameters<DialogConfirm> parameters = new DialogParameters<DialogConfirm>
+        {
+            { x => x.Message, message },
+            { x => x.ConfirmText, confirmText },
+        };
+        IDialogReference dialog = await DialogService.ShowAsync<DialogConfirm>(title, parameters);
+        DialogResult? result = await dialog.Result;
+        return !(result?.Canceled ?? true);
+    }
+
+    private static Color GetStateColor(string state)
+    {
+        return state switch
+        {
+            "Running" => Color.Success,
+            "Off" => Color.Default,
+            "Saved" => Color.Warning,
+            "Paused" => Color.Warning,
+            _ => Color.Default,
+        };
     }
 }

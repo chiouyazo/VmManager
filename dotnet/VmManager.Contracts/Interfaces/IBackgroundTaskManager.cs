@@ -12,5 +12,12 @@ public interface IBackgroundTaskManager
         Func<BackgroundTaskContext, Task> work,
         bool isCancellable = true
     );
+    IBackgroundTask StartTask(
+        string title,
+        string username,
+        Func<BackgroundTaskContext, Task> work,
+        bool isCancellable = true
+    );
+    IEnumerable<IBackgroundTask> GetTasksForUser(string username);
     event Action? TasksChanged;
 }

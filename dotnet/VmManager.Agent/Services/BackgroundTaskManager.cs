@@ -36,11 +36,21 @@ public class BackgroundTaskManager : IBackgroundTaskManager
         bool isCancellable = true
     )
     {
+        return StartTask(title, "", work, isCancellable);
+    }
+
+    public IBackgroundTask StartTask(
+        string title,
+        string username,
+        Func<BackgroundTaskContext, Task> work,
+        bool isCancellable = true
+    )
+    {
         ArgumentNullException.ThrowIfNull(title);
         ArgumentNullException.ThrowIfNull(work);
 
         CancellationTokenSource cts = new CancellationTokenSource();
-        AgentBackgroundTask task = new AgentBackgroundTask(title, cts, isCancellable);
+        AgentBackgroundTask task = new AgentBackgroundTask(title, username, cts, isCancellable);
 
         _tasks[task.Id] = task;
         _observableTasks.Add(task);
@@ -63,6 +73,13 @@ public class BackgroundTaskManager : IBackgroundTaskManager
     }
 
     public IEnumerable<IBackgroundTask> GetAllTasks() => _tasks.Values;
+
+    public IEnumerable<IBackgroundTask> GetTasksForUser(string username)
+    {
+        return _tasks.Values.Where(t =>
+            string.Equals(t.Username, username, StringComparison.OrdinalIgnoreCase)
+        );
+    }
 
     private async Task RunTaskAsync(
         AgentBackgroundTask task,
@@ -117,6 +134,7 @@ public class BackgroundTaskManager : IBackgroundTaskManager
 
         public string Id { get; }
         public string Title { get; set; }
+        public string Username { get; set; }
         public string Status { get; set; } = "";
         public double Progress { get; set; } = -1;
         public bool IsComplete { get; set; }
@@ -126,10 +144,16 @@ public class BackgroundTaskManager : IBackgroundTaskManager
         public string? ErrorMessage { get; set; }
         public IReadOnlyList<string> LogLines => _logLines;
 
-        public AgentBackgroundTask(string title, CancellationTokenSource cts, bool isCancellable)
+        public AgentBackgroundTask(
+            string title,
+            string username,
+            CancellationTokenSource cts,
+            bool isCancellable
+        )
         {
             Id = Guid.NewGuid().ToString("N");
             Title = title;
+            Username = username;
             _cts = cts;
             IsCancellable = isCancellable;
         }

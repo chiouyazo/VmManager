@@ -9,4 +9,5 @@ public sealed class ClientAuthResult
     public byte[] ExportedSessionKey { get; set; } = Array.Empty<byte>();
     public byte[]? ClientNonce { get; set; }
     public string? SniHostname { get; set; }
+    public byte[] RawCredSspAuth { get; set; } = Array.Empty<byte>();
 }
