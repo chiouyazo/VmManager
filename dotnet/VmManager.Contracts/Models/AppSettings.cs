@@ -41,4 +41,6 @@ public class AppSettings
     public int DefaultUserMaxVms { get; set; }
 
     public int StaleVmReminderDays { get; set; }
+
+    public MonitoringSettings? Monitoring { get; set; }
 }

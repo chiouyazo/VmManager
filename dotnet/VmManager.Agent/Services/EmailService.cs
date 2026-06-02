@@ -30,7 +30,13 @@ public class EmailService
         }
     }
 
-    public async Task SendAsync(string toAddress, string subject, string htmlBody)
+    public async Task SendAsync(
+        string toAddress,
+        string subject,
+        string htmlBody,
+        string? messageId = null,
+        string? inReplyTo = null
+    )
     {
         if (!EmailValidator.IsValid(toAddress))
         {
@@ -54,6 +60,15 @@ public class EmailService
             {
                 IsBodyHtml = true,
             };
+
+            if (!string.IsNullOrEmpty(messageId))
+                message.Headers.Add("Message-ID", messageId);
+            if (!string.IsNullOrEmpty(inReplyTo))
+            {
+                message.Headers.Add("In-Reply-To", inReplyTo);
+                message.Headers.Add("References", inReplyTo);
+            }
+
             await client.SendMailAsync(message);
             _logger.LogInformation("Email sent to {Address}: {Subject}", toAddress, subject);
         }

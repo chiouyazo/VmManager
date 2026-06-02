@@ -141,6 +141,7 @@ public static class AgentHost
         app.MapHub<ProgressHub>("/hubs/progress");
         app.MapHealthChecks("/health").AllowAnonymous();
         app.MapRdpEndpoints();
+        app.MapPrometheusEndpoints();
         app.MapRazorComponents<App>().AddInteractiveServerRenderMode().AllowAnonymous();
 
         int rdpProxyPort = builder.Configuration.GetValue("VmManager:RdpProxyPort", 13389);

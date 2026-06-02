@@ -1,4 +1,6 @@
 using VmManager.Agent.Services;
+using VmManager.Agent.Services.Monitoring;
+using VmManager.Agent.Services.Monitoring.Checks;
 using VmManager.Agent.Services.Rdp;
 using VmManager.Backends.Kvm;
 using VmManager.Backends.Proxmox;
@@ -78,6 +80,26 @@ public static class AgentServiceCollectionExtensions
         services.AddSingleton<EmailService>();
         services.AddSingleton<QuotaService>();
         services.AddHostedService<StaleVmReminderService>();
+
+        services.AddSingleton<AlertStore>();
+        services.AddSingleton<AlertNotifier>();
+        services.AddSingleton<MetricsCache>();
+        services.AddSingleton<VmStopTracker>();
+        services.AddSingleton<LoginAttemptTracker>();
+        services.AddSingleton<MonitoringService>();
+        services.AddHostedService<MonitoringService>(sp =>
+            sp.GetRequiredService<MonitoringService>()
+        );
+        services.AddSingleton<IMonitoringCheck, VmStateMonitorCheck>();
+        services.AddSingleton<IMonitoringCheck, VmPortMonitorCheck>();
+        services.AddSingleton<IMonitoringCheck, VmUptimeMonitorCheck>();
+        services.AddSingleton<IMonitoringCheck, SnapshotDepthMonitorCheck>();
+        services.AddSingleton<IMonitoringCheck, HostResourceMonitorCheck>();
+        services.AddSingleton<IMonitoringCheck, StorageMonitorCheck>();
+        services.AddSingleton<IMonitoringCheck, DiskHealthMonitorCheck>();
+        services.AddSingleton<IMonitoringCheck, AgentHealthMonitorCheck>();
+        services.AddSingleton<IMonitoringCheck, CapacityMonitorCheck>();
+        services.AddSingleton<IMonitoringCheck, LoginMonitorCheck>();
 
         return services;
     }

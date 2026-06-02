@@ -17,7 +17,11 @@
 
 @if (_sessions.Count == 0)
 {
-    <MudAlert Severity="Severity.Info">No active sessions</MudAlert>
+    <div class="empty-state">
+        <MudIcon Icon="@Icons.Material.Filled.ScreenShare" />
+        <MudText Typo="Typo.h6" Color="Color.Secondary">No active sessions</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">RDP sessions will appear here when users connect to VMs.</MudText>
+    </div>
 }
 else
 {

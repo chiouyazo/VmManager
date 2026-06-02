@@ -2,6 +2,7 @@ using System.Net.Sockets;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VmManager.Agent.Services;
+using VmManager.Agent.Services.Monitoring;
 
 namespace VmManager.Agent.Controllers;
 
@@ -23,6 +24,7 @@ public class VmsController : ControllerBase
     private readonly VmSharingService _sharingService;
     private readonly EmailService _emailService;
     private readonly UserService _userService;
+    private readonly VmStopTracker _vmStopTracker;
     private readonly ILogger<VmsController> _logger;
 
     public VmsController(
@@ -39,6 +41,7 @@ public class VmsController : ControllerBase
         VmSharingService sharingService,
         EmailService emailService,
         UserService userService,
+        VmStopTracker vmStopTracker,
         ILogger<VmsController> logger
     )
     {
@@ -55,6 +58,7 @@ public class VmsController : ControllerBase
         ArgumentNullException.ThrowIfNull(sharingService);
         ArgumentNullException.ThrowIfNull(emailService);
         ArgumentNullException.ThrowIfNull(userService);
+        ArgumentNullException.ThrowIfNull(vmStopTracker);
         ArgumentNullException.ThrowIfNull(logger);
         _backend = backend;
         _networkService = networkService;
@@ -69,6 +73,7 @@ public class VmsController : ControllerBase
         _sharingService = sharingService;
         _emailService = emailService;
         _userService = userService;
+        _vmStopTracker = vmStopTracker;
         _logger = logger;
     }
 
@@ -182,6 +187,7 @@ public class VmsController : ControllerBase
             return Forbid();
 
         _logger.LogInformation("Stopping VM {VmName}", name);
+        _vmStopTracker.RecordStop(name);
         await _backend.StopVmAsync(name);
         return NoContent();
     }
@@ -222,6 +228,7 @@ public class VmsController : ControllerBase
         string vmOwner = _ownershipService.GetOwner(name);
         string currentUser = User.Identity?.Name ?? "admin";
 
+        _vmStopTracker.RecordStop(name);
         await _backend.DeleteVmAsync(name);
         _vmTrackingService.UntrackVm(name);
         _vmTrackingService.RemoveNote(name);

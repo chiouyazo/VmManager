@@ -6,6 +6,18 @@
     <title>VmManager</title>
     <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
     <HeadOutlet @rendermode="InteractiveServer" />
+    <style>
+        .empty-state {
+            text-align: center;
+            padding: 48px 24px;
+            color: #9E9E9E;
+        }
+        .empty-state .mud-icon-root {
+            font-size: 64px !important;
+            margin-bottom: 16px;
+            opacity: 0.4;
+        }
+    </style>
 </head>
 <body>
     <Routes @rendermode="InteractiveServer" />

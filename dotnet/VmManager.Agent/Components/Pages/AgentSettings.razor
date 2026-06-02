@@ -158,6 +158,86 @@ else
             </MudCardContent>
         </MudCard>
 
+        <MudCard Elevation="2">
+            <MudCardHeader>
+                <MudText Typo="Typo.h6">Monitoring</MudText>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudCheckBox @bind-Value="_monitoring.Enabled" Label="Enable monitoring" Class="mb-2" />
+                <MudTextField @bind-Value="_monitoring.DefaultNotificationEmail" Label="Default notification email"
+                              HelperText="Fallback email for checks without a specific address"
+                              Disabled="@(!_monitoring.Enabled)" Class="mb-4" />
+
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Polling Intervals (seconds)</MudText>
+                <MudGrid Class="mb-4">
+                    <MudItem xs="6" md="3">
+                        <MudNumericField @bind-Value="_monitoring.VmStateIntervalSeconds" Label="VM State" Min="10" Disabled="@(!_monitoring.Enabled)" />
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudNumericField @bind-Value="_monitoring.MetricsIntervalSeconds" Label="Metrics" Min="10" Disabled="@(!_monitoring.Enabled)" />
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudNumericField @bind-Value="_monitoring.PortCheckIntervalSeconds" Label="Port Check" Min="10" Disabled="@(!_monitoring.Enabled)" />
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudNumericField @bind-Value="_monitoring.HostHealthIntervalSeconds" Label="Host Health" Min="30" Disabled="@(!_monitoring.Enabled)" />
+                    </MudItem>
+                </MudGrid>
+
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Email Notifications (per check: toggle + optional email override)</MudText>
+                @foreach (MonitoringCheckConfig check in _monitoringChecks)
+                {
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1">
+                        <MudCheckBox T="bool" @bind-Value="check.Entry.Enabled" Disabled="@(!_monitoring.Enabled)" />
+                        <MudText Typo="Typo.body2" Style="min-width: 200px;">@check.Label</MudText>
+                        <MudTextField @bind-Value="check.Entry.Email" Placeholder="(default email)"
+                                      Disabled="@(!_monitoring.Enabled || !check.Entry.Enabled)"
+                                      Style="max-width: 300px;" />
+                    </MudStack>
+                }
+
+                <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Thresholds</MudText>
+                <MudGrid>
+                    <MudItem xs="6" md="3">
+                        <MudNumericField @bind-Value="_monitoring.Thresholds.HostCpuPercentWarning" Label="CPU Warning %" Disabled="@(!_monitoring.Enabled)" />
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudNumericField @bind-Value="_monitoring.Thresholds.HostCpuPercentCritical" Label="CPU Critical %" Disabled="@(!_monitoring.Enabled)" />
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudNumericField @bind-Value="_monitoring.Thresholds.HostMemoryPercentWarning" Label="Memory Warning %" Disabled="@(!_monitoring.Enabled)" />
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudNumericField @bind-Value="_monitoring.Thresholds.HostMemoryPercentCritical" Label="Memory Critical %" Disabled="@(!_monitoring.Enabled)" />
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudNumericField @bind-Value="_monitoring.Thresholds.StorageFreePercentWarning" Label="Storage Free Warning %" Disabled="@(!_monitoring.Enabled)" />
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudNumericField @bind-Value="_monitoring.Thresholds.StorageFreePercentCritical" Label="Storage Free Critical %" Disabled="@(!_monitoring.Enabled)" />
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudNumericField @bind-Value="_monitoring.Thresholds.VmUptimeDaysWarning" Label="VM Uptime Days" Disabled="@(!_monitoring.Enabled)" />
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudNumericField @bind-Value="_monitoring.Thresholds.SnapshotChainDepthWarning" Label="Snapshot Depth" Disabled="@(!_monitoring.Enabled)" />
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudNumericField @bind-Value="_monitoring.Thresholds.FailedLoginThreshold" Label="Failed Login Threshold" Disabled="@(!_monitoring.Enabled)" />
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudNumericField @bind-Value="_monitoring.Thresholds.BruteForceThreshold" Label="Brute Force Threshold" Disabled="@(!_monitoring.Enabled)" />
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudNumericField @bind-Value="_monitoring.Thresholds.CertificateExpiryDaysWarning" Label="Cert Expiry Days" Disabled="@(!_monitoring.Enabled)" />
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <MudNumericField @bind-Value="_monitoring.AlertRetentionDays" Label="Alert Retention Days" Disabled="@(!_monitoring.Enabled)" />
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveSettings"
                    StartIcon="@Icons.Material.Filled.Save" Class="align-self-end">
             Save Settings
@@ -167,11 +247,19 @@ else
 
 @code {
     private AppSettings _settings = new AppSettings();
+    private MonitoringSettings _monitoring = new MonitoringSettings();
+    private List<MonitoringCheckConfig> _monitoringChecks = new List<MonitoringCheckConfig>();
     private bool _canView;
     private string _testEmailAddress = "";
     private string _selectedLocale = "";
     private string _selectedKeyboard = "";
     private string _selectedTimezone = "";
+
+    private sealed class MonitoringCheckConfig
+    {
+        public string Label { get; init; } = "";
+        public MonitoringNotificationEntry Entry { get; init; } = new MonitoringNotificationEntry();
+    }
 
     public static readonly Dictionary<string, string> LocaleMap = new Dictionary<string, string>
     {
@@ -221,9 +309,11 @@ else
         if (_canView)
         {
             _settings = SettingsService.Load();
+            _monitoring = _settings.Monitoring ?? new MonitoringSettings();
             _selectedLocale = LocaleMap.FirstOrDefault(kv => kv.Value == _settings.DefaultLocale).Key ?? "";
             _selectedKeyboard = KeyboardMap.FirstOrDefault(kv => kv.Value == _settings.DefaultKeyboardLayout).Key ?? "";
             _selectedTimezone = TimezoneMap.FirstOrDefault(kv => kv.Value == _settings.DefaultTimezone).Key ?? "";
+            BuildMonitoringChecks();
         }
     }
 
@@ -238,6 +328,7 @@ else
             if (!string.IsNullOrEmpty(_selectedTimezone) && TimezoneMap.TryGetValue(_selectedTimezone, out string? timezoneId))
                 _settings.DefaultTimezone = timezoneId;
 
+            _settings.Monitoring = _monitoring;
             SettingsService.Save(_settings);
             Snackbar.Add("Settings saved", Severity.Success);
         }
@@ -245,6 +336,29 @@ else
         {
             Snackbar.Add("Failed to save: " + ex.Message, Severity.Error);
         }
+    }
+
+    private void BuildMonitoringChecks()
+    {
+        _monitoringChecks = new List<MonitoringCheckConfig>
+        {
+            new MonitoringCheckConfig { Label = "VM Crash", Entry = _monitoring.VmCrash },
+            new MonitoringCheckConfig { Label = "VM Stuck State", Entry = _monitoring.VmStuckState },
+            new MonitoringCheckConfig { Label = "RDP Unreachable", Entry = _monitoring.RdpUnreachable },
+            new MonitoringCheckConfig { Label = "WinRM Unreachable", Entry = _monitoring.WinRmUnreachable },
+            new MonitoringCheckConfig { Label = "VM Uptime Exceeded", Entry = _monitoring.VmUptimeExceeded },
+            new MonitoringCheckConfig { Label = "Snapshot Chain Deep", Entry = _monitoring.SnapshotChainDeep },
+            new MonitoringCheckConfig { Label = "Failed Login", Entry = _monitoring.FailedLogin },
+            new MonitoringCheckConfig { Label = "Brute Force Detected", Entry = _monitoring.BruteForceDetected },
+            new MonitoringCheckConfig { Label = "Host CPU High", Entry = _monitoring.HostCpuHigh },
+            new MonitoringCheckConfig { Label = "Host Memory High", Entry = _monitoring.HostMemoryHigh },
+            new MonitoringCheckConfig { Label = "Storage Low", Entry = _monitoring.StorageLow },
+            new MonitoringCheckConfig { Label = "Disk SMART Warning", Entry = _monitoring.DiskSmartWarning },
+            new MonitoringCheckConfig { Label = "Agent Unhealthy", Entry = _monitoring.AgentUnhealthy },
+            new MonitoringCheckConfig { Label = "Certificate Expiring", Entry = _monitoring.CertificateExpiring },
+            new MonitoringCheckConfig { Label = "Quota Approaching", Entry = _monitoring.QuotaApproaching },
+            new MonitoringCheckConfig { Label = "Capacity Near Limit", Entry = _monitoring.CapacityNearLimit },
+        };
     }
 
     private async Task TestEmail()

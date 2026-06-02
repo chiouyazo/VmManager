@@ -73,6 +73,29 @@ Configure `/root/.config/VmManager/settings.json` with `"VmBackend": "Proxmox"` 
 systemctl start vmmanager-agent
 ```
 
+## Monitoring Setup (Optional)
+
+### Prometheus + Grafana
+
+VmManager exposes a Prometheus-compatible `/metrics` endpoint. To set up monitoring:
+
+1. Point Prometheus at the agent:
+```yaml
+scrape_configs:
+  - job_name: vmmanager
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["agent-ip:18275"]
+```
+
+2. Import the VmManager Grafana dashboard or create your own using the `vmmanager_*` metrics.
+
+3. Enable monitoring in agent settings (`Monitoring.Enabled = true`) for alert generation, crash detection, and email notifications.
+
+### Email Notifications
+
+Configure SMTP in agent settings. Each monitoring check can be individually toggled and routed to a specific email address. For example, critical alerts can go to an ops team email, while routine notifications go to the admin.
+
 ## VM Image Requirements
 
 All VM images managed by VmManager must share the same local administrator credentials. Configure these in Settings > VM Credentials (default: `Administrator` / `Admin123!`).

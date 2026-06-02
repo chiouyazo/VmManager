@@ -2,6 +2,7 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
+using VmManager.Agent.Services.Monitoring;
 using VmManager.Contracts.Models;
 
 namespace VmManager.Agent.Services.Rdp;
@@ -18,6 +19,7 @@ public sealed class RdpCredSspConnectionHandler
     private readonly RdpSessionStore _sessionStore;
     private readonly RdpTcpRelay _relay;
     private readonly SettingsService _settingsService;
+    private readonly LoginAttemptTracker _loginAttemptTracker;
 
     public RdpCredSspConnectionHandler(
         ILogger<RdpCredSspConnectionHandler> logger,
@@ -29,7 +31,8 @@ public sealed class RdpCredSspConnectionHandler
         IVmIpResolver vmIpResolver,
         RdpSessionStore sessionStore,
         RdpTcpRelay relay,
-        SettingsService settingsService
+        SettingsService settingsService,
+        LoginAttemptTracker loginAttemptTracker
     )
     {
         ArgumentNullException.ThrowIfNull(logger);
@@ -53,6 +56,7 @@ public sealed class RdpCredSspConnectionHandler
         _sessionStore = sessionStore;
         _relay = relay;
         _settingsService = settingsService;
+        _loginAttemptTracker = loginAttemptTracker;
     }
 
     public async Task HandleConnectionAsync(
@@ -128,6 +132,7 @@ public sealed class RdpCredSspConnectionHandler
 
             if (!_clientHandler.VerifyClientPubKeyAuth(authResult, authResult.RawCredSspAuth, cert))
             {
+                _loginAttemptTracker.RecordFailedAttempt(username);
                 _logger.LogWarning(
                     "Invalid credentials for user {Username} (pubKeyAuth verification failed)",
                     username

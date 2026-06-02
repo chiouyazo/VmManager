@@ -20,7 +20,8 @@
     <MudText Typo="Typo.h5" Class="py-2">My VMs</MudText>
     <MudTextField @bind-Value="_searchQuery" Placeholder="Search..."
                   Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
-                  Immediate="true" DebounceInterval="300" Class="mt-0 py-2" Style="max-width: 250px;" />
+                  Variant="Variant.Outlined" Dense="true" Margin="Margin.Dense"
+                  Immediate="true" DebounceInterval="300" Class="mt-0" Style="max-width: 220px;" />
     <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="LoadVms" />
 </MudStack>
 
@@ -30,7 +31,11 @@
 }
 else if (FilteredVms.Count == 0)
 {
-    <MudAlert Severity="Severity.Info">No VMs found.</MudAlert>
+    <div class="empty-state">
+        <MudIcon Icon="@Icons.Material.Filled.DesktopWindows" />
+        <MudText Typo="Typo.h6" Color="Color.Secondary">No VMs found</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Create a VM from the Images page or adjust your filters.</MudText>
+    </div>
 }
 else
 {
@@ -38,10 +43,13 @@ else
         @foreach (VmInstance vm in FilteredVms)
         {
             <MudItem xs="12" sm="12" md="12" lg="6">
-                <MudCard Elevation="2">
+                <MudCard Elevation="1" Class="vm-card">
                     <MudCardHeader>
+                        <MudIconButton Icon="@(_expandedVm == vm.Name ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                                       Size="Size.Small" OnClick="() => ToggleExpand(vm)" />
                         <MudText Typo="Typo.body1" Style="font-weight: 600;">@vm.Name</MudText>
-                        <MudChip T="string" Color="@GetStateColor(vm.State)" Size="Size.Small" Class="mx-3">
+                        <MudChip T="string" Color="@GetStateColor(vm.State)" Size="Size.Small" Class="mx-3"
+                                 Variant="Variant.Filled">
                             @vm.State
                         </MudChip>
                         <MudSpacer />
@@ -52,7 +60,7 @@ else
                                 Connect
                             </MudButton>
                         }
-                        <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Color="Color.Default" Class="ml-2">
+                        <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Color="Color.Default" Class="ml-1">
                             @if (vm.State != "Running" && CanDo(vm, Permission.VmStart))
                             {
                                 <MudMenuItem Icon="@Icons.Material.Filled.PlayArrow" OnClick="() => Start(vm)">Start</MudMenuItem>
@@ -161,13 +169,6 @@ else
                         </MudCardContent>
                     }
 
-                    <MudCardActions Class="pa-1">
-                        <MudButton Size="Size.Small" Variant="Variant.Text"
-                                   OnClick="() => ToggleExpand(vm)"
-                                   EndIcon="@(_expandedVm == vm.Name ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)">
-                            @(_expandedVm == vm.Name ? "Less" : "More")
-                        </MudButton>
-                    </MudCardActions>
                 </MudCard>
             </MudItem>
         }

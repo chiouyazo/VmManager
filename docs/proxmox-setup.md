@@ -91,25 +91,74 @@ iface vmbr0 inet static
 
 Then `systemctl restart networking`.
 
-## 6. Install Agent Prerequisites
+## 6. Grant Monitoring Permissions (Optional)
+
+To enable host-level monitoring (CPU, memory, uptime, disk health) via the VmManager monitoring system:
 
 ```bash
-apt install qemu-utils ntfs-3g
+pveum aclmod /nodes/<your-node> -user vmmanager@pam -role PVEAuditor
 ```
 
-## 7. Install the Agent
+Without this, VM metrics still work but host metrics will be empty.
 
-Use the same Linux agent binary as KVM:
+## 7. Install Agent Prerequisites
+
+```bash
+apt install qemu-utils ntfs-3g gss-ntlmssp
+```
+
+The `gss-ntlmssp` package is required for the RDP CredSSP proxy (NTLM authentication to Windows VMs).
+
+## 8. Install the Agent
+
+Download the latest Linux agent release, or build from source:
+
+```bash
+# Option A: Download release
+wget https://github.com/chiouyazo/VmManager/releases/latest/download/VmManager-Agent-linux-x64.tar.gz
+
+# Option B: Build from source (requires .NET 10 SDK)
+git clone https://github.com/chiouyazo/VmManager.git
+cd VmManager
+dotnet publish dotnet/VmManager.Agent -c Release -r linux-x64 --self-contained -o /tmp/vmmanager-agent-publish
+cd /tmp/vmmanager-agent-publish && tar czf /tmp/VmManager-Agent-linux-x64.tar.gz .
+```
+
+Install:
 
 ```bash
 mkdir -p /opt/vmmanager-agent
-tar xzf VmManager-Agent-<version>-linux-x64.tar.gz -C /opt/vmmanager-agent/
-cp /opt/vmmanager-agent/vmmanager-agent.service /etc/systemd/system/
+tar xzf VmManager-Agent-linux-x64.tar.gz -C /opt/vmmanager-agent/
+chmod +x /opt/vmmanager-agent/VmManager.Agent
+```
+
+Create the systemd service file at `/etc/systemd/system/vmmanager-agent.service`:
+
+```ini
+[Unit]
+Description=VmManager Agent
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/vmmanager-agent/VmManager.Agent
+WorkingDirectory=/opt/vmmanager-agent
+Restart=always
+RestartSec=5
+Environment=DOTNET_ENVIRONMENT=Production
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable the service:
+
+```bash
 systemctl daemon-reload
 systemctl enable vmmanager-agent
 ```
 
-## 8. Configure Settings
+## 9. Configure Settings
 
 Create `/root/.config/VmManager/settings.json`:
 
@@ -127,8 +176,18 @@ Create `/root/.config/VmManager/settings.json`:
     "MaxPoolMemoryMb": 0,
     "MaxPoolCpuCores": 0
   },
-  "SecureApi": false,
-  "Feeds": []
+  "DefaultVmUsername": "Administrator",
+  "DefaultVmPassword": "Admin123!",
+  "RdpDomainSuffix": "",
+  "ApplyLocaleOnCreate": true,
+  "DefaultLocale": "de-DE",
+  "DefaultKeyboardLayout": "00000407",
+  "DefaultTimezone": "W. Europe Standard Time",
+  "Feeds": [],
+  "Monitoring": {
+    "Enabled": true,
+    "DefaultNotificationEmail": "admin@company.com"
+  }
 }
 ```
 
@@ -144,18 +203,93 @@ Create `/root/.config/VmManager/settings.json`:
 | `MaxPoolMemoryMb` | Soft limit on total pool RAM (0 = unlimited) |
 | `MaxPoolCpuCores` | Soft limit on total pool CPU cores (0 = unlimited) |
 
-## 9. Start the Agent
+| `DefaultVmPassword` | Password for VM guest OS (used by CredSSP proxy) |
+| `RdpDomainSuffix` | DNS wildcard domain for RDP (e.g. `vms.company.com`), leave empty for username-prefix mode |
+| `Monitoring.Enabled` | Enable monitoring checks and alerts |
+| `Monitoring.DefaultNotificationEmail` | Fallback email for monitoring alerts |
+
+## 10. Start the Agent
 
 ```bash
 systemctl start vmmanager-agent
 journalctl -u vmmanager-agent -f
 ```
 
-The agent listens on port 18275 (HTTP + RDP multiplexed).
+The agent listens on port 18275 (HTTP + Web UI + RDP multiplexed) and port 13389 (standalone RDP proxy).
 
-## 10. Connect from Client
+Check the generated admin credentials:
+```bash
+cat /root/.config/VmManager/api-credentials.txt
+```
 
-In VmManager client, add a new agent connection pointing to `http://<proxmox-ip>:18275`.
+## 11. Access the Web UI
+
+Open `http://<proxmox-ip>:18275` in a browser. Login with the admin credentials from the previous step.
+
+## 12. Connect from Desktop Client
+
+In VmManager desktop client, add a new agent connection pointing to `http://<proxmox-ip>:18275` with the admin credentials.
+
+## 13. Connect to VMs via RDP
+
+**With DNS wildcard (recommended):**
+1. Set `RdpDomainSuffix` in settings (e.g. `vms.company.com`)
+2. Configure wildcard DNS: `*.vms.company.com` pointing to the Proxmox IP
+3. Type `myVm.vms.company.com` in mstsc, enter VmManager credentials
+
+**Without DNS:**
+1. Connect mstsc to `<proxmox-ip>:13389`
+2. Enter `vmName:user@email` as the username (e.g. `myVm:admin`)
+3. Enter VmManager password
+
+## 14. Set Up Monitoring (Optional)
+
+### Grafana with Direct API Connection
+
+No Prometheus needed. Use the Grafana **Infinity** plugin to query the VmManager API directly.
+
+1. Install the Infinity datasource plugin in Grafana
+2. Add a new Infinity datasource:
+   - Base URL: `http://<proxmox-ip>:18275`
+   - Authentication: Basic Auth with VmManager admin credentials
+3. Create panels using these endpoints:
+
+| Panel | URL | Type | Fields |
+|-------|-----|------|--------|
+| Host CPU | `/api/monitoring/metrics/host` | JSON | `cpuPercent` |
+| Host Memory | `/api/monitoring/metrics/host` | JSON | `memoryUsedBytes`, `memoryTotalBytes` |
+| Per-VM CPU | `/api/monitoring/metrics/vms` | JSON | `name`, `cpuPercent` |
+| Per-VM Memory | `/api/monitoring/metrics/vms` | JSON | `name`, `memoryUsedBytes` |
+| Storage | `/api/monitoring/metrics/storage` | JSON | `name`, `usedBytes`, `totalBytes` |
+| Active Alerts | `/api/monitoring/alerts?acknowledged=false` | JSON | `severity`, `title`, `timestamp` |
+
+Alternatively, the `/metrics` endpoint (Prometheus text format) works with the standard Prometheus datasource if you prefer that setup.
+
+### Email Notifications
+
+Configure SMTP in Agent Settings (web UI or settings.json). Each monitoring check can be toggled individually and routed to a specific email address. See [Monitoring Documentation](monitoring.md) for the full list of checks and thresholds.
+
+## Firewall
+
+If the Proxmox firewall is enabled, open these ports:
+
+| Port | Protocol | Purpose |
+|------|----------|---------|
+| 18275 | TCP | HTTP API + Web UI + multiplexed RDP |
+| 13389 | TCP | Standalone RDP CredSSP proxy |
+
+```bash
+# Proxmox firewall rules (if enabled)
+# Add in Datacenter > Firewall > Rules or via CLI:
+pve-firewall add -action ACCEPT -type in -dport 18275 -proto tcp -comment "VmManager API"
+pve-firewall add -action ACCEPT -type in -dport 13389 -proto tcp -comment "VmManager RDP Proxy"
+```
+
+Or if using iptables directly:
+```bash
+iptables -A INPUT -p tcp --dport 18275 -j ACCEPT
+iptables -A INPUT -p tcp --dport 13389 -j ACCEPT
+```
 
 ## Known Limitations
 

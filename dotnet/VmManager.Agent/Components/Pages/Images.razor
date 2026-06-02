@@ -61,7 +61,11 @@ else
 
     @if (_images.Count == 0 && _localImages.Count == 0)
     {
-        <MudAlert Severity="Severity.Info">No images available. Configure feeds in Agent Settings.</MudAlert>
+        <div class="empty-state">
+            <MudIcon Icon="@Icons.Material.Filled.Inventory2" />
+            <MudText Typo="Typo.h6" Color="Color.Secondary">No images available</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Configure image feeds in Agent Settings to browse and import VM images.</MudText>
+        </div>
     }
 
     @if (_images.Count > 0)

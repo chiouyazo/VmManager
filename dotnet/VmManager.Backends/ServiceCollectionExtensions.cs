@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using VmManager.Backends.HyperV;
 using VmManager.Backends.Kvm;
 using VmManager.Backends.Proxmox;
+using VmManager.Backends.Shared;
 using VmManager.Contracts.Interfaces;
 
 namespace VmManager.Backends;
@@ -16,6 +17,7 @@ public static class BackendServiceCollectionExtensions
         if (string.Equals(backendOverride, "Fake", StringComparison.OrdinalIgnoreCase))
         {
             // No-op: FakeVmBackend registered in Agent project
+            services.AddSingleton<IMetricsProvider, NullMetricsProvider>();
         }
         else if (string.Equals(backendOverride, "Proxmox", StringComparison.OrdinalIgnoreCase))
         {
@@ -33,6 +35,10 @@ public static class BackendServiceCollectionExtensions
             );
             services.AddSingleton<ProxmoxService>();
             services.AddSingleton<IVmBackend>(sp => sp.GetRequiredService<ProxmoxService>());
+            services.AddSingleton<ProxmoxMetricsProvider>();
+            services.AddSingleton<IMetricsProvider>(sp =>
+                sp.GetRequiredService<ProxmoxMetricsProvider>()
+            );
         }
         else if (OperatingSystem.IsWindows())
         {
@@ -51,6 +57,10 @@ public static class BackendServiceCollectionExtensions
             );
             services.AddSingleton<HyperVService>();
             services.AddSingleton<IVmBackend>(sp => sp.GetRequiredService<HyperVService>());
+            services.AddSingleton<HyperVMetricsProvider>();
+            services.AddSingleton<IMetricsProvider>(sp =>
+                sp.GetRequiredService<HyperVMetricsProvider>()
+            );
         }
         else if (OperatingSystem.IsLinux())
         {
@@ -68,6 +78,10 @@ public static class BackendServiceCollectionExtensions
             );
             services.AddSingleton<KvmService>();
             services.AddSingleton<IVmBackend>(sp => sp.GetRequiredService<KvmService>());
+            services.AddSingleton<KvmMetricsProvider>();
+            services.AddSingleton<IMetricsProvider>(sp =>
+                sp.GetRequiredService<KvmMetricsProvider>()
+            );
         }
 
         return services;

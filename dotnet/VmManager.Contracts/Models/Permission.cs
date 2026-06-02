@@ -31,6 +31,9 @@ public static class Permission
 
     public const string UsersManage = "users.manage";
 
+    public const string MonitoringView = "monitoring.view";
+    public const string MonitoringManage = "monitoring.manage";
+
     public const string PermissionClaimType = "VmManager.Permission";
 
     public static HashSet<string> All { get; } =
@@ -58,6 +61,8 @@ public static class Permission
         SettingsEditScripts,
         RdpConnect,
         UsersManage,
+        MonitoringView,
+        MonitoringManage,
     ];
 
     public static HashSet<string> DefaultUser { get; } =
