@@ -36,6 +36,7 @@ public sealed class BasicAuthStateProvider : AuthenticationStateProvider
             return false;
 
         _currentUser = BuildPrincipal(account);
+        MustChangePassword = account.MustChangePassword;
         NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
         return true;
     }
@@ -50,7 +51,13 @@ public sealed class BasicAuthStateProvider : AuthenticationStateProvider
             return;
 
         _currentUser = BuildPrincipal(account);
+        MustChangePassword = account.MustChangePassword;
         NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
+    }
+
+    public void ClearMustChangePassword()
+    {
+        MustChangePassword = false;
     }
 
     public void Logout()
@@ -61,6 +68,7 @@ public sealed class BasicAuthStateProvider : AuthenticationStateProvider
 
     public string CurrentUsername => _currentUser.Identity?.Name ?? "";
     public string CurrentEmail => _currentUser.FindFirst(ClaimTypes.Email)?.Value ?? "";
+    public bool MustChangePassword { get; private set; }
 
     private static ClaimsPrincipal BuildPrincipal(UserAccount account)
     {

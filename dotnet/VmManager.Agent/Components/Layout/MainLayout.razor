@@ -138,6 +138,12 @@
         _user = state.User;
         TaskManager.TasksChanged += OnTasksChanged;
         RefreshTasks();
+
+        if (AuthState.MustChangePassword)
+        {
+            Navigation.NavigateTo("/login", forceLoad: true);
+            return;
+        }
     }
 
     private void OnTasksChanged()

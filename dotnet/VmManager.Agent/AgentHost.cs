@@ -135,6 +135,25 @@ public static class AgentHost
         app.UseAuthorization();
         app.UseAntiforgery();
         app.MapStaticAssets();
+        app.UseWhen(
+            context => context.Request.Path.StartsWithSegments("/swagger"),
+            branch =>
+                branch.Use(
+                    async (context, next) =>
+                    {
+                        if (!context.User.Identity?.IsAuthenticated ?? true)
+                        {
+                            context.Response.StatusCode = 401;
+                            context.Response.Headers.Append(
+                                "WWW-Authenticate",
+                                "Basic realm=\"VmManager\""
+                            );
+                            return;
+                        }
+                        await next();
+                    }
+                )
+        );
         app.UseSwagger();
         app.UseSwaggerUI();
         app.MapControllers();

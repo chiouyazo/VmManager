@@ -191,8 +191,19 @@ public class CatalogController : ControllerBase
     [ProducesResponseType(204)]
     public IActionResult DeleteLocalImage([FromQuery] string path)
     {
-        if (Directory.Exists(path))
+        AppSettings settingsCheck = _settingsService.Load();
+        string extractedDir = Path.GetFullPath(
+            Path.Combine(settingsCheck.LocalVmPath, "extracted")
+        );
+        string fullPath = Path.GetFullPath(path);
+        if (!fullPath.StartsWith(extractedDir, StringComparison.OrdinalIgnoreCase))
+            return BadRequest(
+                new { error = "Path must be within the extracted images directory." }
+            );
+
+        if (Directory.Exists(fullPath))
         {
+            path = fullPath;
             string dirName = Path.GetFileName(path);
             Directory.Delete(path, true);
 

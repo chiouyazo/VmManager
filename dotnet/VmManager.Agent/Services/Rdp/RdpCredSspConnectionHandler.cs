@@ -158,6 +158,16 @@ public sealed class RdpCredSspConnectionHandler
                 return;
             }
 
+            if (user.MustChangePassword)
+            {
+                _logger.LogWarning(
+                    "User {Username} must change password before connecting to VMs",
+                    username
+                );
+                await SendCredSspError(clientSsl, 0x8009030C, cancellationToken);
+                return;
+            }
+
             ClaimsPrincipal principal = BuildClaimsPrincipal(user);
 
             if (!_authorizationService.CanAccessVm(principal, vmName, Permission.RdpConnect))

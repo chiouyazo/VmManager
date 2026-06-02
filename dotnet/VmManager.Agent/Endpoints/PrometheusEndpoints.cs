@@ -175,7 +175,7 @@ public static class PrometheusEndpoints
                     return Results.Text(sb.ToString(), "text/plain; version=0.0.4; charset=utf-8");
                 }
             )
-            .AllowAnonymous();
+            .RequireAuthorization();
 
         return endpoints;
     }
