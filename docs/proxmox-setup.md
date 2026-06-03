@@ -174,7 +174,10 @@ Create `/root/.config/VmManager/settings.json`:
     "PoolId": "vmmanager-pool",
     "VerifySsl": false,
     "MaxPoolMemoryMb": 0,
-    "MaxPoolCpuCores": 0
+    "MaxPoolCpuCores": 0,
+    "VmIdRangeStart": 400,
+    "VmIdRangeEnd": 499,
+    "DefaultBridge": "vmbr1"
   },
   "DefaultVmUsername": "Administrator",
   "DefaultVmPassword": "Admin123!",
@@ -202,6 +205,9 @@ Create `/root/.config/VmManager/settings.json`:
 | `VerifySsl` | Set `false` for self-signed certs |
 | `MaxPoolMemoryMb` | Soft limit on total pool RAM (0 = unlimited) |
 | `MaxPoolCpuCores` | Soft limit on total pool CPU cores (0 = unlimited) |
+| `VmIdRangeStart` | First VMID in the allowed range (0 = use Proxmox default) |
+| `VmIdRangeEnd` | Last VMID in the allowed range |
+| `DefaultBridge` | Network bridge for VM NICs (default: `vmbr0`) |
 
 | `DefaultVmPassword` | Password for VM guest OS (used by CredSSP proxy) |
 | `RdpDomainSuffix` | DNS wildcard domain for RDP (e.g. `vms.company.com`), leave empty for username-prefix mode |

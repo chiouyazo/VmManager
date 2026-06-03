@@ -19,6 +19,78 @@ else
     <MudStack Spacing="4">
         <MudCard Elevation="2">
             <MudCardHeader>
+                <MudText Typo="Typo.h6">Backend</MudText>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudSelect T="string" @bind-Value="_settings.VmBackend" Label="VM Backend">
+                    <MudSelectItem Value="@("HyperV")">Hyper-V (Windows)</MudSelectItem>
+                    <MudSelectItem Value="@("KVM")">KVM (Linux)</MudSelectItem>
+                    <MudSelectItem Value="@("Proxmox")">Proxmox VE</MudSelectItem>
+                </MudSelect>
+
+                @if (_settings.VmBackend == "Proxmox")
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Proxmox API</MudText>
+                    <MudGrid>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="_proxmox.ApiUrl" Label="API URL" HelperText="e.g. https://192.168.1.100:8006" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="_proxmox.Node" Label="Node Name" HelperText="Proxmox hostname" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="_proxmox.ApiTokenId" Label="API Token ID" HelperText="user@realm!token-name" />
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudTextField @bind-Value="_proxmox.ApiTokenSecret" Label="API Token Secret" InputType="InputType.Password" />
+                        </MudItem>
+                    </MudGrid>
+
+                    <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Storage and Pool</MudText>
+                    <MudGrid>
+                        <MudItem xs="12" md="4">
+                            <MudTextField @bind-Value="_proxmox.StorageId" Label="Storage ID" />
+                        </MudItem>
+                        <MudItem xs="12" md="4">
+                            <MudTextField @bind-Value="_proxmox.PoolId" Label="Pool ID" />
+                        </MudItem>
+                        <MudItem xs="12" md="4">
+                            <MudCheckBox @bind-Value="_proxmox.VerifySsl" Label="Verify SSL" />
+                        </MudItem>
+                    </MudGrid>
+
+                    <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Network</MudText>
+                    <MudGrid>
+                        <MudItem xs="12" md="4">
+                            <MudTextField @bind-Value="_proxmox.DefaultBridge" Label="Default Bridge" HelperText="e.g. vmbr0, vmbr1" />
+                        </MudItem>
+                    </MudGrid>
+
+                    <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">VM ID Range</MudText>
+                    <MudGrid>
+                        <MudItem xs="12" md="4">
+                            <MudNumericField @bind-Value="_proxmox.VmIdRangeStart" Label="Range Start" Min="100" HelperText="e.g. 400" />
+                        </MudItem>
+                        <MudItem xs="12" md="4">
+                            <MudNumericField @bind-Value="_proxmox.VmIdRangeEnd" Label="Range End" Min="100" HelperText="e.g. 499" />
+                        </MudItem>
+                    </MudGrid>
+
+                    <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Pool Limits</MudText>
+                    <MudGrid>
+                        <MudItem xs="12" md="4">
+                            <MudNumericField @bind-Value="_proxmox.MaxPoolMemoryMb" Label="Max Pool Memory (MB)" Min="0" HelperText="0 = unlimited" />
+                        </MudItem>
+                        <MudItem xs="12" md="4">
+                            <MudNumericField @bind-Value="_proxmox.MaxPoolCpuCores" Label="Max Pool CPUs" Min="0" HelperText="0 = unlimited" />
+                        </MudItem>
+                    </MudGrid>
+                }
+            </MudCardContent>
+        </MudCard>
+
+        <MudCard Elevation="2">
+            <MudCardHeader>
                 <MudText Typo="Typo.h6">VM Defaults</MudText>
             </MudCardHeader>
             <MudCardContent>
@@ -247,6 +319,7 @@ else
 
 @code {
     private AppSettings _settings = new AppSettings();
+    private ProxmoxSettings _proxmox = new ProxmoxSettings();
     private MonitoringSettings _monitoring = new MonitoringSettings();
     private List<MonitoringCheckConfig> _monitoringChecks = new List<MonitoringCheckConfig>();
     private bool _canView;
@@ -309,6 +382,7 @@ else
         if (_canView)
         {
             _settings = SettingsService.Load();
+            _proxmox = _settings.Proxmox ?? new ProxmoxSettings();
             _monitoring = _settings.Monitoring ?? new MonitoringSettings();
             _selectedLocale = LocaleMap.FirstOrDefault(kv => kv.Value == _settings.DefaultLocale).Key ?? "";
             _selectedKeyboard = KeyboardMap.FirstOrDefault(kv => kv.Value == _settings.DefaultKeyboardLayout).Key ?? "";
@@ -328,6 +402,8 @@ else
             if (!string.IsNullOrEmpty(_selectedTimezone) && TimezoneMap.TryGetValue(_selectedTimezone, out string? timezoneId))
                 _settings.DefaultTimezone = timezoneId;
 
+            if (_settings.VmBackend == "Proxmox")
+                _settings.Proxmox = _proxmox;
             _settings.Monitoring = _monitoring;
             SettingsService.Save(_settings);
             Snackbar.Add("Settings saved", Severity.Success);

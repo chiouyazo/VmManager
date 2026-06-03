@@ -11,4 +11,7 @@ public class ProxmoxSettings
     public bool VerifySsl { get; set; } = true;
     public int MaxPoolMemoryMb { get; set; }
     public int MaxPoolCpuCores { get; set; }
+    public int VmIdRangeStart { get; set; }
+    public int VmIdRangeEnd { get; set; }
+    public string DefaultBridge { get; set; } = "vmbr0";
 }

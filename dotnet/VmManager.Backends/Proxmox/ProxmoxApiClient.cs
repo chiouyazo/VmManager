@@ -48,6 +48,9 @@ public class ProxmoxApiClient
     public string PoolId => _settings.PoolId;
     public int MaxPoolMemoryMb => _settings.MaxPoolMemoryMb;
     public int MaxPoolCpuCores => _settings.MaxPoolCpuCores;
+    public string DefaultBridge => _settings.DefaultBridge;
+    public int VmIdRangeStart => _settings.VmIdRangeStart;
+    public int VmIdRangeEnd => _settings.VmIdRangeEnd;
 
     public async Task<T> GetAsync<T>(string path)
     {
@@ -121,9 +124,57 @@ public class ProxmoxApiClient
 
     public async Task<int> GetNextVmIdAsync()
     {
-        JsonElement result = await GetAsync<JsonElement>("/api2/json/cluster/nextid");
-        return int.Parse(
-            result.GetString() ?? throw new InvalidOperationException("No VMID returned")
+        int rangeStart = _settings.VmIdRangeStart;
+        int rangeEnd = _settings.VmIdRangeEnd;
+
+        if (rangeStart <= 0 || rangeEnd <= rangeStart)
+        {
+            throw new InvalidOperationException(
+                "VM ID range is not configured. Set VmIdRangeStart and VmIdRangeEnd in Proxmox settings."
+            );
+        }
+
+        return await GetNextVmIdInRangeAsync(rangeStart, rangeEnd);
+    }
+
+    private async Task<int> GetNextVmIdInRangeAsync(int rangeStart, int rangeEnd)
+    {
+        HashSet<int> usedIds = new HashSet<int>();
+
+        JsonElement pool = await GetAsync<JsonElement>($"/api2/json/pools/{_settings.PoolId}");
+        if (pool.TryGetProperty("members", out JsonElement members))
+        {
+            foreach (JsonElement member in members.EnumerateArray())
+            {
+                if (member.TryGetProperty("vmid", out JsonElement vmidEl))
+                    usedIds.Add(vmidEl.GetInt32());
+            }
+        }
+
+        for (int candidate = rangeStart; candidate <= rangeEnd; candidate++)
+        {
+            if (!usedIds.Contains(candidate))
+            {
+                try
+                {
+                    await GetAsync<JsonElement>("/api2/json/cluster/nextid?vmid=" + candidate);
+                    return candidate;
+                }
+                catch
+                {
+                    // ID taken cluster-wide (outside our pool), try next
+                }
+            }
+        }
+
+        throw new InvalidOperationException(
+            "No available VM IDs in range "
+                + rangeStart
+                + "-"
+                + rangeEnd
+                + ". "
+                + usedIds.Count
+                + " IDs in use."
         );
     }
 

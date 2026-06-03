@@ -130,7 +130,8 @@ public class ProxmoxImportService
         _logger.LogInformation("Creating VM {Name} with VMID {VmId}", finalName, vmid);
 
         onStatus?.Invoke("Creating VM...");
-        string networkParam = skipDefaultNetwork ? "none" : "e1000e,bridge=vmbr0";
+        string bridge = _api.DefaultBridge;
+        string networkParam = skipDefaultNetwork ? "none" : "e1000e,bridge=" + bridge;
         Dictionary<string, string> createParams = new Dictionary<string, string>
         {
             ["vmid"] = vmid.ToString(),
