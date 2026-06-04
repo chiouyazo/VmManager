@@ -354,7 +354,12 @@ public class UserService
 
     private static string GeneratePassword()
     {
-        byte[] bytes = RandomNumberGenerator.GetBytes(24);
-        return Convert.ToBase64String(bytes).Replace("+", "").Replace("/", "")[..32];
+        byte[] bytes = RandomNumberGenerator.GetBytes(48);
+        string raw = Convert
+            .ToBase64String(bytes)
+            .Replace("+", "")
+            .Replace("/", "")
+            .Replace("=", "");
+        return raw.Substring(0, Math.Min(32, raw.Length));
     }
 }

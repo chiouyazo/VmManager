@@ -26,7 +26,7 @@
 ### Prerequisites
 
 ```bash
-sudo apt install qemu-kvm libvirt-daemon-system virt-install qemu-utils gss-ntlmssp
+sudo apt install qemu-kvm libvirt-daemon-system virt-install qemu-utils gss-ntlmssp libicu-dev
 ```
 
 The `gss-ntlmssp` package is required for the RDP CredSSP proxy. It provides NTLM authentication support via GSSAPI, which is used when the agent authenticates to Windows VMs on behalf of users.
