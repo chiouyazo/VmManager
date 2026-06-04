@@ -37,8 +37,6 @@ public class ProxmoxService : IVmBackend
     {
         List<VmInstance> allPoolVms = await Vms.GetVmsAsync();
         Dictionary<string, VmOrigin?> tracked = _tracking.LoadAll();
-        if (tracked.Count == 0)
-            return allPoolVms;
         return allPoolVms.Where(vm => tracked.ContainsKey(vm.Name)).ToList();
     }
 

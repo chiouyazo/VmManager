@@ -422,7 +422,7 @@ jobs:
           cd repo
           TAG="${GITHUB_REF#refs/tags/}"
           TAG_MSG=$(git tag -l --format='%(contents)' "$TAG" 2>/dev/null | head -50)
-          PREV_TAG=$(git tag --list 'v*' --sort=-version:refname | grep -v '\-dev' | grep -v "^${TAG}$" | head -1)
+          PREV_TAG=$(git tag --list 'v*' --sort=-version:refname | grep -v '\-dev' | grep -v "^${TAG}$" | head -1 || true)
           if [ -n "$PREV_TAG" ]; then
             COMMITS=$(git log --pretty=format:'- %s' "${PREV_TAG}..${TAG}" 2>/dev/null || echo "")
           else

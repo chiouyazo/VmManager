@@ -125,8 +125,9 @@ else
                                                         @if (_canImport && !version.IsLocallyAvailable)
                                                         {
                                                             <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                                                                       Disabled="_activeImports.Contains(version.FileName)"
                                                                        OnClick="() => ImportVersion(image, version)">
-                                                                Import
+                                                                @(_activeImports.Contains(version.FileName) ? "Importing..." : "Import")
                                                             </MudButton>
                                                         }
                                                         @if (_canCreateVm && version.IsLocallyAvailable)
@@ -165,6 +166,7 @@ else
     private bool _canImport;
     private bool _canCreateVm;
     private bool _canDeleteLocal;
+    private HashSet<string> _activeImports = new HashSet<string>();
     private ClaimsPrincipal _user = new ClaimsPrincipal();
 
     private IEnumerable<VmImage> FilteredImages
@@ -287,9 +289,16 @@ else
 
     private void ImportVersion(VmImage image, VmImageVersion version)
     {
+        if (_activeImports.Contains(version.FileName))
+            return;
+        _activeImports.Add(version.FileName);
+        StateHasChanged();
+
         string username = _user.Identity?.Name ?? "";
         AppSettings settings = SettingsService.Load();
-        string safeFileName = version.FileName.Replace(":", "_").Replace("/", "_").Replace("\\", "_");
+        byte[] hashBytes = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(version.FileName));
+        string storageId = Convert.ToHexString(hashBytes)[..12].ToLowerInvariant();
 
         TaskManager.StartTask("Importing " + image.Name + " " + version.Version, username, async ctx =>
         {
@@ -301,7 +310,7 @@ else
             else if (!CatalogAggregator.IsLocalVersion(version.FileName))
                 auth = CatalogAggregator.GetAuthHeader();
 
-            string downloadPath = Path.Combine(settings.LocalVmPath, "downloads", safeFileName + ".box");
+            string downloadPath = Path.Combine(settings.LocalVmPath, "downloads", storageId + ".box");
             Directory.CreateDirectory(Path.GetDirectoryName(downloadPath)!);
 
             ctx.ReportProgress(0, "Downloading...");
@@ -319,7 +328,7 @@ else
                 }),
                 ctx.Token, auth);
 
-            string extractPath = Path.Combine(settings.LocalVmPath, "extracted", safeFileName);
+            string extractPath = Path.Combine(settings.LocalVmPath, "extracted", storageId);
             ctx.ReportProgress(0.5, "Extracting...");
             await ImportService.ExtractAsync(
                 downloadPath, extractPath,
@@ -360,6 +369,11 @@ else
             }
 
             ctx.ReportProgress(1.0, "Complete");
+            await InvokeAsync(() =>
+            {
+                _activeImports.Remove(version.FileName);
+                StateHasChanged();
+            });
         });
 
         Snackbar.Add("Importing " + image.Name + " " + version.Version + "...", Severity.Info);
@@ -368,8 +382,10 @@ else
     private async Task CreateVmFromCatalog(VmImage image, VmImageVersion version)
     {
         AppSettings settings = SettingsService.Load();
-        string safeFileName = version.FileName.Replace(":", "_").Replace("/", "_").Replace("\\", "_");
-        string extractedPath = Path.Combine(settings.LocalVmPath, "extracted", safeFileName);
+        byte[] hashBytes = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(version.FileName));
+        string storageId = Convert.ToHexString(hashBytes)[..12].ToLowerInvariant();
+        string extractedPath = Path.Combine(settings.LocalVmPath, "extracted", storageId);
 
         if (!Directory.Exists(extractedPath))
         {

@@ -4,8 +4,10 @@
 @attribute [Authorize]
 @inject UserService UserService
 @inject EmailService EmailService
+@inject VmOwnershipService OwnershipService
 @inject SettingsService SettingsService
 @inject NavigationManager NavigationManager
+@inject BasicAuthStateProvider AuthState
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
@@ -25,35 +27,39 @@
         <MudItem xs="12" md="6" lg="4">
             <MudCard Elevation="2">
                 <MudCardHeader>
-                    <MudText Typo="Typo.body1" Style="font-weight: 600;">@user.Username</MudText>
-                    @if (user.IsAdmin)
-                    {
-                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="ml-2">Admin</MudChip>
-                    }
-                    @if (user.MustChangePassword)
-                    {
-                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-1">Must change password</MudChip>
-                    }
+                    <MudStack Spacing="0" Style="min-width: 0; overflow: hidden;">
+                        <MudText Typo="Typo.body1" Style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@user.Username</MudText>
+                        <MudStack Row="true" Spacing="1" Class="mt-1">
+                            @if (user.IsAdmin)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Primary">Admin</MudChip>
+                            }
+                            @if (user.MustChangePassword)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Warning">Must change pw</MudChip>
+                            }
+                        </MudStack>
+                    </MudStack>
                     <MudSpacer />
-                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
-                        @if (!user.IsAdmin)
-                        {
+                    @if (!IsSelf(user))
+                    {
+                        <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
                             <MudMenuItem OnClick="() => ShowEditPermissions(user)">Permissions</MudMenuItem>
-                        }
-                        <MudMenuItem OnClick="() => ShowResetPassword(user)">Reset Password</MudMenuItem>
-                        <MudMenuItem OnClick="() => ToggleMustChangePassword(user)">
-                            @(user.MustChangePassword ? "Cancel forced password change" : "Force password change on next login")
-                        </MudMenuItem>
-                        <MudMenuItem OnClick="() => ChangeEmail(user)">Change Email</MudMenuItem>
-                        @if (EmailService.IsConfigured)
-                        {
-                            <MudMenuItem OnClick="() => SendInvite(user)">Send Invite</MudMenuItem>
-                        }
-                        @if (!user.IsAdmin)
-                        {
+                            <MudMenuItem OnClick="() => ShowResetPassword(user)">Reset Password</MudMenuItem>
+                            <MudMenuItem OnClick="() => ToggleMustChangePassword(user)">
+                                @(user.MustChangePassword ? "Cancel forced password change" : "Force password change on next login")
+                            </MudMenuItem>
+                            @if (!user.IsAdmin)
+                            {
+                                <MudMenuItem OnClick="() => ChangeEmail(user)">Change Email</MudMenuItem>
+                                @if (EmailService.IsConfigured)
+                                {
+                                    <MudMenuItem OnClick="() => SendInvite(user)">Send Invite</MudMenuItem>
+                                }
+                            }
                             <MudMenuItem OnClick="() => DeleteUser(user)">Delete</MudMenuItem>
-                        }
-                    </MudMenu>
+                        </MudMenu>
+                    }
                 </MudCardHeader>
                 <MudCardContent Class="pt-0">
                     @if (!string.IsNullOrEmpty(user.Email))
@@ -63,9 +69,12 @@
                     <MudText Typo="Typo.caption" Color="Color.Secondary">
                         Max VMs: @(user.MaxVms == 0 ? "Unlimited" : user.MaxVms.ToString())
                     </MudText>
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">
-                        Permissions: @user.Permissions.Count
-                    </MudText>
+                    @if (!user.IsAdmin)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            Permissions: @user.Permissions.Count
+                        </MudText>
+                    }
                 </MudCardContent>
             </MudCard>
         </MudItem>
@@ -74,15 +83,22 @@
 
 @code {
     private List<UserAccount> _users = new List<UserAccount>();
+    private string _currentUsername = "";
 
     protected override void OnInitialized()
     {
+        _currentUsername = AuthState.CurrentUsername;
         LoadUsers();
     }
 
     private void LoadUsers()
     {
         _users = UserService.GetAll();
+    }
+
+    private bool IsSelf(UserAccount user)
+    {
+        return string.Equals(user.Username, _currentUsername, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task ShowCreateDialog()
@@ -176,6 +192,16 @@
             return;
         }
 
+        DialogParameters<DialogConfirm> confirmParams = new DialogParameters<DialogConfirm>
+        {
+            { x => x.Message, "This will reset the password for " + user.Username + " and send them a new temporary password by email." },
+            { x => x.ConfirmText, "Send Invite" },
+        };
+        IDialogReference confirmDialog = await DialogService.ShowAsync<DialogConfirm>("Send Invite", confirmParams);
+        DialogResult? confirmResult = await confirmDialog.Result;
+        if (confirmResult?.Canceled ?? true)
+            return;
+
         try
         {
             string tempPassword = Convert.ToBase64String(RandomNumberGenerator.GetBytes(24))
@@ -207,7 +233,7 @@
     {
         DialogParameters<DialogConfirm> parameters = new DialogParameters<DialogConfirm>
         {
-            { x => x.Message, "Are you sure you want to delete " + user.Username + "?" },
+            { x => x.Message, "Delete " + user.Username + "? Their VMs will be transferred to your account." },
             { x => x.ConfirmText, "Delete" },
         };
         IDialogReference dialog = await DialogService.ShowAsync<DialogConfirm>("Delete User", parameters);
@@ -215,10 +241,12 @@
 
         if (!(result?.Canceled ?? true))
         {
+            foreach (string vmName in OwnershipService.GetVmsOwnedBy(user.Username))
+                OwnershipService.TransferOwnership(vmName, _currentUsername);
             UserService.DeleteUser(user.Username);
             LoadUsers();
             StateHasChanged();
-            Snackbar.Add("User deleted", Severity.Success);
+            Snackbar.Add("User deleted, VMs transferred to your account", Severity.Success);
         }
     }
 }

@@ -248,10 +248,18 @@ public class CatalogController : ControllerBase
                 else if (!CatalogAggregator.IsLocalVersion(request.VersionRef))
                     auth = _catalogAggregator.GetAuthHeader();
 
+                string storageId = Convert
+                    .ToHexString(
+                        System.Security.Cryptography.SHA256.HashData(
+                            System.Text.Encoding.UTF8.GetBytes(request.VersionRef)
+                        )
+                    )[..12]
+                    .ToLowerInvariant();
+
                 string downloadPath = Path.Combine(
                     settings.LocalVmPath,
                     "downloads",
-                    request.SafeFileName + ".box"
+                    storageId + ".box"
                 );
                 Directory.CreateDirectory(Path.GetDirectoryName(downloadPath)!);
 
@@ -279,11 +287,7 @@ public class CatalogController : ControllerBase
                     auth
                 );
 
-                string extractPath = Path.Combine(
-                    settings.LocalVmPath,
-                    "extracted",
-                    request.SafeFileName
-                );
+                string extractPath = Path.Combine(settings.LocalVmPath, "extracted", storageId);
                 ctx.ReportProgress(0.5, "Extracting...");
                 await _importService.ExtractAsync(
                     downloadPath,

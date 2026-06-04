@@ -13,6 +13,7 @@ public class BackgroundTaskManager : IBackgroundTaskManager
         new ObservableCollection<IBackgroundTask>();
     private readonly ILogger<BackgroundTaskManager> _logger;
     private readonly IHubContext<ProgressHub>? _hubContext;
+    private long _lastProgressNotifyTicks;
 
     public ReadOnlyObservableCollection<IBackgroundTask> Tasks { get; }
     public int ActiveCount =>
@@ -120,6 +121,15 @@ public class BackgroundTaskManager : IBackgroundTaskManager
     private void BroadcastProgress(string taskId, double progress, string status)
     {
         _hubContext?.Clients.All.SendAsync("TaskProgress", taskId, progress, status);
+        long now = DateTime.UtcNow.Ticks;
+        long last = Interlocked.Read(ref _lastProgressNotifyTicks);
+        if (
+            (now - last) >= TimeSpan.TicksPerSecond / 2
+            && Interlocked.CompareExchange(ref _lastProgressNotifyTicks, now, last) == last
+        )
+        {
+            TasksChanged?.Invoke();
+        }
     }
 
     private void BroadcastCompleted(string taskId, bool success, string? error)
