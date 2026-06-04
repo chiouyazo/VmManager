@@ -18,10 +18,14 @@ passwd vmmanager
 # Create Proxmox user
 pveum useradd vmmanager@pam -comment "VmManager Agent"
 
-# Create API token (privsep=0 = token inherits user permissions)
+# Create API token with privilege separation DISABLED
 pveum user token add vmmanager@pam vmm-token --privsep=0
 # Save the output token value for settings.json
 ```
+
+> **Important:** The `--privsep=0` flag is required. With privilege separation enabled (the default), the API token gets its own separate permissions and will NOT inherit the user's permissions, even if the user has the correct roles. This causes 403 errors on all API calls. Always use `--privsep=0` so the token inherits the user's permissions.
+>
+> If you created the token through the Proxmox web UI, uncheck "Privilege Separation" in the token creation dialog.
 
 ## 2. Create Resource Pool
 

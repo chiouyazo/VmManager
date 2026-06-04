@@ -192,22 +192,39 @@ public sealed class ProxmoxMetricsProvider : IMetricsProvider
             {
                 foreach (JsonElement disk in disks.EnumerateArray())
                 {
+                    string healthStr = disk.TryGetProperty("health", out JsonElement health)
+                        ? health.GetString() ?? "UNKNOWN"
+                        : "UNKNOWN";
+
+                    string devicePath = disk.TryGetProperty("devpath", out JsonElement dev)
+                        ? dev.GetString() ?? ""
+                        : "";
+
+                    // UNKNOWN means SMART is not readable (common with hardware RAID controllers)
+                    // Only flag as unhealthy if explicitly failed
+                    bool isHealthy = healthStr == "PASSED" || healthStr == "UNKNOWN";
+
                     DiskHealthInfo info = new DiskHealthInfo
                     {
-                        Device = disk.TryGetProperty("devpath", out JsonElement dev)
-                            ? dev.GetString() ?? ""
-                            : "",
+                        Device = devicePath,
                         Model = disk.TryGetProperty("model", out JsonElement model)
                             ? model.GetString() ?? ""
                             : "",
                         Serial = disk.TryGetProperty("serial", out JsonElement serial)
                             ? serial.GetString() ?? ""
                             : "",
-                        Healthy =
-                            disk.TryGetProperty("health", out JsonElement health)
-                            && health.GetString() == "PASSED",
+                        Healthy = isHealthy,
+                        HealthStatus = healthStr,
                         CollectedAt = DateTimeOffset.UtcNow,
                     };
+
+                    if (
+                        disk.TryGetProperty("wearout", out JsonElement wearout)
+                        && wearout.ValueKind == JsonValueKind.Number
+                    )
+                    {
+                        info.WearLevelPercent = 100 - wearout.GetInt32();
+                    }
 
                     result.Add(info);
                 }

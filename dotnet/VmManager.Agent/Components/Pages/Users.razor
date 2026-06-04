@@ -35,22 +35,25 @@
                         <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ml-1">Must change password</MudChip>
                     }
                     <MudSpacer />
-                    @if (!user.IsAdmin)
-                    {
-                        <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
+                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
+                        @if (!user.IsAdmin)
+                        {
                             <MudMenuItem OnClick="() => ShowEditPermissions(user)">Permissions</MudMenuItem>
-                            <MudMenuItem OnClick="() => ShowResetPassword(user)">Reset Password</MudMenuItem>
-                            <MudMenuItem OnClick="() => ToggleMustChangePassword(user)">
-                                @(user.MustChangePassword ? "Cancel forced password change" : "Force password change on next login")
-                            </MudMenuItem>
-                            <MudMenuItem OnClick="() => ChangeEmail(user)">Change Email</MudMenuItem>
-                            @if (EmailService.IsConfigured)
-                            {
-                                <MudMenuItem OnClick="() => SendInvite(user)">Send Invite</MudMenuItem>
-                            }
+                        }
+                        <MudMenuItem OnClick="() => ShowResetPassword(user)">Reset Password</MudMenuItem>
+                        <MudMenuItem OnClick="() => ToggleMustChangePassword(user)">
+                            @(user.MustChangePassword ? "Cancel forced password change" : "Force password change on next login")
+                        </MudMenuItem>
+                        <MudMenuItem OnClick="() => ChangeEmail(user)">Change Email</MudMenuItem>
+                        @if (EmailService.IsConfigured)
+                        {
+                            <MudMenuItem OnClick="() => SendInvite(user)">Send Invite</MudMenuItem>
+                        }
+                        @if (!user.IsAdmin)
+                        {
                             <MudMenuItem OnClick="() => DeleteUser(user)">Delete</MudMenuItem>
-                        </MudMenu>
-                    }
+                        }
+                    </MudMenu>
                 </MudCardHeader>
                 <MudCardContent Class="pt-0">
                     @if (!string.IsNullOrEmpty(user.Email))

@@ -1,6 +1,8 @@
+@using System.Security.Cryptography
 @using VmManager.Agent.Services
 @inject UserService UserService
 @inject EmailService EmailService
+@inject NavigationManager NavigationManager
 
 <MudDialog>
     <DialogContent>
@@ -9,7 +11,9 @@
             <MudAlert Severity="Severity.Error" Class="mb-4" Dense="true">@_error</MudAlert>
         }
         <MudTextField @bind-Value="_email" Label="Email" Immediate="true" Class="mb-2" />
-        <MudTextField @bind-Value="_password" Label="Password" InputType="InputType.Password" Immediate="true" Class="mb-2" />
+        <MudTextField @bind-Value="_password" Label="Password" InputType="InputType.Password"
+                      Immediate="true" Class="mb-2" Disabled="_sendInvite"
+                      HelperText="@(_sendInvite ? "Password will be auto-generated" : "")" />
         <MudCheckBox @bind-Value="_isAdmin" Label="Administrator" Class="mb-2" />
         <MudNumericField @bind-Value="_maxVms" Label="Max VMs (0 = unlimited)" Min="0" Class="mb-4" />
 
@@ -104,7 +108,14 @@
             _error = "Email is required.";
             return;
         }
-        if (string.IsNullOrWhiteSpace(_password) || _password.Length < 6)
+
+        string password = _password;
+        if (_sendInvite)
+        {
+            password = Convert.ToBase64String(RandomNumberGenerator.GetBytes(24))
+                .Replace("+", "").Replace("/", "")[..16];
+        }
+        else if (string.IsNullOrWhiteSpace(password) || password.Length < 6)
         {
             _error = "Password must be at least 6 characters.";
             return;
@@ -112,20 +123,25 @@
 
         try
         {
-            UserAccount account = UserService.CreateUser(_email.Trim(), _password, _permissions, _isAdmin);
+            UserAccount account = UserService.CreateUser(_email.Trim(), password, _permissions, _isAdmin);
             if (_maxVms > 0)
                 UserService.UpdateMaxVms(account.Username, _maxVms);
 
             if (_sendInvite)
             {
+                UserService.SetMustChangePassword(account.Username, true);
                 try
                 {
+                    string loginUrl = NavigationManager.BaseUri.TrimEnd('/') + "/login";
                     await EmailService.SendAsync(
                         _email.Trim(),
                         "VmManager Invitation",
-                        "<p>You have been invited to VmManager.</p>"
-                        + "<p>Your temporary password is: <b>" + _password + "</b></p>"
-                        + "<p>Please change your password after logging in.</p>");
+                        "<h2>Welcome to VmManager</h2>"
+                        + "<p>An account has been created for you.</p>"
+                        + "<p><b>Username:</b> " + account.Username + "<br/>"
+                        + "<b>Temporary Password:</b> <code>" + password + "</code></p>"
+                        + "<p><a href=\"" + loginUrl + "\">Login here to change your password</a></p>"
+                        + "<p>You will be required to change your password on first login.</p>");
                 }
                 catch
                 {

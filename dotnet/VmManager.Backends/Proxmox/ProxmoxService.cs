@@ -7,6 +7,7 @@ namespace VmManager.Backends.Proxmox;
 public class ProxmoxService : IVmBackend
 {
     private readonly ILogger<ProxmoxService> _logger;
+    private readonly IVmTrackingService _tracking;
 
     public ProxmoxVmService Vms { get; }
     public ProxmoxSnapshotService Snapshots { get; }
@@ -16,20 +17,30 @@ public class ProxmoxService : IVmBackend
         ILogger<ProxmoxService> logger,
         ProxmoxVmService vms,
         ProxmoxSnapshotService snapshots,
-        ProxmoxImportService import
+        ProxmoxImportService import,
+        IVmTrackingService tracking
     )
     {
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(vms);
         ArgumentNullException.ThrowIfNull(snapshots);
         ArgumentNullException.ThrowIfNull(import);
+        ArgumentNullException.ThrowIfNull(tracking);
         _logger = logger;
         Vms = vms;
         Snapshots = snapshots;
         Import = import;
+        _tracking = tracking;
     }
 
-    public Task<List<VmInstance>> GetVmsAsync() => Vms.GetVmsAsync();
+    public async Task<List<VmInstance>> GetVmsAsync()
+    {
+        List<VmInstance> allPoolVms = await Vms.GetVmsAsync();
+        Dictionary<string, VmOrigin?> tracked = _tracking.LoadAll();
+        if (tracked.Count == 0)
+            return allPoolVms;
+        return allPoolVms.Where(vm => tracked.ContainsKey(vm.Name)).ToList();
+    }
 
     public Task StartVmAsync(string name) => Vms.StartVmAsync(name);
 

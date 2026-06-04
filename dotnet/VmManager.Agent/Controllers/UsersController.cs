@@ -202,18 +202,18 @@ public class UsersController : ControllerBase
         _userService.ChangePassword(username, tempPassword);
         _userService.SetMustChangePassword(username, true);
 
+        string loginUrl = $"{Request.Scheme}://{Request.Host}/login";
+
         string body =
             $@"
-<h2>VmManager Account</h2>
-<p>An account has been created for you on VmManager.</p>
-<p>Your temporary credentials:</p>
-<ul>
-    <li>Login: <b>{user.Username}</b></li>
-    <li>Password: <b>{tempPassword}</b></li>
-</ul>
+<h2>Welcome to VmManager</h2>
+<p>An account has been created for you.</p>
+<p><b>Username:</b> {user.Username}<br/>
+<b>Temporary Password:</b> <code>{tempPassword}</code></p>
+<p><a href=""{loginUrl}"">Login here to change your password</a></p>
 <p>You will be required to change your password on first login.</p>";
 
-        await _emailService.SendAsync(email, "VmManager Account - Password Reset", body);
+        await _emailService.SendAsync(email, "VmManager Invitation", body);
         return Ok(new { success = true });
     }
 

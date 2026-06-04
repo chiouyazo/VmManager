@@ -534,10 +534,15 @@ public class NexusCatalogService
         try
         {
             string baseUrl = feed.Url.TrimEnd('/');
-            string repo = feed.Repository ?? "";
             using HttpClient client = CatalogHttpClientFactory.CreateTestClient();
-            string url =
-                $"{baseUrl}/service/rest/v1/components?repository={Uri.EscapeDataString(repo)}";
+
+            string url;
+            if (string.IsNullOrWhiteSpace(feed.Repository))
+                url = $"{baseUrl}/service/rest/v1/repositories";
+            else
+                url =
+                    $"{baseUrl}/service/rest/v1/components?repository={Uri.EscapeDataString(feed.Repository)}";
+
             HttpRequestMessage req = new HttpRequestMessage(HttpMethod.Get, url);
             AuthenticationHeaderValue? auth = AuthHelper.BuildBasicAuth(feed);
             if (auth != null)
