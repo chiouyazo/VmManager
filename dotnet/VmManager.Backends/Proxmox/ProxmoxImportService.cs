@@ -129,6 +129,47 @@ public class ProxmoxImportService
         int vmid = await _api.GetNextVmIdAsync();
         _logger.LogInformation("Creating VM {Name} with VMID {VmId}", finalName, vmid);
 
+        onStatus?.Invoke("Detecting storage type...");
+        string diskFormat = "qcow2";
+        try
+        {
+            JsonElement storages = await _api.GetAsync<JsonElement>(
+                $"/api2/json/nodes/{_api.Node}/storage"
+            );
+            if (storages.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement s in storages.EnumerateArray())
+                {
+                    string sid = s.TryGetProperty("storage", out JsonElement sidEl)
+                        ? sidEl.GetString() ?? ""
+                        : "";
+                    if (!string.Equals(sid, _api.StorageId, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    string storageType = s.TryGetProperty("type", out JsonElement typeEl)
+                        ? typeEl.GetString() ?? ""
+                        : "";
+                    if (storageType is "lvmthin" or "lvm" or "zfspool" or "rbd")
+                        diskFormat = "raw";
+                    break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                "Failed to detect storage type for '"
+                    + _api.StorageId
+                    + "'. Cannot determine disk format. Check that the API token has access to the node storage list.",
+                ex
+            );
+        }
+
+        _logger.LogInformation(
+            "Storage {StorageId} detected as format: {Format}",
+            _api.StorageId,
+            diskFormat
+        );
+
         onStatus?.Invoke("Creating VM...");
         string bridge = _api.DefaultBridge;
         string networkParam = skipDefaultNetwork ? "none" : "e1000e,bridge=" + bridge;
@@ -143,7 +184,7 @@ public class ProxmoxImportService
             ["ostype"] = "win10",
             ["machine"] = "q35",
             ["bios"] = "ovmf",
-            ["efidisk0"] = $"{_api.StorageId}:1,efitype=4m,pre-enrolled-keys=0,format=qcow2",
+            ["efidisk0"] = $"{_api.StorageId}:1,efitype=4m,pre-enrolled-keys=0,format={diskFormat}",
             ["agent"] = "1",
             ["pool"] = _api.PoolId,
         };
@@ -160,15 +201,50 @@ public class ProxmoxImportService
             .GetString()!;
         await _api.PollTaskAsync(createUpid);
 
-        onStatus?.Invoke("Importing disk image...");
-        await _sh.RunBashAsync(
-            $"qm importdisk {vmid} {Q(diskPath!)} {_api.StorageId} --format qcow2"
+        onStatus?.Invoke("Uploading disk image to Proxmox storage...");
+        string uploadFilename = $"vm-{vmid}-disk-0.{diskFormat}";
+        string uploadPath = $"/api2/json/nodes/{_api.Node}/storage/{_api.StorageId}/upload";
+        string uploadRaw = await _api.UploadFileAsync(
+            uploadPath,
+            diskPath!,
+            "images",
+            uploadFilename
         );
+        string uploadUpid = JsonDocument
+            .Parse(uploadRaw)
+            .RootElement.GetProperty("data")
+            .GetString()!;
+        await _api.PollTaskAsync(uploadUpid);
 
         onStatus?.Invoke("Configuring VM...");
-        string diskVolId = $"{_api.StorageId}:{vmid}/vm-{vmid}-disk-1.qcow2";
-        await _sh.RunBashAsync($"qm set {vmid} --sata0 {diskVolId},ssd=1,discard=on");
-        await _sh.RunBashAsync($"qm set {vmid} --boot order=sata0");
+        JsonElement vmConfig = await _api.GetAsync<JsonElement>($"{_api.VmPath(vmid)}/config");
+        string? diskVolId = null;
+        for (int i = 0; i < 16; i++)
+        {
+            string key = "unused" + i;
+            if (vmConfig.TryGetProperty(key, out JsonElement unusedEl))
+            {
+                diskVolId = unusedEl.GetString();
+                break;
+            }
+        }
+        if (diskVolId == null)
+        {
+            diskVolId = $"{_api.StorageId}:{uploadFilename}";
+            _logger.LogWarning(
+                "No unused disk in VM config, using constructed volume ID: {VolId}",
+                diskVolId
+            );
+        }
+        _logger.LogInformation("Attaching disk volume: {VolId}", diskVolId);
+        await _api.PutAsync(
+            $"{_api.VmPath(vmid)}/config",
+            new Dictionary<string, string> { ["sata0"] = diskVolId + ",ssd=1,discard=on" }
+        );
+        await _api.PutAsync(
+            $"{_api.VmPath(vmid)}/config",
+            new Dictionary<string, string> { ["boot"] = "order=sata0" }
+        );
 
         onStatus?.Invoke("VM imported successfully");
         _logger.LogInformation("VM created: {Name} (VMID {VmId})", finalName, vmid);

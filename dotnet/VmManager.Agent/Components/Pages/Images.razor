@@ -281,6 +281,10 @@ else
                 ExtractedAt = dirInfo.CreationTime,
                 ParentImageName = parentImageName,
                 ImageVersion = imageVersion,
+                FeedId = meta?.FeedId,
+                FeedUrl = meta?.FeedUrl,
+                FeedRepository = meta?.FeedRepository,
+                ParentImageId = meta?.ParentImageId,
             });
         }
 
@@ -372,6 +376,8 @@ else
             await InvokeAsync(() =>
             {
                 _activeImports.Remove(version.FileName);
+                LoadLocalImages();
+                MarkLocalAvailability();
                 StateHasChanged();
             });
         });

@@ -140,6 +140,13 @@ public class ImportService
                     );
                 }
             }
+
+            await fileStream.FlushAsync(ct);
+
+            if (totalBytes > 0 && downloadedBytes != totalBytes)
+                throw new InvalidOperationException(
+                    $"Download incomplete: expected {totalBytes} bytes but received {downloadedBytes} bytes."
+                );
         }
         catch
         {

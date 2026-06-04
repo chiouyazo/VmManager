@@ -86,6 +86,28 @@ public class ProxmoxApiClient
         }
     }
 
+    public async Task<string> UploadFileAsync(
+        string path,
+        string filePath,
+        string contentType,
+        string filename
+    )
+    {
+        using MultipartFormDataContent form = new MultipartFormDataContent();
+        form.Add(new StringContent(contentType), "content");
+        form.Add(new StringContent(filename), "filename");
+
+        FileStream fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+        StreamContent fileContent = new StreamContent(fileStream);
+        form.Add(fileContent, "filename", filename);
+
+        using HttpResponseMessage resp = await _http.PostAsync(path, form);
+        string body = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+            throw new ProxmoxApiException((int)resp.StatusCode, body);
+        return body;
+    }
+
     public async Task DeleteAsync(string path)
     {
         using HttpResponseMessage resp = await _http.DeleteAsync(path);
