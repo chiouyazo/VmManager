@@ -14,8 +14,15 @@
                 <MudText Typo="Typo.h6">Profile</MudText>
             </MudCardHeader>
             <MudCardContent>
-                <MudTextField Value="@AuthState.CurrentUsername" Label="Email" ReadOnly="true" Class="mb-2" />
+                <MudTextField Value="@AuthState.CurrentUsername" Label="Username" ReadOnly="true" Class="mb-2" />
+                <MudTextField @bind-Value="_email" Label="Email" Class="mb-2" />
             </MudCardContent>
+            <MudCardActions>
+                <MudSpacer />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveEmail">
+                    Save Email
+                </MudButton>
+            </MudCardActions>
         </MudCard>
     </MudItem>
 
@@ -45,9 +52,29 @@
 </MudGrid>
 
 @code {
+    private string _email = "";
     private string _newPassword = "";
     private string _confirmPassword = "";
     private string _passwordError = "";
+
+    protected override void OnInitialized()
+    {
+        UserAccount? user = UserService.GetByUsername(AuthState.CurrentUsername);
+        _email = user?.Email ?? "";
+    }
+
+    private void SaveEmail()
+    {
+        try
+        {
+            UserService.UpdateEmail(AuthState.CurrentUsername, _email.Trim());
+            Snackbar.Add("Email updated", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Failed: " + ex.Message, Severity.Error);
+        }
+    }
 
     private void ChangePassword()
     {

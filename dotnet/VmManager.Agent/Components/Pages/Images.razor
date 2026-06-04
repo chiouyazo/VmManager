@@ -9,8 +9,12 @@
 @inject BasicAuthStateProvider AuthState
 @inject AuthorizationService AuthService
 @inject IDialogService DialogService
+@inject ImportService ImportService
 @inject ISnackbar Snackbar
 @inject IBackgroundTaskManager TaskManager
+@inject VmOwnershipService OwnershipService
+@inject IVmTrackingService TrackingService
+@inject QuotaService QuotaService
 
 <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
     <MudText Typo="Typo.h5">Images</MudText>
@@ -118,12 +122,25 @@ else
                                                 <td>@version.Date.ToString("yyyy-MM-dd")</td>
                                                 <td>
                                                     <MudStack Row="true" Spacing="1">
-                                                        @if (_canImport)
+                                                        @if (_canImport && !version.IsLocallyAvailable)
                                                         {
                                                             <MudButton Size="Size.Small" Variant="Variant.Outlined"
                                                                        OnClick="() => ImportVersion(image, version)">
                                                                 Import
                                                             </MudButton>
+                                                        }
+                                                        @if (_canCreateVm && version.IsLocallyAvailable)
+                                                        {
+                                                            <MudButton Size="Size.Small" Variant="Variant.Filled"
+                                                                       Color="Color.Primary"
+                                                                       OnClick="() => CreateVmFromCatalog(image, version)">
+                                                                Create VM
+                                                            </MudButton>
+                                                        }
+                                                        @if (version.IsLocallyAvailable)
+                                                        {
+                                                            <MudChip T="string" Size="Size.Small" Color="Color.Success"
+                                                                     Variant="Variant.Outlined">Local</MudChip>
                                                         }
                                                     </MudStack>
                                                 </td>
@@ -146,6 +163,7 @@ else
     private string _searchQuery = "";
     private bool _loading = true;
     private bool _canImport;
+    private bool _canCreateVm;
     private bool _canDeleteLocal;
     private ClaimsPrincipal _user = new ClaimsPrincipal();
 
@@ -169,6 +187,7 @@ else
         AuthenticationState state = await AuthState.GetAuthenticationStateAsync();
         _user = state.User;
         _canImport = AuthService.HasPermission(_user, Permission.CatalogImport);
+        _canCreateVm = AuthService.HasPermission(_user, Permission.VmCreate);
         _canDeleteLocal = AuthService.HasPermission(_user, Permission.CatalogDeleteLocal);
         await LoadAll();
     }
@@ -180,6 +199,7 @@ else
         {
             _images = await CatalogAggregator.LoadCatalogAsync();
             LoadLocalImages();
+            MarkLocalAvailability();
         }
         catch (Exception ex)
         {
@@ -188,6 +208,34 @@ else
         finally
         {
             _loading = false;
+        }
+    }
+
+    private void MarkLocalAvailability()
+    {
+        AppSettings settings = SettingsService.Load();
+        string extractedRoot = Path.Combine(settings.LocalVmPath, "extracted");
+        if (!Directory.Exists(extractedRoot))
+            return;
+
+        Dictionary<string, string> localByKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string dir in Directory.GetDirectories(extractedRoot))
+        {
+            LocalImageMetadata? meta = LocalImageService.LoadMetadata(dir);
+            if (meta == null)
+                continue;
+            string key = (meta.FeedId ?? "") + "|" + (meta.ParentImageId ?? "") + "|" + (meta.Version ?? "");
+            localByKey[key] = dir;
+        }
+
+        foreach (VmImage img in _images)
+        {
+            foreach (VmImageVersion ver in img.Versions)
+            {
+                string key = (ver.FeedId ?? "") + "|" + (ver.ParentImageId ?? "") + "|" + (ver.Version ?? "");
+                if (localByKey.ContainsKey(key))
+                    ver.IsLocallyAvailable = true;
+            }
         }
     }
 
@@ -237,10 +285,164 @@ else
         _localImages = _localImages.OrderByDescending(l => l.ExtractedAt).ToList();
     }
 
-    private async Task ImportVersion(VmImage image, VmImageVersion version)
+    private void ImportVersion(VmImage image, VmImageVersion version)
     {
-        Snackbar.Add("Import started for " + image.Name + " " + version.Version + ". This runs in the background.", Severity.Info);
-        // Long-running import would use BackgroundTaskManager + SignalR hub in full implementation
+        string username = _user.Identity?.Name ?? "";
+        AppSettings settings = SettingsService.Load();
+        string safeFileName = version.FileName.Replace(":", "_").Replace("/", "_").Replace("\\", "_");
+
+        TaskManager.StartTask("Importing " + image.Name + " " + version.Version, username, async ctx =>
+        {
+            string downloadUrl = await CatalogAggregator.GetDownloadUrlAsync(version.FileName);
+
+            System.Net.Http.Headers.AuthenticationHeaderValue? auth = null;
+            if (CatalogAggregator.IsNexusVersion(version.FileName))
+                auth = CatalogAggregator.GetNexusAuthHeader();
+            else if (!CatalogAggregator.IsLocalVersion(version.FileName))
+                auth = CatalogAggregator.GetAuthHeader();
+
+            string downloadPath = Path.Combine(settings.LocalVmPath, "downloads", safeFileName + ".box");
+            Directory.CreateDirectory(Path.GetDirectoryName(downloadPath)!);
+
+            ctx.ReportProgress(0, "Downloading...");
+            await ImportService.DownloadWithProgressAsync(
+                downloadUrl, downloadPath,
+                new Progress<DownloadProgress>(p =>
+                {
+                    double speedMb = p.SpeedBytesPerSec / 1024.0 / 1024.0;
+                    double dlMb = p.DownloadedBytes / 1024.0 / 1024.0;
+                    double totalMb = p.TotalBytes / 1024.0 / 1024.0;
+                    string status = p.Eta.HasValue
+                        ? string.Format("Downloading: {0:F0}/{1:F0} MB ({2:F1} MB/s, ~{3:mm\\:ss} remaining)", dlMb, totalMb, speedMb, p.Eta.Value)
+                        : string.Format("Downloading: {0:F0} MB ({1:F1} MB/s)", dlMb, speedMb);
+                    ctx.ReportProgress(p.Percent / 200.0, status);
+                }),
+                ctx.Token, auth);
+
+            string extractPath = Path.Combine(settings.LocalVmPath, "extracted", safeFileName);
+            ctx.ReportProgress(0.5, "Extracting...");
+            await ImportService.ExtractAsync(
+                downloadPath, extractPath,
+                new Progress<double>(pct => ctx.ReportProgress(0.5 + pct / 2.0, string.Format("Extracting: {0:F0}%", pct))),
+                ctx.Token);
+
+            LocalImageService.SaveMetadata(extractPath, version);
+
+            if (OperatingSystem.IsLinux())
+            {
+                string? vhdxFile = Directory.GetFiles(extractPath, "*.vhdx", SearchOption.AllDirectories)
+                    .Concat(Directory.GetFiles(extractPath, "*.avhdx", SearchOption.AllDirectories))
+                    .FirstOrDefault();
+                bool hasQcow2 = Directory.GetFiles(extractPath, "*.qcow2", SearchOption.AllDirectories).Any();
+                if (vhdxFile != null && !hasQcow2)
+                {
+                    ctx.ReportProgress(0.95, "Converting VHDX to QCOW2...");
+                    string qcow2File = Path.ChangeExtension(vhdxFile, ".qcow2");
+                    System.Diagnostics.Process proc = new System.Diagnostics.Process
+                    {
+                        StartInfo = new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = "qemu-img",
+                            Arguments = $"convert -O qcow2 \"{vhdxFile}\" \"{qcow2File}\"",
+                            RedirectStandardError = true,
+                            UseShellExecute = false,
+                        },
+                    };
+                    proc.Start();
+                    await proc.WaitForExitAsync(ctx.Token);
+                    if (proc.ExitCode != 0)
+                    {
+                        string stderr = await proc.StandardError.ReadToEndAsync();
+                        throw new InvalidOperationException("qemu-img convert failed: " + stderr);
+                    }
+                    File.Delete(vhdxFile);
+                }
+            }
+
+            ctx.ReportProgress(1.0, "Complete");
+        });
+
+        Snackbar.Add("Importing " + image.Name + " " + version.Version + "...", Severity.Info);
+    }
+
+    private async Task CreateVmFromCatalog(VmImage image, VmImageVersion version)
+    {
+        AppSettings settings = SettingsService.Load();
+        string safeFileName = version.FileName.Replace(":", "_").Replace("/", "_").Replace("\\", "_");
+        string extractedPath = Path.Combine(settings.LocalVmPath, "extracted", safeFileName);
+
+        if (!Directory.Exists(extractedPath))
+        {
+            Snackbar.Add("Local image not found. Import it first.", Severity.Warning);
+            return;
+        }
+
+        LocalImage local = new LocalImage
+        {
+            Name = image.Name,
+            Path = extractedPath,
+            ParentImageName = image.Name,
+            ImageVersion = version.Version,
+        };
+
+        DialogParameters<DialogCreateVm> parameters = new DialogParameters<DialogCreateVm>
+        {
+            { x => x.LocalImage, local },
+        };
+        IDialogReference dialog = await DialogService.ShowAsync<DialogCreateVm>("Create VM", parameters);
+        DialogResult? result = await dialog.Result;
+
+        if (!(result?.Canceled ?? true) && result.Data is string vmName)
+        {
+            string username = _user.Identity?.Name ?? "";
+            VmOrigin origin = new VmOrigin
+            {
+                ImageId = image.Id,
+                ImageName = image.Name,
+                Version = version.Version,
+                FeedId = version.FeedId,
+                FeedUrl = version.FeedUrl,
+                Repository = version.FeedRepository,
+            };
+
+            TaskManager.StartTask("Creating VM: " + vmName, username, async ctx =>
+            {
+                ctx.ReportProgress(0.0, "Importing disk image...");
+                await VmBackend.ImportVmAsync(
+                    extractedPath, settings.LocalVmPath,
+                    settings.DefaultMemoryMb, settings.DefaultCpuCount, vmName,
+                    onStatus: status => ctx.ReportProgress(-1, status),
+                    cancellationToken: ctx.Token);
+
+                TrackingService.TrackVm(vmName, origin);
+                OwnershipService.SetOwner(vmName, username);
+
+                bool applyLocale = settings.ApplyLocaleOnCreate && !string.IsNullOrWhiteSpace(settings.DefaultLocale);
+                bool needsPostCreation = settings.RenameComputerToVmName || !string.IsNullOrWhiteSpace(settings.PostCreationScript);
+
+                if ((applyLocale || needsPostCreation)
+                    && !string.IsNullOrWhiteSpace(settings.DefaultVmUsername)
+                    && !string.IsNullOrWhiteSpace(settings.DefaultVmPassword))
+                {
+                    ctx.ReportProgress(-1, "Configuring VM...");
+                    await VmBackend.ConfigureAndFinalizeAsync(
+                        vmName, settings.DefaultVmUsername, settings.DefaultVmPassword,
+                        applyLocale ? settings.DefaultLocale : null,
+                        applyLocale ? settings.DefaultKeyboardLayout : null,
+                        applyLocale ? settings.DefaultTimezone : null,
+                        settings.RenameComputerToVmName, settings.PostCreationScript,
+                        onStatus: status => ctx.ReportProgress(-1, status));
+                }
+                else
+                {
+                    ctx.ReportProgress(-1, "Creating base snapshot...");
+                    await VmBackend.CreateSnapshotAsync(vmName, "Base");
+                }
+
+                ctx.ReportProgress(1.0, "VM created");
+            });
+            Snackbar.Add("Creating VM '" + vmName + "' in background...", Severity.Info);
+        }
     }
 
     private async Task CreateVmFromLocal(LocalImage local)
@@ -256,6 +458,19 @@ else
         {
             string username = _user.Identity?.Name ?? "";
             AppSettings settings = SettingsService.Load();
+            VmOrigin? origin = null;
+            if (!string.IsNullOrEmpty(local.ParentImageName))
+            {
+                origin = new VmOrigin
+                {
+                    ImageName = local.ParentImageName ?? "",
+                    Version = local.ImageVersion ?? "",
+                    FeedId = local.FeedId ?? "",
+                    FeedUrl = local.FeedUrl ?? "",
+                    Repository = local.FeedRepository,
+                };
+            }
+
             TaskManager.StartTask("Creating VM: " + vmName, username, async ctx =>
             {
                 ctx.ReportProgress(0.0, "Importing disk image...");
@@ -267,6 +482,32 @@ else
                     vmName,
                     onStatus: status => ctx.ReportProgress(-1, status),
                     cancellationToken: ctx.Token);
+
+                TrackingService.TrackVm(vmName, origin);
+                OwnershipService.SetOwner(vmName, username);
+
+                bool applyLocale = settings.ApplyLocaleOnCreate && !string.IsNullOrWhiteSpace(settings.DefaultLocale);
+                bool needsPostCreation = settings.RenameComputerToVmName || !string.IsNullOrWhiteSpace(settings.PostCreationScript);
+
+                if ((applyLocale || needsPostCreation)
+                    && !string.IsNullOrWhiteSpace(settings.DefaultVmUsername)
+                    && !string.IsNullOrWhiteSpace(settings.DefaultVmPassword))
+                {
+                    ctx.ReportProgress(-1, "Configuring VM...");
+                    await VmBackend.ConfigureAndFinalizeAsync(
+                        vmName, settings.DefaultVmUsername, settings.DefaultVmPassword,
+                        applyLocale ? settings.DefaultLocale : null,
+                        applyLocale ? settings.DefaultKeyboardLayout : null,
+                        applyLocale ? settings.DefaultTimezone : null,
+                        settings.RenameComputerToVmName, settings.PostCreationScript,
+                        onStatus: status => ctx.ReportProgress(-1, status));
+                }
+                else
+                {
+                    ctx.ReportProgress(-1, "Creating base snapshot...");
+                    await VmBackend.CreateSnapshotAsync(vmName, "Base");
+                }
+
                 ctx.ReportProgress(1.0, "VM created");
             });
             Snackbar.Add("Creating VM '" + vmName + "' in background...", Severity.Info);

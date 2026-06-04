@@ -1,7 +1,13 @@
 @page "/sessions"
+@using System.Security.Claims
 @using VmManager.Agent.Services
 @attribute [Authorize]
 @inject RdpSessionStore SessionStore
+@inject BasicAuthStateProvider AuthState
+@inject AuthorizationService AuthService
+@inject SettingsService SettingsService
+@inject NavigationManager NavigationManager
+@inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @implements IDisposable
 
@@ -33,7 +39,15 @@ else
                     <MudCardHeader>
                         <MudText Typo="Typo.h6">@group.Key</MudText>
                         <MudSpacer />
-                        <MudChip T="string" Size="Size.Small">@group.Count() sessions</MudChip>
+                        @if (_isAdmin)
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                                       StartIcon="@Icons.Material.Filled.Visibility"
+                                       OnClick="() => ShowShadow(group.Key)">
+                                Shadow
+                            </MudButton>
+                        }
+                        <MudChip T="string" Size="Size.Small" Class="ml-2">@group.Count() sessions</MudChip>
                     </MudCardHeader>
                     <MudCardContent>
                         <MudSimpleTable Dense="true" Hover="true">
@@ -76,9 +90,20 @@ else
 @code {
     private List<RdpSession> _sessions = new List<RdpSession>();
     private Timer? _pollTimer;
+    private bool _isAdmin;
+    private string _proxyAddress = "";
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
+        AuthenticationState state = await AuthState.GetAuthenticationStateAsync();
+        _isAdmin = state.User.IsInRole("Admin");
+
+        AppSettings settings = SettingsService.Load();
+        string host = new Uri(NavigationManager.BaseUri).Host;
+        _proxyAddress = !string.IsNullOrEmpty(settings.RdpDomainSuffix)
+            ? "{vmName}." + settings.RdpDomainSuffix
+            : host + ":13389";
+
         LoadSessions();
         _pollTimer = new Timer(_ => InvokeAsync(LoadSessions), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
     }
@@ -89,6 +114,23 @@ else
             .Where(s => s.State == RdpSessionState.Active)
             .ToList();
         StateHasChanged();
+    }
+
+    private async Task ShowShadow(string vmName)
+    {
+        AppSettings settings = SettingsService.Load();
+        string address = _proxyAddress.Replace("{vmName}", vmName);
+
+        string message = "To shadow an active session on " + vmName + ", run the following command on your local machine:\n\n"
+            + "mstsc /v:" + address + " /shadow:{SESSION_ID} /control\n\n"
+            + "Replace {SESSION_ID} with the Windows session ID (use 'query session' on the VM to find it).";
+
+        DialogParameters<DialogConfirm> parameters = new DialogParameters<DialogConfirm>
+        {
+            { x => x.Message, message },
+            { x => x.ConfirmText, "Close" },
+        };
+        await DialogService.ShowAsync<DialogConfirm>("Shadow Session - " + vmName, parameters);
     }
 
     private void Disconnect(RdpSession session)

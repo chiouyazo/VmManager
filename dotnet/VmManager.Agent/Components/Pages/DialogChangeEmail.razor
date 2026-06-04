@@ -1,0 +1,46 @@
+@using VmManager.Agent.Services
+
+<MudDialog>
+    <DialogContent>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4" Dense="true">@_error</MudAlert>
+        }
+        <MudTextField @bind-Value="_email" Label="Email Address" Immediate="true"
+                      InputType="InputType.Email" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Save">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string _email = "";
+    private string _error = "";
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; }
+
+    [Parameter]
+    public string CurrentEmail { get; set; } = "";
+
+    protected override void OnInitialized()
+    {
+        _email = CurrentEmail;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Save()
+    {
+        string trimmed = _email.Trim();
+        if (!string.IsNullOrEmpty(trimmed) && !EmailValidator.IsValid(trimmed))
+        {
+            _error = "Invalid email address.";
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok(trimmed));
+    }
+}

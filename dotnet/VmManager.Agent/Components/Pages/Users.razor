@@ -1,7 +1,11 @@
 @page "/users"
+@using System.Security.Cryptography
 @using VmManager.Agent.Services
 @attribute [Authorize]
 @inject UserService UserService
+@inject EmailService EmailService
+@inject SettingsService SettingsService
+@inject NavigationManager NavigationManager
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
@@ -39,6 +43,11 @@
                             <MudMenuItem OnClick="() => ToggleMustChangePassword(user)">
                                 @(user.MustChangePassword ? "Cancel forced password change" : "Force password change on next login")
                             </MudMenuItem>
+                            <MudMenuItem OnClick="() => ChangeEmail(user)">Change Email</MudMenuItem>
+                            @if (EmailService.IsConfigured)
+                            {
+                                <MudMenuItem OnClick="() => SendInvite(user)">Send Invite</MudMenuItem>
+                            }
                             <MudMenuItem OnClick="() => DeleteUser(user)">Delete</MudMenuItem>
                         </MudMenu>
                     }
@@ -124,6 +133,71 @@
             newValue ? "User must change password on next login" : "Forced password change cancelled",
             Severity.Info);
         StateHasChanged();
+    }
+
+    private async Task ChangeEmail(UserAccount user)
+    {
+        DialogParameters<DialogChangeEmail> parameters = new DialogParameters<DialogChangeEmail>
+        {
+            { x => x.CurrentEmail, user.Email ?? "" },
+        };
+        IDialogReference dialog = await DialogService.ShowAsync<DialogChangeEmail>(
+            "Change Email: " + user.Username, parameters);
+        DialogResult? result = await dialog.Result;
+
+        if (!(result?.Canceled ?? true) && result.Data is string newEmail)
+        {
+            try
+            {
+                UserService.UpdateEmail(user.Username, newEmail);
+                user.Email = newEmail;
+                Snackbar.Add("Email updated", Severity.Success);
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add("Failed: " + ex.Message, Severity.Error);
+            }
+        }
+    }
+
+    private async Task SendInvite(UserAccount user)
+    {
+        string? email = !string.IsNullOrWhiteSpace(user.Email)
+            ? user.Email
+            : (EmailValidator.IsValid(user.Username) ? user.Username : null);
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            Snackbar.Add("User has no email address. Set an email first.", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            string tempPassword = Convert.ToBase64String(RandomNumberGenerator.GetBytes(24))
+                .Replace("+", "").Replace("/", "")[..16];
+            UserService.ChangePassword(user.Username, tempPassword);
+            UserService.SetMustChangePassword(user.Username, true);
+
+            string loginUrl = NavigationManager.BaseUri.TrimEnd('/') + "/login";
+
+            string body = "<h2>Welcome to VmManager</h2>"
+                + "<p>An account has been created for you.</p>"
+                + "<p><b>Username:</b> " + user.Username + "<br/>"
+                + "<b>Temporary Password:</b> <code>" + tempPassword + "</code></p>"
+                + "<p><a href=\"" + loginUrl + "\">Login here to change your password</a></p>"
+                + "<p>You will be required to change your password on first login.</p>";
+
+            await EmailService.SendAsync(email, "VmManager Invitation", body);
+            user.MustChangePassword = true;
+            Snackbar.Add("Invite sent to " + email, Severity.Success);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Failed to send invite: " + ex.Message, Severity.Error);
+        }
     }
 
     private async Task DeleteUser(UserAccount user)

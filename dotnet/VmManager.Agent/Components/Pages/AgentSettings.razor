@@ -6,6 +6,7 @@
 @inject BasicAuthStateProvider AuthState
 @inject AuthorizationService AuthService
 @inject EmailService EmailService
+@inject IEnumerable<ICatalogAdapter> CatalogAdapters
 @inject ISnackbar Snackbar
 
 <MudText Typo="Typo.h5" Class="mb-4">Agent Settings</MudText>
@@ -310,6 +311,91 @@ else
             </MudCardContent>
         </MudCard>
 
+        <MudCard Elevation="2">
+            <MudCardHeader>
+                <MudText Typo="Typo.h6">Image Feeds</MudText>
+                <MudSpacer />
+                <MudButton Variant="Variant.Outlined" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Add"
+                           OnClick="AddFeed" Disabled="@(!_canManageFeeds)">
+                    Add Feed
+                </MudButton>
+            </MudCardHeader>
+            <MudCardContent>
+                @if (_settings.Feeds.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">No feeds configured. Add a feed to browse and import VM images.</MudText>
+                }
+                else
+                {
+                    @foreach (FeedConfiguration feed in _settings.Feeds)
+                    {
+                        <MudCard Elevation="0" Class="mb-3 pa-3" Style="border: 1px solid var(--mud-palette-lines-default);">
+                            <MudGrid>
+                                <MudItem xs="12" md="3">
+                                    <MudTextField @bind-Value="feed.Name" Label="Name" />
+                                </MudItem>
+                                <MudItem xs="12" md="2">
+                                    <MudSelect T="FeedType" @bind-Value="feed.Type" Label="Type">
+                                        <MudSelectItem Value="FeedType.OCI">OCI Registry</MudSelectItem>
+                                        <MudSelectItem Value="FeedType.Nexus">Nexus</MudSelectItem>
+                                        <MudSelectItem Value="FeedType.Local">Local Path</MudSelectItem>
+                                    </MudSelect>
+                                </MudItem>
+                                <MudItem xs="12" md="4">
+                                    <MudTextField @bind-Value="feed.Url" Label="@(feed.Type == FeedType.Local ? "Path" : "URL")" />
+                                </MudItem>
+                                <MudItem xs="12" md="3">
+                                    @if (_discoveredRepos.TryGetValue(feed, out List<string>? repos) && repos.Count > 0)
+                                    {
+                                        <MudSelect T="string" @bind-Value="feed.Repository" Label="Repository">
+                                            @foreach (string repo in repos)
+                                            {
+                                                <MudSelectItem Value="@repo">@repo</MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                    }
+                                    else
+                                    {
+                                        <MudTextField @bind-Value="feed.Repository" Label="Repository" />
+                                    }
+                                </MudItem>
+                            </MudGrid>
+                            @if (feed.Type != FeedType.Local)
+                            {
+                                <MudGrid Class="mt-1">
+                                    <MudItem xs="12" md="3">
+                                        <MudTextField @bind-Value="feed.Username" Label="Username" />
+                                    </MudItem>
+                                    <MudItem xs="12" md="3">
+                                        <MudTextField @bind-Value="feed.Password" Label="Password" InputType="InputType.Password" />
+                                    </MudItem>
+                                </MudGrid>
+                            }
+                            <MudStack Row="true" Class="mt-2" Spacing="1">
+                                @if (feed.Type != FeedType.Local)
+                                {
+                                    <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                                               Disabled="@(string.IsNullOrWhiteSpace(feed.Url) || _feedTesting)"
+                                               OnClick="() => TestFeed(feed)">
+                                        Test Connection
+                                    </MudButton>
+                                    <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                                               Disabled="@(string.IsNullOrWhiteSpace(feed.Url) || _feedTesting)"
+                                               OnClick="() => DiscoverRepos(feed)">
+                                        Discover Repos
+                                    </MudButton>
+                                }
+                                <MudSpacer />
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                               Color="Color.Error" OnClick="() => RemoveFeed(feed)" />
+                            </MudStack>
+                        </MudCard>
+                    }
+                }
+            </MudCardContent>
+        </MudCard>
+
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveSettings"
                    StartIcon="@Icons.Material.Filled.Save" Class="align-self-end">
             Save Settings
@@ -323,6 +409,9 @@ else
     private MonitoringSettings _monitoring = new MonitoringSettings();
     private List<MonitoringCheckConfig> _monitoringChecks = new List<MonitoringCheckConfig>();
     private bool _canView;
+    private bool _canManageFeeds;
+    private bool _feedTesting;
+    private Dictionary<FeedConfiguration, List<string>> _discoveredRepos = new Dictionary<FeedConfiguration, List<string>>();
     private string _testEmailAddress = "";
     private string _selectedLocale = "";
     private string _selectedKeyboard = "";
@@ -378,6 +467,7 @@ else
         AuthenticationState state = await AuthState.GetAuthenticationStateAsync();
         ClaimsPrincipal user = state.User;
         _canView = AuthService.HasPermission(user, Permission.SettingsView);
+        _canManageFeeds = AuthService.HasPermission(user, Permission.SettingsManageFeeds);
 
         if (_canView)
         {
@@ -401,6 +491,9 @@ else
                 _settings.DefaultKeyboardLayout = keyboardId;
             if (!string.IsNullOrEmpty(_selectedTimezone) && TimezoneMap.TryGetValue(_selectedTimezone, out string? timezoneId))
                 _settings.DefaultTimezone = timezoneId;
+
+            foreach (FeedConfiguration feed in _settings.Feeds)
+                feed.EnsureId();
 
             if (_settings.VmBackend == "Proxmox")
                 _settings.Proxmox = _proxmox;
@@ -435,6 +528,77 @@ else
             new MonitoringCheckConfig { Label = "Quota Approaching", Entry = _monitoring.QuotaApproaching },
             new MonitoringCheckConfig { Label = "Capacity Near Limit", Entry = _monitoring.CapacityNearLimit },
         };
+    }
+
+    private void AddFeed()
+    {
+        _settings.Feeds.Add(new FeedConfiguration { Name = "New Feed" });
+    }
+
+    private void RemoveFeed(FeedConfiguration feed)
+    {
+        _settings.Feeds.Remove(feed);
+        _discoveredRepos.Remove(feed);
+    }
+
+    private async Task TestFeed(FeedConfiguration feed)
+    {
+        _feedTesting = true;
+        try
+        {
+            ICatalogAdapter? adapter = CatalogAdapters.FirstOrDefault(a => a.SupportedType == feed.Type);
+            if (adapter == null)
+            {
+                Snackbar.Add("No adapter for feed type: " + feed.Type, Severity.Error);
+                return;
+            }
+
+            bool success = await adapter.TestConnectivityAsync(feed);
+            if (success)
+                Snackbar.Add("Connection successful", Severity.Success);
+            else
+                Snackbar.Add("Connection failed", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Connection failed: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _feedTesting = false;
+        }
+    }
+
+    private async Task DiscoverRepos(FeedConfiguration feed)
+    {
+        _feedTesting = true;
+        try
+        {
+            ICatalogAdapter? adapter = CatalogAdapters.FirstOrDefault(a => a.SupportedType == feed.Type);
+            if (adapter == null)
+            {
+                Snackbar.Add("No adapter for feed type: " + feed.Type, Severity.Error);
+                return;
+            }
+
+            List<string> repos = await adapter.DiscoverRepositoriesAsync(feed);
+            if (repos.Count == 0)
+            {
+                Snackbar.Add("No repositories found", Severity.Warning);
+                return;
+            }
+
+            _discoveredRepos[feed] = repos;
+            Snackbar.Add("Found " + repos.Count + " repositories", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Discovery failed: " + ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _feedTesting = false;
+        }
     }
 
     private async Task TestEmail()

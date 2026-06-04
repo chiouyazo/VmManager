@@ -12,6 +12,8 @@
 @inject NavigationManager NavigationManager
 @inject SettingsService SettingsService
 @inject IVmTrackingService TrackingService
+@inject SnapshotPushService PushService
+@inject FeedResolutionService FeedResolution
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
 @inject IBackgroundTaskManager TaskManager
@@ -142,12 +144,25 @@ else
                                                                     @if (CanDo(vm, Permission.SnapshotRestore))
                                                                     {
                                                                         <MudIconButton Icon="@Icons.Material.Filled.Restore" Size="Size.Small"
+                                                                                       Title="Restore"
                                                                                        OnClick="() => RestoreSnapshot(vm, snapshot)" />
+                                                                    }
+                                                                    @if (CanDo(vm, Permission.SnapshotClone))
+                                                                    {
+                                                                        <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
+                                                                                       Title="Clone from snapshot"
+                                                                                       OnClick="() => CloneFromSnapshot(vm, snapshot)" />
+                                                                    }
+                                                                    @if (CanDo(vm, Permission.SnapshotPush))
+                                                                    {
+                                                                        <MudIconButton Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Small"
+                                                                                       Title="Push to feed"
+                                                                                       OnClick="() => PushSnapshot(vm, snapshot)" />
                                                                     }
                                                                     @if (snapshot.IsNotBase && CanDo(vm, Permission.SnapshotDelete))
                                                                     {
                                                                         <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
-                                                                                       Color="Color.Error"
+                                                                                       Color="Color.Error" Title="Delete"
                                                                                        OnClick="() => DeleteSnapshot(vm, snapshot)" />
                                                                     }
                                                                 </MudStack>
@@ -412,6 +427,63 @@ else
             {
                 Snackbar.Add("Failed: " + ex.Message, Severity.Error);
             }
+        }
+    }
+
+    private async Task CloneFromSnapshot(VmInstance vm, VmSnapshot snapshot)
+    {
+        DialogParameters<DialogRenameVm> parameters = new DialogParameters<DialogRenameVm>
+        {
+            { x => x.Vm, new VmInstance { Name = vm.Name + "-clone" } },
+        };
+        IDialogReference dialog = await DialogService.ShowAsync<DialogRenameVm>("Clone VM", parameters);
+        DialogResult? result = await dialog.Result;
+
+        if (!(result?.Canceled ?? true) && result.Data is string newName)
+        {
+            string username = _user.Identity?.Name ?? "";
+            TaskManager.StartTask("Cloning " + vm.Name + " -> " + newName, username, async ctx =>
+            {
+                ctx.ReportProgress(-1, "Cloning from snapshot '" + snapshot.Name + "'...");
+                await VmBackend.CloneVmFromSnapshotAsync(vm.Name, snapshot.Name, newName);
+                OwnershipService.SetOwner(newName, username);
+                ctx.ReportProgress(1.0, "Clone complete");
+            });
+            Snackbar.Add("Cloning '" + vm.Name + "' to '" + newName + "'...", Severity.Info);
+        }
+    }
+
+    private async Task PushSnapshot(VmInstance vm, VmSnapshot snapshot)
+    {
+        AppSettings settings = SettingsService.Load();
+        VmOrigin? origin = TrackingService.GetOrigin(vm.Name);
+        FeedConfiguration? feed = FeedResolution.ResolvePushFeed(origin, settings);
+
+        if (feed == null)
+        {
+            Snackbar.Add("No feed configured to push to. Set up a feed in Agent Settings.", Severity.Warning);
+            return;
+        }
+
+        if (await Confirm("Push Snapshot",
+            "Push snapshot '" + snapshot.Name + "' from " + vm.Name + " to feed '" + feed.Name + "'?",
+            "Push"))
+        {
+            string username = _user.Identity?.Name ?? "";
+            TaskManager.StartTask("Pushing " + vm.Name + "/" + snapshot.Name, username, async ctx =>
+            {
+                ctx.ReportProgress(0, "Preparing push...");
+                await PushService.PushAsync(
+                    feed, vm.Name, snapshot.Name, snapshot.Id, origin,
+                    new Progress<PushProgress>(p =>
+                    {
+                        ctx.ReportProgress(p.Percent / 100.0,
+                            p.Phase + (string.IsNullOrEmpty(p.SpeedText) ? "" : " (" + p.SpeedText + ")"));
+                    }),
+                    ctx.Token);
+                ctx.ReportProgress(1.0, "Push complete");
+            });
+            Snackbar.Add("Pushing snapshot to '" + feed.Name + "'...", Severity.Info);
         }
     }
 

@@ -134,7 +134,14 @@ public static class AgentHost
         app.UseMiddleware<Auth.MustChangePasswordMiddleware>();
         app.UseAuthorization();
         app.UseAntiforgery();
-        app.MapStaticAssets();
+        try
+        {
+            app.MapStaticAssets();
+        }
+        catch
+        {
+            app.UseStaticFiles();
+        }
         app.UseWhen(
             context => context.Request.Path.StartsWithSegments("/swagger"),
             branch =>
