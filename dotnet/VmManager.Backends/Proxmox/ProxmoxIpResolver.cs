@@ -42,14 +42,28 @@ public class ProxmoxIpResolver : IVmIpResolver
         }
         catch
         {
+            _logger.LogDebug("Could not resolve VMID for {VmName}", vmName);
             return null;
         }
 
+        _logger.LogDebug(
+            "Resolving IP for {VmName} (VMID {VmId}): trying guest agent",
+            vmName,
+            vmid
+        );
         string? ip = await TryGuestAgentAsync(vmid);
         if (ip != null)
+        {
+            _logger.LogInformation("Resolved IP for {VmName} via guest agent: {Ip}", vmName, ip);
             return ip;
+        }
 
+        _logger.LogDebug("Guest agent failed for {VmName}, trying ARP scan", vmName);
         ip = await TryArpScanAsync(vmid);
+        if (ip != null)
+            _logger.LogInformation("Resolved IP for {VmName} via ARP scan: {Ip}", vmName, ip);
+        else
+            _logger.LogDebug("ARP scan found no IP for {VmName}", vmName);
         return ip;
     }
 
@@ -80,7 +94,10 @@ public class ProxmoxIpResolver : IVmIpResolver
                 }
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Guest agent query failed for VMID {VmId}", vmid);
+        }
         return null;
     }
 
@@ -139,16 +156,24 @@ public class ProxmoxIpResolver : IVmIpResolver
     {
         try
         {
+            string bridge = _api.DefaultBridge;
             string output = await _sh.RunBashAsync(
-                "ip addr show vmbr0 | grep 'inet ' | awk '{print $2}' | cut -d/ -f1 | head -1"
+                $"ip addr show {bridge} | grep 'inet ' | awk '{{print $2}}' | cut -d/ -f1 | head -1"
             );
             string ip = output.Trim();
+            if (string.IsNullOrEmpty(ip))
+            {
+                output = await _sh.RunBashAsync(
+                    "ip route | grep default | awk '{print $3}' | head -1"
+                );
+                ip = output.Trim();
+            }
             int lastDot = ip.LastIndexOf('.');
             return lastDot > 0 ? ip[..lastDot] : "";
         }
         catch
         {
-            return "192.168.5";
+            return "";
         }
     }
 

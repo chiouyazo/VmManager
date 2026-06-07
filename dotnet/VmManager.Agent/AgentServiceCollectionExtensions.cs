@@ -38,15 +38,16 @@ public static class AgentServiceCollectionExtensions
         {
             services.AddSingleton<ProxmoxApiClient>(sp =>
             {
-                SettingsService settings = sp.GetRequiredService<SettingsService>();
+                SettingsService settingsService = sp.GetRequiredService<SettingsService>();
                 ProxmoxSettings proxmox =
-                    settings.Load().Proxmox
+                    settingsService.Load().Proxmox
                     ?? throw new InvalidOperationException(
                         "Proxmox backend selected but no Proxmox settings configured in settings.json"
                     );
                 return new ProxmoxApiClient(
                     proxmox,
-                    sp.GetRequiredService<ILogger<ProxmoxApiClient>>()
+                    sp.GetRequiredService<ILogger<ProxmoxApiClient>>(),
+                    () => settingsService.Load().Proxmox ?? proxmox
                 );
             });
             services.AddSingleton<ProxmoxIpResolver>();

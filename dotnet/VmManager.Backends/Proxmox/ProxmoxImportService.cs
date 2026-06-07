@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
@@ -347,7 +349,7 @@ public class ProxmoxImportService
             _logger.LogInformation("New device detected: /dev/{Device}", newDevice);
 
             onStatus?.Invoke("Writing disk image to temporary disk...");
-            await _sh.RunBashAsync($"qemu-img convert -O raw {Q(diskPath)} /dev/{newDevice}");
+            await RunQemuImgConvertWithProgressAsync(diskPath, newDevice, sizeGb, onStatus);
 
             onStatus?.Invoke("Detaching temporary disk from agent VM...");
             await _api.PutAsync(
@@ -726,14 +728,40 @@ public class ProxmoxImportService
 
     private async Task<string?> WaitForIpAsync(string vmName, TimeSpan timeout)
     {
+        _logger.LogInformation(
+            "Waiting for IP address for {VmName} (timeout: {Timeout})",
+            vmName,
+            timeout
+        );
         DateTime deadline = DateTime.UtcNow + timeout;
+        int attempt = 0;
         while (DateTime.UtcNow < deadline)
         {
+            attempt++;
             string? ip = await _ipResolver.ResolveIpAsync(vmName);
             if (ip != null)
+            {
+                _logger.LogInformation(
+                    "Got IP for {VmName}: {Ip} (attempt {Attempt})",
+                    vmName,
+                    ip,
+                    attempt
+                );
                 return ip;
+            }
+            if (attempt % 5 == 0)
+                _logger.LogDebug(
+                    "Still waiting for IP for {VmName} (attempt {Attempt})",
+                    vmName,
+                    attempt
+                );
             await Task.Delay(3000);
         }
+        _logger.LogWarning(
+            "Timed out waiting for IP for {VmName} after {Timeout}",
+            vmName,
+            timeout
+        );
         return null;
     }
 
@@ -744,6 +772,81 @@ public class ProxmoxImportService
     {
         string raw = await _api.PostRawAsync(path, data);
         return JsonDocument.Parse(raw).RootElement.GetProperty("data").GetString()!;
+    }
+
+    private async Task RunQemuImgConvertWithProgressAsync(
+        string diskPath,
+        string targetDevice,
+        int sizeGb,
+        Action<string>? onStatus
+    )
+    {
+        ProcessStartInfo psi = new ProcessStartInfo("qemu-img")
+        {
+            Arguments = $"convert -p -W -O raw {Q(diskPath)} /dev/{targetDevice}",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        Process process =
+            Process.Start(psi) ?? throw new InvalidOperationException("Failed to start qemu-img");
+
+        DateTime startTime = DateTime.UtcNow;
+        Task<string> stderrTask = process.StandardError.ReadToEndAsync();
+
+        char[] buf = new char[256];
+        StringBuilder progressLine = new StringBuilder();
+        while (!process.StandardOutput.EndOfStream)
+        {
+            int read = await process.StandardOutput.ReadAsync(buf, 0, buf.Length);
+            if (read <= 0)
+                break;
+
+            for (int i = 0; i < read; i++)
+            {
+                if (buf[i] == '\r' || buf[i] == '\n')
+                {
+                    string line = progressLine.ToString().Trim();
+                    progressLine.Clear();
+                    if (line.Length == 0)
+                        continue;
+
+                    Match match = Regex.Match(line, @"\((\d+\.?\d*)/100%\)");
+                    if (
+                        match.Success
+                        && double.TryParse(
+                            match.Groups[1].Value,
+                            NumberStyles.Float,
+                            CultureInfo.InvariantCulture,
+                            out double pct
+                        )
+                    )
+                    {
+                        TimeSpan elapsed = DateTime.UtcNow - startTime;
+                        string eta = "";
+                        if (pct > 1 && elapsed.TotalSeconds > 2)
+                        {
+                            double remaining = elapsed.TotalSeconds / pct * (100 - pct);
+                            TimeSpan etaSpan = TimeSpan.FromSeconds(remaining);
+                            eta = $", ~{etaSpan:mm\\:ss} remaining";
+                        }
+                        onStatus?.Invoke($"Writing disk image: {pct:F0}% of {sizeGb} GB{eta}");
+                    }
+                }
+                else
+                {
+                    progressLine.Append(buf[i]);
+                }
+            }
+        }
+
+        await process.WaitForExitAsync();
+        string stderr = await stderrTask;
+
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException("qemu-img convert failed: " + stderr);
     }
 
     private static string Q(string value) => ShellRunner.Q(value);

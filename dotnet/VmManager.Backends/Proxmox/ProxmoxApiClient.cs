@@ -10,6 +10,7 @@ public class ProxmoxApiClient
 {
     private readonly HttpClient _http;
     private readonly ProxmoxSettings _settings;
+    private readonly Func<ProxmoxSettings> _settingsLoader;
     private readonly ILogger<ProxmoxApiClient> _logger;
     private readonly string _nodeBase;
 
@@ -19,11 +20,16 @@ public class ProxmoxApiClient
         Converters = { new JsonStringEnumConverter() },
     };
 
-    public ProxmoxApiClient(ProxmoxSettings settings, ILogger<ProxmoxApiClient> logger)
+    public ProxmoxApiClient(
+        ProxmoxSettings settings,
+        ILogger<ProxmoxApiClient> logger,
+        Func<ProxmoxSettings>? settingsLoader = null
+    )
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(logger);
         _settings = settings;
+        _settingsLoader = settingsLoader ?? (() => settings);
         _logger = logger;
         _nodeBase = $"/api2/json/nodes/{settings.Node}";
 
@@ -44,16 +50,16 @@ public class ProxmoxApiClient
     }
 
     public string Node => _settings.Node;
-    public string StorageId => _settings.StorageId;
-    public string PoolId => _settings.PoolId;
-    public int MaxPoolMemoryMb => _settings.MaxPoolMemoryMb;
-    public int MaxPoolCpuCores => _settings.MaxPoolCpuCores;
-    public string DefaultBridge => _settings.DefaultBridge;
-    public int DefaultVlanTag => _settings.DefaultVlanTag;
-    public int VmIdRangeStart => _settings.VmIdRangeStart;
-    public int VmIdRangeEnd => _settings.VmIdRangeEnd;
-    public string ImportMethod => _settings.ImportMethod;
-    public int AgentVmId => _settings.AgentVmId;
+    public string StorageId => _settingsLoader().StorageId;
+    public string PoolId => _settingsLoader().PoolId;
+    public int MaxPoolMemoryMb => _settingsLoader().MaxPoolMemoryMb;
+    public int MaxPoolCpuCores => _settingsLoader().MaxPoolCpuCores;
+    public string DefaultBridge => _settingsLoader().DefaultBridge;
+    public int DefaultVlanTag => _settingsLoader().DefaultVlanTag;
+    public int VmIdRangeStart => _settingsLoader().VmIdRangeStart;
+    public int VmIdRangeEnd => _settingsLoader().VmIdRangeEnd;
+    public string ImportMethod => _settingsLoader().ImportMethod;
+    public int AgentVmId => _settingsLoader().AgentVmId;
 
     public async Task<T> GetAsync<T>(string path)
     {
