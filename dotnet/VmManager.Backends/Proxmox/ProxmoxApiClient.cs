@@ -49,6 +49,7 @@ public class ProxmoxApiClient
     public int MaxPoolMemoryMb => _settings.MaxPoolMemoryMb;
     public int MaxPoolCpuCores => _settings.MaxPoolCpuCores;
     public string DefaultBridge => _settings.DefaultBridge;
+    public int DefaultVlanTag => _settings.DefaultVlanTag;
     public int VmIdRangeStart => _settings.VmIdRangeStart;
     public int VmIdRangeEnd => _settings.VmIdRangeEnd;
     public string ImportMethod => _settings.ImportMethod;

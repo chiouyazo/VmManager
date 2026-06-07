@@ -63,7 +63,10 @@ else
                     <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Network</MudText>
                     <MudGrid>
                         <MudItem xs="12" md="4">
-                            <MudTextField @bind-Value="_proxmox.DefaultBridge" Label="Default Bridge" HelperText="e.g. vmbr0, vmbr1" />
+                            <MudTextField @bind-Value="_proxmox.DefaultBridge" Label="Default Bridge" HelperText="e.g. vmbr0, vmbr2" />
+                        </MudItem>
+                        <MudItem xs="12" md="4">
+                            <MudNumericField @bind-Value="_proxmox.DefaultVlanTag" Label="VLAN Tag" Min="0" Max="4094" HelperText="0 = no VLAN" />
                         </MudItem>
                     </MudGrid>
 

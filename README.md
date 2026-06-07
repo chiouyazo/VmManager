@@ -2,6 +2,21 @@
 
 A cross-platform VM management platform for Hyper-V, KVM, and Proxmox VE. Includes an Avalonia desktop client, a Blazor web frontend, an RDP CredSSP proxy for transparent VM access, comprehensive monitoring with Prometheus integration, and full user/permission management.
 
+## Why VmManager?
+
+| | VmManager | OpenNebula | CloudStack | Ravada VDI | Xen Orchestra |
+|---|---|---|---|---|---|
+| **Single binary, no dependencies** | Yes | No (DB, services) | No (DB, MQ, services) | No (DB, services) | No (Node.js server) |
+| **Hyper-V + KVM + Proxmox** | Yes | KVM, VMware | KVM, VMware, Xen | KVM only | Xen only |
+| **RDP proxy with credential injection** | Yes | No | No | No | No |
+| **Feed-based image distribution** | OCI, Nexus, Local | Marketplace | Templates | Base images | Templates |
+| **Self-service VM creation** | Yes | Yes | Yes | Yes | Yes |
+| **Snapshot push/pull to registries** | Yes | No | No | No | No |
+| **Built-in monitoring + alerting** | Yes | Partial | Partial | No | Partial |
+| **Setup time** | Minutes | Hours | Hours | Hours | ~1 hour |
+
+VmManager is designed for teams that need on-demand Windows VMs with minimal infrastructure. One agent binary handles VM provisioning, RDP access, image distribution, monitoring, and user management. No database servers, no message queues, no container orchestration required.
+
 ## Features
 
 ### VM Management

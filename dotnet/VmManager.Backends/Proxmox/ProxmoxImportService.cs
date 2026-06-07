@@ -172,7 +172,9 @@ public class ProxmoxImportService
 
         onStatus?.Invoke("Creating VM...");
         string bridge = _api.DefaultBridge;
-        string networkParam = skipDefaultNetwork ? "none" : "e1000e,bridge=" + bridge;
+        string networkParam = "e1000e,bridge=" + bridge;
+        if (_api.DefaultVlanTag > 0)
+            networkParam += ",tag=" + _api.DefaultVlanTag;
         Dictionary<string, string> createParams = new Dictionary<string, string>
         {
             ["vmid"] = vmid.ToString(),
