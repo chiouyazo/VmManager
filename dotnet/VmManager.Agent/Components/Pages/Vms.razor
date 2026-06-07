@@ -14,6 +14,7 @@
 @inject IVmTrackingService TrackingService
 @inject SnapshotPushService PushService
 @inject FeedResolutionService FeedResolution
+@inject VmCredentialStore CredentialStore
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
 @inject IBackgroundTaskManager TaskManager
@@ -78,7 +79,9 @@ else
                             @if (IsOwnerOrAdmin(vm))
                             {
                                 <MudMenuItem Icon="@Icons.Material.Filled.Share" OnClick="() => Share(vm)">Share</MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.Key" OnClick="() => SetVmCredentials(vm)">VM Credentials</MudMenuItem>
                             }
+                            <MudMenuItem Icon="@Icons.Material.Filled.Login" OnClick="() => SetMyLogin(vm)">My Login</MudMenuItem>
                             @if (CanDo(vm, Permission.VmReset))
                             {
                                 <MudMenuItem Icon="@Icons.Material.Filled.RestartAlt" OnClick="() => ResetToBase(vm)">Reset to Base</MudMenuItem>
@@ -484,6 +487,53 @@ else
                 ctx.ReportProgress(1.0, "Push complete");
             });
             Snackbar.Add("Pushing snapshot to '" + feed.Name + "'...", Severity.Info);
+        }
+    }
+
+    private async Task SetVmCredentials(VmInstance vm)
+    {
+        (string? currentUser, string? currentPass) = TrackingService.GetVmCredentials(vm.Name);
+        bool hasExisting = !string.IsNullOrEmpty(currentUser);
+        DialogParameters<DialogVmCredentials> parameters = new DialogParameters<DialogVmCredentials>
+        {
+            { x => x.CurrentVmUsername, currentUser ?? "" },
+            { x => x.HasExisting, hasExisting },
+            { x => x.Description, "Set the default Windows login for this VM. Other users will use these credentials unless they set their own." },
+        };
+        IDialogReference dialog = await DialogService.ShowAsync<DialogVmCredentials>(
+            "VM Credentials: " + vm.Name, parameters);
+        DialogResult? result = await dialog.Result;
+        if (!(result?.Canceled ?? true) && result.Data is ValueTuple<string, string> creds)
+        {
+            string passwordToSave = string.IsNullOrEmpty(creds.Item2) && hasExisting
+                ? currentPass ?? ""
+                : creds.Item2;
+            TrackingService.SetVmCredentials(vm.Name, creds.Item1, passwordToSave);
+            Snackbar.Add("VM credentials saved", Severity.Success);
+        }
+    }
+
+    private async Task SetMyLogin(VmInstance vm)
+    {
+        string currentUsername = _user.Identity?.Name ?? "";
+        (string? currentUser, string? currentPass) = CredentialStore.GetCredentials(vm.Name, currentUsername);
+        bool hasExisting = !string.IsNullOrEmpty(currentUser);
+        DialogParameters<DialogVmCredentials> parameters = new DialogParameters<DialogVmCredentials>
+        {
+            { x => x.CurrentVmUsername, currentUser ?? "" },
+            { x => x.HasExisting, hasExisting },
+            { x => x.Description, "Set your personal Windows login for this VM. This overrides the VM default and your global credentials." },
+        };
+        IDialogReference dialog = await DialogService.ShowAsync<DialogVmCredentials>(
+            "My Login: " + vm.Name, parameters);
+        DialogResult? result = await dialog.Result;
+        if (!(result?.Canceled ?? true) && result.Data is ValueTuple<string, string> creds)
+        {
+            string passwordToSave = string.IsNullOrEmpty(creds.Item2) && hasExisting
+                ? currentPass ?? ""
+                : creds.Item2;
+            CredentialStore.SetCredentials(vm.Name, currentUsername, creds.Item1, passwordToSave);
+            Snackbar.Add("Personal login saved", Severity.Success);
         }
     }
 

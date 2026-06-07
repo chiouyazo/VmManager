@@ -15,6 +15,7 @@ public class ProxmoxSettings
     public int VmIdRangeEnd { get; set; }
     public string DefaultBridge { get; set; } = "vmbr0";
     public int DefaultVlanTag { get; set; }
+    public string VmSubnet { get; set; } = "";
     public string ImportMethod { get; set; } = "Standard";
     public int AgentVmId { get; set; }
 }

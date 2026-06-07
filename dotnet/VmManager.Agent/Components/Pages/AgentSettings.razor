@@ -68,6 +68,9 @@ else
                         <MudItem xs="12" md="4">
                             <MudNumericField @bind-Value="_proxmox.DefaultVlanTag" Label="VLAN Tag" Min="0" Max="4094" HelperText="0 = no VLAN" />
                         </MudItem>
+                        <MudItem xs="12" md="4">
+                            <MudTextField @bind-Value="_proxmox.VmSubnet" Label="VM Subnet" HelperText="e.g. 192.168.10 (for IP resolution)" />
+                        </MudItem>
                     </MudGrid>
 
                     <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">VM ID Range</MudText>
@@ -428,6 +431,9 @@ else
     private List<MonitoringCheckConfig> _monitoringChecks = new List<MonitoringCheckConfig>();
     private bool _canView;
     private bool _canManageFeeds;
+    private string _originalVmPassword = "";
+    private string _originalSmtpPassword = "";
+    private string _originalApiTokenSecret = "";
     private bool _feedTesting;
     private Dictionary<FeedConfiguration, List<string>> _discoveredRepos = new Dictionary<FeedConfiguration, List<string>>();
     private string _testEmailAddress = "";
@@ -490,7 +496,15 @@ else
         if (_canView)
         {
             _settings = SettingsService.Load();
+            _originalVmPassword = _settings.DefaultVmPassword;
+            _originalSmtpPassword = _settings.SmtpPassword ?? "";
+            _originalApiTokenSecret = _settings.Proxmox?.ApiTokenSecret ?? "";
+            _settings.DefaultVmPassword = string.IsNullOrEmpty(_settings.DefaultVmPassword) ? "" : "********";
+            if (_settings.SmtpPassword != null)
+                _settings.SmtpPassword = string.IsNullOrEmpty(_settings.SmtpPassword) ? "" : "********";
             _proxmox = _settings.Proxmox ?? new ProxmoxSettings();
+            if (!string.IsNullOrEmpty(_proxmox.ApiTokenSecret))
+                _proxmox.ApiTokenSecret = "********";
             _monitoring = _settings.Monitoring ?? new MonitoringSettings();
             _selectedLocale = LocaleMap.FirstOrDefault(kv => kv.Value == _settings.DefaultLocale).Key ?? "";
             _selectedKeyboard = KeyboardMap.FirstOrDefault(kv => kv.Value == _settings.DefaultKeyboardLayout).Key ?? "";
@@ -512,6 +526,13 @@ else
 
             foreach (FeedConfiguration feed in _settings.Feeds)
                 feed.EnsureId();
+
+            if (_settings.DefaultVmPassword == "********")
+                _settings.DefaultVmPassword = _originalVmPassword;
+            if (_settings.SmtpPassword == "********")
+                _settings.SmtpPassword = _originalSmtpPassword;
+            if (_proxmox.ApiTokenSecret == "********")
+                _proxmox.ApiTokenSecret = _originalApiTokenSecret;
 
             if (_settings.VmBackend == "Proxmox")
                 _settings.Proxmox = _proxmox;

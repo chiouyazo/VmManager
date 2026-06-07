@@ -46,6 +46,14 @@ public class SettingsController : ControllerBase
     public IActionResult GetSettings()
     {
         AppSettings settings = _settingsService.Load();
+        settings.DefaultVmPassword = string.IsNullOrEmpty(settings.DefaultVmPassword)
+            ? ""
+            : "********";
+        settings.SmtpPassword = string.IsNullOrEmpty(settings.SmtpPassword) ? "" : "********";
+        if (settings.Proxmox != null)
+            settings.Proxmox.ApiTokenSecret = string.IsNullOrEmpty(settings.Proxmox.ApiTokenSecret)
+                ? ""
+                : "********";
         return Ok(settings);
     }
 
@@ -88,6 +96,13 @@ public class SettingsController : ControllerBase
             && !_authorizationService.HasPermission(User, Permission.SettingsEditVmDefaults)
         )
             return Forbid();
+
+        if (settings.DefaultVmPassword == "********")
+            settings.DefaultVmPassword = current.DefaultVmPassword;
+        if (settings.SmtpPassword == "********")
+            settings.SmtpPassword = current.SmtpPassword;
+        if (settings.Proxmox != null && settings.Proxmox.ApiTokenSecret == "********")
+            settings.Proxmox.ApiTokenSecret = current.Proxmox?.ApiTokenSecret ?? "";
 
         _logger.LogInformation("Saving settings");
         _settingsService.Save(settings);

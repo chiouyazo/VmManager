@@ -52,6 +52,7 @@ public static class AgentServiceCollectionExtensions
             });
             services.AddSingleton<ProxmoxIpResolver>();
             services.AddSingleton<IVmIpResolver>(sp => sp.GetRequiredService<ProxmoxIpResolver>());
+            services.AddSingleton<ProxmoxTemplateRegistry>();
         }
         else if (OperatingSystem.IsWindows())
         {
@@ -70,6 +71,7 @@ public static class AgentServiceCollectionExtensions
         services.AddSingleton<CertificateFactory>();
         services.AddSingleton<ClientCredSspHandler>();
         services.AddSingleton<VmCredSspHandler>();
+        services.AddSingleton<VmCredentialStore>();
         services.AddSingleton<RdpCredSspConnectionHandler>();
         services.AddSingleton<NetworkTrackingService>();
         services.AddSingleton<NetworkProvisioningService>();

@@ -12,7 +12,14 @@ public class VmTrackingService : IVmTrackingService
         WriteIndented = true,
     };
 
-    private record ManagedVmEntry(string Name, VmOrigin? Origin, DateTime? CreatedAt = null);
+    private sealed class ManagedVmEntry
+    {
+        public string Name { get; set; } = "";
+        public VmOrigin? Origin { get; set; }
+        public DateTime? CreatedAt { get; set; }
+        public string VmUsername { get; set; } = "";
+        public string VmPassword { get; set; } = "";
+    }
 
     public VmTrackingService(IAppPaths paths, ILogger<VmTrackingService> logger)
     {
@@ -37,7 +44,14 @@ public class VmTrackingService : IVmTrackingService
         {
             List<ManagedVmEntry> entries = LoadEntries();
             entries.RemoveAll(e => e.Name == vmName);
-            entries.Add(new ManagedVmEntry(vmName, origin, DateTime.UtcNow));
+            entries.Add(
+                new ManagedVmEntry
+                {
+                    Name = vmName,
+                    Origin = origin,
+                    CreatedAt = DateTime.UtcNow,
+                }
+            );
             SaveEntries(entries);
         }
         catch (Exception ex)
@@ -168,6 +182,40 @@ public class VmTrackingService : IVmTrackingService
             SaveNotes(notes);
     }
 
+    public void SetVmCredentials(string vmName, string vmUsername, string vmPassword)
+    {
+        try
+        {
+            List<ManagedVmEntry> entries = LoadEntries();
+            ManagedVmEntry? entry = entries.FirstOrDefault(e => e.Name == vmName);
+            if (entry == null)
+                return;
+            entry.VmUsername = vmUsername;
+            entry.VmPassword = vmPassword;
+            SaveEntries(entries);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to set VM credentials for {VmName}", vmName);
+        }
+    }
+
+    public (string? Username, string? Password) GetVmCredentials(string vmName)
+    {
+        try
+        {
+            List<ManagedVmEntry> entries = LoadEntries();
+            ManagedVmEntry? entry = entries.FirstOrDefault(e => e.Name == vmName);
+            if (entry != null && !string.IsNullOrEmpty(entry.VmUsername))
+                return (entry.VmUsername, entry.VmPassword);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get VM credentials for {VmName}", vmName);
+        }
+        return (null, null);
+    }
+
     private Dictionary<string, VmOrigin?> LoadAllInternal()
     {
         return LoadEntries().ToDictionary(e => e.Name, e => e.Origin);
@@ -189,7 +237,7 @@ public class VmTrackingService : IVmTrackingService
                     _logger.LogInformation("Migrating managed-vms.json from old format");
                     HashSet<string> names = JsonSerializer.Deserialize<HashSet<string>>(json) ?? [];
                     List<ManagedVmEntry> migrated = names
-                        .Select(n => new ManagedVmEntry(n, null))
+                        .Select(n => new ManagedVmEntry { Name = n })
                         .ToList();
                     SaveEntries(migrated);
                     return migrated;
@@ -205,7 +253,7 @@ public class VmTrackingService : IVmTrackingService
                         Dictionary<string, string>
                     >(notesJson);
                     if (notes != null)
-                        entries = notes.Keys.Select(n => new ManagedVmEntry(n, null)).ToList();
+                        entries = notes.Keys.Select(n => new ManagedVmEntry { Name = n }).ToList();
                 }
                 SaveEntries(entries);
                 return entries;

@@ -20,6 +20,8 @@ public sealed class RdpCredSspConnectionHandler
     private readonly RdpTcpRelay _relay;
     private readonly SettingsService _settingsService;
     private readonly LoginAttemptTracker _loginAttemptTracker;
+    private readonly IVmTrackingService _vmTrackingService;
+    private readonly VmCredentialStore _vmCredentialStore;
 
     public RdpCredSspConnectionHandler(
         ILogger<RdpCredSspConnectionHandler> logger,
@@ -32,7 +34,9 @@ public sealed class RdpCredSspConnectionHandler
         RdpSessionStore sessionStore,
         RdpTcpRelay relay,
         SettingsService settingsService,
-        LoginAttemptTracker loginAttemptTracker
+        LoginAttemptTracker loginAttemptTracker,
+        IVmTrackingService vmTrackingService,
+        VmCredentialStore vmCredentialStore
     )
     {
         ArgumentNullException.ThrowIfNull(logger);
@@ -45,6 +49,8 @@ public sealed class RdpCredSspConnectionHandler
         ArgumentNullException.ThrowIfNull(sessionStore);
         ArgumentNullException.ThrowIfNull(relay);
         ArgumentNullException.ThrowIfNull(settingsService);
+        ArgumentNullException.ThrowIfNull(vmTrackingService);
+        ArgumentNullException.ThrowIfNull(vmCredentialStore);
 
         _logger = logger;
         _clientHandler = clientHandler;
@@ -57,6 +63,8 @@ public sealed class RdpCredSspConnectionHandler
         _relay = relay;
         _settingsService = settingsService;
         _loginAttemptTracker = loginAttemptTracker;
+        _vmTrackingService = vmTrackingService;
+        _vmCredentialStore = vmCredentialStore;
     }
 
     public async Task HandleConnectionAsync(
@@ -190,8 +198,11 @@ public sealed class RdpCredSspConnectionHandler
 
             using (vmTcp)
             {
-                // VM TLS + CredSSP
-                string vmUser = settings.DefaultVmUsername;
+                (string vmUser, string vmPassword) = ResolveVmCredentials(
+                    username,
+                    vmName,
+                    settings
+                );
                 string vmDomain = "";
                 if (vmUser.Contains('\\'))
                 {
@@ -199,15 +210,16 @@ public sealed class RdpCredSspConnectionHandler
                     vmDomain = parts[0] == "." ? "" : parts[0];
                     vmUser = parts[1];
                 }
-                (SslStream vmSsl, NegotiateAuthentication nego) =
-                    await _vmHandler.AuthenticateAsync(
-                        vmNet,
-                        vmIp,
-                        vmUser,
-                        settings.DefaultVmPassword,
-                        vmDomain,
-                        cancellationToken
-                    );
+                NegotiateAuthentication nego;
+                SslStream vmSsl;
+                (vmSsl, nego) = await _vmHandler.AuthenticateAsync(
+                    vmNet,
+                    vmIp,
+                    vmUser,
+                    vmPassword,
+                    vmDomain,
+                    cancellationToken
+                );
 
                 await _vmHandler.HandleEarlyAuthResultAsync(
                     clientSsl,
@@ -326,5 +338,49 @@ public sealed class RdpCredSspConnectionHandler
 
         ClaimsIdentity identity = new ClaimsIdentity(claims, "RdpCredSsp");
         return new ClaimsPrincipal(identity);
+    }
+
+    private (string VmUser, string VmPassword) ResolveVmCredentials(
+        string username,
+        string vmName,
+        AppSettings settings
+    )
+    {
+        // Level 1: Per-user-per-VM credentials
+        (string? perUserVmUser, string? perUserVmPass) = _vmCredentialStore.GetCredentials(
+            vmName,
+            username
+        );
+        if (!string.IsNullOrEmpty(perUserVmUser))
+        {
+            _logger.LogDebug(
+                "Using per-user-per-VM credentials for {User} on {Vm}",
+                username,
+                vmName
+            );
+            return (perUserVmUser, perUserVmPass ?? "");
+        }
+
+        // Level 2: Per-user global credentials
+        UserAccount? account = _userService.GetByUsername(username);
+        if (account != null && !string.IsNullOrEmpty(account.VmUsername))
+        {
+            _logger.LogDebug("Using per-user global credentials for {User}", username);
+            return (account.VmUsername, account.VmPassword);
+        }
+
+        // Level 3: Per-VM default credentials (set by owner)
+        (string? vmDefaultUser, string? vmDefaultPass) = _vmTrackingService.GetVmCredentials(
+            vmName
+        );
+        if (!string.IsNullOrEmpty(vmDefaultUser))
+        {
+            _logger.LogDebug("Using per-VM default credentials for {Vm}", vmName);
+            return (vmDefaultUser, vmDefaultPass ?? "");
+        }
+
+        // Level 4: Global default
+        _logger.LogDebug("Using global default credentials");
+        return (settings.DefaultVmUsername, settings.DefaultVmPassword);
     }
 }

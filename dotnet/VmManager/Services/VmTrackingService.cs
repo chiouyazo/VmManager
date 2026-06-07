@@ -143,6 +143,10 @@ public class VmTrackingService : IVmTrackingService
             SaveNotes(notes);
     }
 
+    public void SetVmCredentials(string vmName, string vmUsername, string vmPassword) { }
+
+    public (string? Username, string? Password) GetVmCredentials(string vmName) => (null, null);
+
     private Dictionary<string, VmOrigin?> LoadAllInternal()
     {
         try

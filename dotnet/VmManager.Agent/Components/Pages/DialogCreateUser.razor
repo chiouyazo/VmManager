@@ -11,6 +11,8 @@
             <MudAlert Severity="Severity.Error" Class="mb-4" Dense="true">@_error</MudAlert>
         }
         <MudTextField @bind-Value="_email" Label="Email" Immediate="true" Class="mb-2" />
+        <MudTextField @bind-Value="_displayUsername" Label="Username" Immediate="true" Class="mb-2"
+                      HelperText="Optional short login name (e.g. AD account name)" />
         <MudTextField @bind-Value="_password" Label="Password" InputType="InputType.Password"
                       Immediate="true" Class="mb-2" Disabled="_sendInvite"
                       HelperText="@(_sendInvite ? "Password will be auto-generated" : "")" />
@@ -57,6 +59,7 @@
 
 @code {
     private string _email = "";
+    private string _displayUsername = "";
     private string _password = "";
     private bool _isAdmin;
     private int _maxVms;
@@ -124,6 +127,8 @@
         try
         {
             UserAccount account = UserService.CreateUser(_email.Trim(), password, _permissions, _isAdmin);
+            if (!string.IsNullOrWhiteSpace(_displayUsername))
+                UserService.UpdateDisplayUsername(account.Username, _displayUsername.Trim());
             if (_maxVms > 0)
                 UserService.UpdateMaxVms(account.Username, _maxVms);
 
@@ -133,12 +138,16 @@
                 try
                 {
                     string loginUrl = NavigationManager.BaseUri.TrimEnd('/') + "/login";
+                    string usernameInfo = !string.IsNullOrWhiteSpace(_displayUsername)
+                        ? "<b>Username:</b> " + _displayUsername.Trim() + " (or use your email)<br/>"
+                        : "";
                     await EmailService.SendAsync(
                         _email.Trim(),
                         "VmManager Invitation",
                         "<h2>Welcome to VmManager</h2>"
                         + "<p>An account has been created for you.</p>"
-                        + "<p><b>Username:</b> " + account.Username + "<br/>"
+                        + "<p>" + usernameInfo
+                        + "<b>Email:</b> " + account.Username + "<br/>"
                         + "<b>Temporary Password:</b> <code>" + password + "</code></p>"
                         + "<p><a href=\"" + loginUrl + "\">Login here to change your password</a></p>"
                         + "<p>You will be required to change your password on first login.</p>");

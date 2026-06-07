@@ -12,4 +12,6 @@ public interface IVmTrackingService
     Dictionary<string, string> LoadNotes();
     void SaveNote(string vmName, string note);
     void RemoveNote(string vmName);
+    void SetVmCredentials(string vmName, string vmUsername, string vmPassword);
+    (string? Username, string? Password) GetVmCredentials(string vmName);
 }

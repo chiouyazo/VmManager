@@ -15,11 +15,13 @@
             </MudCardHeader>
             <MudCardContent>
                 <MudTextField @bind-Value="_email" Label="Email" Class="mb-2" />
+                <MudTextField @bind-Value="_displayUsername" Label="Username"
+                              HelperText="Optional short login name (e.g. AD account name)" Class="mb-2" />
             </MudCardContent>
             <MudCardActions>
                 <MudSpacer />
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveEmail">
-                    Save Email
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProfile">
+                    Save Profile
                 </MudButton>
             </MudCardActions>
         </MudCard>
@@ -48,26 +50,89 @@
             </MudCardActions>
         </MudCard>
     </MudItem>
+
+    <MudItem xs="12" md="6">
+        <MudCard Elevation="2">
+            <MudCardHeader>
+                <MudText Typo="Typo.h6">VM Credentials</MudText>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                    Override the default Windows login for VMs. Leave empty to use the VM or global default.
+                </MudText>
+                <MudTextField @bind-Value="_vmUsername" Label="VM Username"
+                              HelperText="e.g. Administrator or DOMAIN\user" Class="mb-2" />
+                <MudTextField @bind-Value="_vmPassword" Label="VM Password"
+                              InputType="InputType.Password" Class="mb-2"
+                              Placeholder="@(_hasVmCredentials ? "********" : "")" />
+            </MudCardContent>
+            <MudCardActions>
+                <MudSpacer />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveVmCredentials">
+                    Save VM Credentials
+                </MudButton>
+            </MudCardActions>
+        </MudCard>
+    </MudItem>
 </MudGrid>
 
 @code {
     private string _email = "";
+    private string _displayUsername = "";
+    private string _vmUsername = "";
+    private string _vmPassword = "";
     private string _newPassword = "";
     private string _confirmPassword = "";
     private string _passwordError = "";
 
+    private bool _hasVmCredentials;
+
     protected override void OnInitialized()
     {
         UserAccount? user = UserService.GetByUsername(AuthState.CurrentUsername);
-        _email = user?.Email ?? "";
+        if (user != null)
+        {
+            _email = user.Email;
+            _displayUsername = user.DisplayUsername;
+            _vmUsername = user.VmUsername;
+            _hasVmCredentials = !string.IsNullOrEmpty(user.VmUsername);
+        }
     }
 
-    private void SaveEmail()
+    private void SaveProfile()
     {
         try
         {
             UserService.UpdateEmail(AuthState.CurrentUsername, _email.Trim());
-            Snackbar.Add("Email updated", Severity.Success);
+            UserService.UpdateDisplayUsername(AuthState.CurrentUsername, _displayUsername);
+            Snackbar.Add("Profile saved", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Failed: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private void SaveVmCredentials()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_vmUsername))
+            {
+                UserService.UpdateVmCredentials(AuthState.CurrentUsername, "", "");
+                _hasVmCredentials = false;
+            }
+            else
+            {
+                UserAccount? user = UserService.GetByUsername(AuthState.CurrentUsername);
+                string passwordToSave = string.IsNullOrEmpty(_vmPassword) && user != null
+                    ? user.VmPassword
+                    : _vmPassword;
+                UserService.UpdateVmCredentials(AuthState.CurrentUsername, _vmUsername.Trim(), passwordToSave);
+                _hasVmCredentials = true;
+            }
+            _vmPassword = "";
+            Snackbar.Add("VM credentials saved", Severity.Success);
         }
         catch (Exception ex)
         {

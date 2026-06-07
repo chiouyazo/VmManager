@@ -12,4 +12,7 @@ public class UserAccount
     public int MaxVms { get; set; }
     public bool MustChangePassword { get; set; }
     public string NtHash { get; set; } = "";
+    public string DisplayUsername { get; set; } = "";
+    public string VmUsername { get; set; } = "";
+    public string VmPassword { get; set; } = "";
 }

@@ -42,6 +42,14 @@ public class UserService
             List<UserAccount> users = LoadUsers();
             return users.FirstOrDefault(u =>
                 string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase)
+                || (
+                    !string.IsNullOrEmpty(u.DisplayUsername)
+                    && string.Equals(
+                        u.DisplayUsername,
+                        username,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
             );
         }
     }
@@ -61,12 +69,7 @@ public class UserService
         lock (FileLock)
         {
             List<UserAccount> users = LoadUsers();
-            if (
-                users.Any(u =>
-                    string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase)
-                )
-            )
-                throw new InvalidOperationException("User already exists: " + username);
+            CheckIdentifierAvailable(users, username, null);
 
             string salt = GenerateSalt();
             UserAccount account = new UserAccount
@@ -161,7 +164,63 @@ public class UserService
             );
             if (user == null)
                 throw new InvalidOperationException("User not found: " + username);
+            if (!string.IsNullOrWhiteSpace(email))
+                CheckIdentifierAvailable(users, email, username);
             user.Email = email;
+            SaveUsers(users);
+        }
+    }
+
+    public void UpdateDisplayUsername(string username, string displayUsername)
+    {
+        lock (FileLock)
+        {
+            List<UserAccount> users = LoadUsers();
+            UserAccount? user = users.FirstOrDefault(u =>
+                string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase)
+            );
+            if (user == null)
+                throw new InvalidOperationException("User not found: " + username);
+            if (!string.IsNullOrWhiteSpace(displayUsername))
+                CheckIdentifierAvailable(users, displayUsername, username);
+            user.DisplayUsername = displayUsername.Trim();
+            SaveUsers(users);
+        }
+    }
+
+    private static void CheckIdentifierAvailable(
+        List<UserAccount> users,
+        string identifier,
+        string? excludeUsername
+    )
+    {
+        UserAccount? conflict = users.FirstOrDefault(u =>
+            (
+                excludeUsername == null
+                || !string.Equals(u.Username, excludeUsername, StringComparison.OrdinalIgnoreCase)
+            )
+            && (
+                string.Equals(u.Username, identifier, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(u.Email, identifier, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(u.DisplayUsername, identifier, StringComparison.OrdinalIgnoreCase)
+            )
+        );
+        if (conflict != null)
+            throw new InvalidOperationException("Already taken by another user: " + identifier);
+    }
+
+    public void UpdateVmCredentials(string username, string vmUsername, string vmPassword)
+    {
+        lock (FileLock)
+        {
+            List<UserAccount> users = LoadUsers();
+            UserAccount? user = users.FirstOrDefault(u =>
+                string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase)
+            );
+            if (user == null)
+                throw new InvalidOperationException("User not found: " + username);
+            user.VmUsername = vmUsername;
+            user.VmPassword = vmPassword;
             SaveUsers(users);
         }
     }
@@ -188,6 +247,14 @@ public class UserService
             List<UserAccount> users = LoadUsers();
             UserAccount? user = users.FirstOrDefault(u =>
                 string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase)
+                || (
+                    !string.IsNullOrEmpty(u.DisplayUsername)
+                    && string.Equals(
+                        u.DisplayUsername,
+                        username,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
             );
             if (user == null)
                 return false;
@@ -259,6 +326,14 @@ public class UserService
             List<UserAccount> users = LoadUsers();
             UserAccount? user = users.FirstOrDefault(u =>
                 string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase)
+                || (
+                    !string.IsNullOrEmpty(u.DisplayUsername)
+                    && string.Equals(
+                        u.DisplayUsername,
+                        username,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
             );
             if (user == null || string.IsNullOrEmpty(user.NtHash))
                 return null;

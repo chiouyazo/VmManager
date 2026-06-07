@@ -1,6 +1,7 @@
 @page "/images"
 @using System.Security.Claims
 @using VmManager.Agent.Services
+@using VmManager.Backends.Proxmox
 @attribute [Authorize]
 @inject CatalogAggregator CatalogAggregator
 @inject IVmBackend VmBackend
@@ -16,6 +17,7 @@
 @inject IVmTrackingService TrackingService
 @inject QuotaService QuotaService
 @inject EmailService EmailService
+@inject IServiceProvider ServiceProvider
 
 <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
     <MudText Typo="Typo.h5">Images</MudText>
@@ -43,9 +45,16 @@ else
                         <MudCardHeader>
                             <MudStack Spacing="0">
                                 <MudText Typo="Typo.body1" Style="font-weight: 600;">@local.DisplayName</MudText>
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                    @local.SizeGb.ToString("F1") GB | Extracted @local.ExtractedAt.ToString("yyyy-MM-dd")
-                                </MudText>
+                                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        @local.SizeGb.ToString("F1") GB | Extracted @local.ExtractedAt.ToString("yyyy-MM-dd")
+                                    </MudText>
+                                    @if (HasTemplate(local.Path))
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Success"
+                                                 Variant="Variant.Outlined">Instant</MudChip>
+                                    }
+                                </MudStack>
                             </MudStack>
                             <MudSpacer />
                             <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
@@ -428,22 +437,10 @@ else
                 Repository = version.FeedRepository,
             };
 
+            string imageStorageId = Path.GetFileName(extractedPath);
             TaskManager.StartTask("Creating VM: " + vmName, username, async ctx =>
             {
-                try
-                {
-                    ctx.ReportProgress(0.0, "Importing disk image...");
-                    await VmBackend.ImportVmAsync(
-                        extractedPath, settings.LocalVmPath,
-                        settings.DefaultMemoryMb, settings.DefaultCpuCount, vmName,
-                        onStatus: status => ctx.ReportProgress(-1, status),
-                        cancellationToken: ctx.Token);
-                }
-                catch (OrphanedVmException ex)
-                {
-                    NotifyOrphanedVm(ex);
-                    throw;
-                }
+                await ImportOrCloneVmAsync(ctx, vmName, extractedPath, imageStorageId, settings);
 
                 TrackingService.TrackVm(vmName, origin);
                 OwnershipService.SetOwner(vmName, username);
@@ -503,25 +500,10 @@ else
                 };
             }
 
+            string imageStorageId = Path.GetFileName(local.Path);
             TaskManager.StartTask("Creating VM: " + vmName, username, async ctx =>
             {
-                try
-                {
-                    ctx.ReportProgress(0.0, "Importing disk image...");
-                    await VmBackend.ImportVmAsync(
-                        local.Path,
-                        settings.LocalVmPath,
-                        settings.DefaultMemoryMb,
-                        settings.DefaultCpuCount,
-                        vmName,
-                        onStatus: status => ctx.ReportProgress(-1, status),
-                        cancellationToken: ctx.Token);
-                }
-                catch (OrphanedVmException ex)
-                {
-                    NotifyOrphanedVm(ex);
-                    throw;
-                }
+                await ImportOrCloneVmAsync(ctx, vmName, local.Path, imageStorageId, settings);
 
                 TrackingService.TrackVm(vmName, origin);
                 OwnershipService.SetOwner(vmName, username);
@@ -551,6 +533,73 @@ else
                 ctx.ReportProgress(1.0, "VM created");
             });
             Snackbar.Add("Creating VM '" + vmName + "' in background...", Severity.Info);
+        }
+    }
+
+    private bool HasTemplate(string localPath)
+    {
+        ProxmoxTemplateRegistry? registry = ServiceProvider.GetService<ProxmoxTemplateRegistry>();
+        if (registry == null)
+            return false;
+        string imageStorageId = Path.GetFileName(localPath);
+        return registry.GetTemplateVmId(imageStorageId).HasValue;
+    }
+
+    private async Task ImportOrCloneVmAsync(
+        BackgroundTaskContext ctx,
+        string vmName,
+        string extractedPath,
+        string imageStorageId,
+        AppSettings settings)
+    {
+        ProxmoxTemplateRegistry? registry = ServiceProvider.GetService<ProxmoxTemplateRegistry>();
+        bool useDiskPassthrough = VmBackend is ProxmoxService
+            && settings.Proxmox?.ImportMethod == "DiskPassthrough";
+
+        if (useDiskPassthrough && registry != null)
+        {
+            ProxmoxService proxmox = (ProxmoxService)VmBackend;
+            int? templateVmId = registry.GetTemplateVmId(imageStorageId);
+
+            if (!templateVmId.HasValue)
+            {
+                ctx.ReportProgress(-1, "Creating template (first time, this takes a while)...");
+                string? diskPath = Directory.GetFiles(extractedPath, "*.qcow2", SearchOption.AllDirectories)
+                    .FirstOrDefault();
+                if (diskPath == null)
+                    throw new FileNotFoundException("No .qcow2 file found in: " + extractedPath);
+
+                int newTemplateId = await proxmox.Import.CreateTemplateAsync(
+                    diskPath,
+                    onStatus: status => ctx.ReportProgress(-1, status),
+                    cancellationToken: ctx.Token);
+                registry.Register(imageStorageId, newTemplateId, 0);
+                templateVmId = newTemplateId;
+            }
+
+            ctx.ReportProgress(-1, "Cloning from template...");
+            await proxmox.Import.CreateVmFromTemplateAsync(
+                templateVmId.Value, vmName,
+                settings.DefaultMemoryMb, settings.DefaultCpuCount,
+                onStatus: status => ctx.ReportProgress(-1, status),
+                cancellationToken: ctx.Token);
+        }
+        else
+        {
+            try
+            {
+                ctx.ReportProgress(0.0, "Importing disk image...");
+                await VmBackend.ImportVmAsync(
+                    extractedPath, settings.LocalVmPath,
+                    settings.DefaultMemoryMb, settings.DefaultCpuCount, vmName,
+                    onStatus: status => ctx.ReportProgress(-1, status),
+                    cancellationToken: ctx.Token);
+            }
+            catch (OrphanedVmException ex)
+            {
+                NotifyOrphanedVm(ex);
+                throw;
+            }
         }
     }
 
@@ -587,6 +636,26 @@ else
         {
             try
             {
+                string imageStorageId = Path.GetFileName(local.Path);
+                ProxmoxTemplateRegistry? registry = ServiceProvider.GetService<ProxmoxTemplateRegistry>();
+                if (registry != null)
+                {
+                    int? templateVmId = registry.GetTemplateVmId(imageStorageId);
+                    if (templateVmId.HasValue)
+                    {
+                        ProxmoxApiClient? api = ServiceProvider.GetService<ProxmoxApiClient>();
+                        if (api != null)
+                        {
+                            try
+                            {
+                                await api.DeleteAsync(api.VmPath(templateVmId.Value) + "?purge=1");
+                            }
+                            catch { }
+                        }
+                    }
+                    registry.Remove(imageStorageId);
+                }
+
                 if (Directory.Exists(local.Path))
                     Directory.Delete(local.Path, true);
                 LoadLocalImages();

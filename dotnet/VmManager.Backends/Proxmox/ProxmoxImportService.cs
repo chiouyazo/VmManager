@@ -247,6 +247,180 @@ public class ProxmoxImportService
         _logger.LogInformation("VM created: {Name} (VMID {VmId})", finalName, vmid);
     }
 
+    public async Task<int> CreateTemplateAsync(
+        string diskPath,
+        Action<string>? onStatus = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        int agentVmId = _api.AgentVmId;
+        if (agentVmId <= 0)
+            throw new InvalidOperationException(
+                "DiskPassthrough requires AgentVmId to be set in Proxmox settings."
+            );
+
+        onStatus?.Invoke("Allocating template VM ID...");
+        int templateVmId = await _api.GetNextVmIdAsync();
+        string templateName = "vmm-tpl-" + templateVmId;
+        _logger.LogInformation(
+            "Creating template VM {Name} (VMID {VmId})",
+            templateName,
+            templateVmId
+        );
+
+        onStatus?.Invoke("Creating template VM...");
+        string createRaw = await _api.PostRawAsync(
+            $"/api2/json/nodes/{_api.Node}/qemu",
+            new Dictionary<string, string>
+            {
+                ["vmid"] = templateVmId.ToString(),
+                ["name"] = templateName,
+                ["memory"] = "512",
+                ["pool"] = _api.PoolId,
+            }
+        );
+        string createUpid = JsonDocument
+            .Parse(createRaw)
+            .RootElement.GetProperty("data")
+            .GetString()!;
+        await _api.PollTaskAsync(createUpid);
+
+        await ImportViaDiskPassthroughAsync(diskPath, "raw", templateVmId, onStatus);
+
+        onStatus?.Invoke("Converting to template...");
+        string templateRaw = await _api.PostRawAsync($"{_api.VmPath(templateVmId)}/template", null);
+        string templateUpid = JsonDocument
+            .Parse(templateRaw)
+            .RootElement.GetProperty("data")
+            .GetString()!;
+        await _api.PollTaskAsync(templateUpid);
+
+        _logger.LogInformation(
+            "Template created: {Name} (VMID {VmId})",
+            templateName,
+            templateVmId
+        );
+        return templateVmId;
+    }
+
+    public async Task<int> CreateVmFromTemplateAsync(
+        int templateVmId,
+        string vmName,
+        int memoryMb,
+        int cpuCount,
+        bool skipDefaultNetwork = false,
+        Action<string>? onStatus = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        onStatus?.Invoke("Allocating VM ID...");
+        int vmid = await _api.GetNextVmIdAsync();
+        _logger.LogInformation(
+            "Cloning VM {Name} (VMID {VmId}) from template {TemplateVmId}",
+            vmName,
+            vmid,
+            templateVmId
+        );
+
+        onStatus?.Invoke("Cloning from template...");
+        string cloneRaw = await _api.PostRawAsync(
+            $"{_api.VmPath(templateVmId)}/clone",
+            new Dictionary<string, string>
+            {
+                ["newid"] = vmid.ToString(),
+                ["name"] = vmName,
+                ["pool"] = _api.PoolId,
+            }
+        );
+        string cloneUpid = JsonDocument
+            .Parse(cloneRaw)
+            .RootElement.GetProperty("data")
+            .GetString()!;
+        await _api.PollTaskAsync(cloneUpid);
+
+        onStatus?.Invoke("Detecting storage type...");
+        string diskFormat = DetectStorageFormat(
+            await _api.GetAsync<JsonElement>($"/api2/json/nodes/{_api.Node}/storage")
+        );
+
+        onStatus?.Invoke("Configuring VM hardware...");
+        string bridge = _api.DefaultBridge;
+        string networkParam = "e1000e,bridge=" + bridge;
+        if (_api.DefaultVlanTag > 0)
+            networkParam += ",tag=" + _api.DefaultVlanTag;
+
+        JsonElement clonedConfig = await _api.GetAsync<JsonElement>($"{_api.VmPath(vmid)}/config");
+        string? sata0Value = clonedConfig.TryGetProperty("sata0", out JsonElement sata0El)
+            ? sata0El.GetString()
+            : null;
+        if (sata0Value != null)
+        {
+            string diskVolId = sata0Value.Split(',')[0];
+            sata0Value = diskVolId + ",ssd=1,discard=on";
+        }
+
+        Dictionary<string, string> configParams = new Dictionary<string, string>
+        {
+            ["memory"] = memoryMb.ToString(),
+            ["cores"] = cpuCount.ToString(),
+            ["sockets"] = "1",
+            ["cpu"] = "host",
+            ["ostype"] = "win10",
+            ["machine"] = "q35",
+            ["bios"] = "ovmf",
+            ["agent"] = "1",
+            ["boot"] = "order=sata0",
+        };
+
+        if (sata0Value != null)
+            configParams["sata0"] = sata0Value;
+        if (!skipDefaultNetwork)
+            configParams["net0"] = networkParam;
+
+        await _api.PutAsync($"{_api.VmPath(vmid)}/config", configParams);
+
+        onStatus?.Invoke("Creating EFI disk...");
+        await _api.PutAsync(
+            $"{_api.VmPath(vmid)}/config",
+            new Dictionary<string, string>
+            {
+                ["efidisk0"] =
+                    $"{_api.StorageId}:1,efitype=4m,pre-enrolled-keys=0,format={diskFormat}",
+            }
+        );
+
+        onStatus?.Invoke("VM created from template");
+        _logger.LogInformation(
+            "VM cloned: {Name} (VMID {VmId}) from template {TemplateVmId}",
+            vmName,
+            vmid,
+            templateVmId
+        );
+        return vmid;
+    }
+
+    private string DetectStorageFormat(JsonElement storages)
+    {
+        if (storages.ValueKind == JsonValueKind.Array)
+        {
+            foreach (JsonElement s in storages.EnumerateArray())
+            {
+                string sid = s.TryGetProperty("storage", out JsonElement sidEl)
+                    ? sidEl.GetString() ?? ""
+                    : "";
+                if (!string.Equals(sid, _api.StorageId, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                string storageType = s.TryGetProperty("type", out JsonElement typeEl)
+                    ? typeEl.GetString() ?? ""
+                    : "";
+                if (storageType is "lvmthin" or "lvm" or "zfspool" or "rbd")
+                    return "raw";
+                break;
+            }
+        }
+        return "qcow2";
+    }
+
     private async Task ImportViaStandardAsync(
         string diskPath,
         string diskFormat,

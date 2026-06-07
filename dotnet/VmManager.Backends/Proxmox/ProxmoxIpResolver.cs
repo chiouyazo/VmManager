@@ -125,25 +125,20 @@ public class ProxmoxIpResolver : IVmIpResolver
             if (string.IsNullOrEmpty(mac))
                 return null;
 
-            string subnet = await GetNodeSubnetAsync();
+            string? cached = FindMacInArp(await _sh.RunBashAsync("ip neigh"), mac);
+            if (cached != null)
+                return cached;
+
+            string subnet = _api.VmSubnet;
             if (string.IsNullOrEmpty(subnet))
                 return null;
 
             await _sh.RunBashAsync(
-                $"for i in $(seq 1 254); do ping -c 1 -W 0.1 {subnet}.$i > /dev/null 2>&1 & done; wait"
+                $"for i in $(seq 1 254); do ping -c 1 -W 0.2 {subnet}.$i > /dev/null 2>&1 & done; wait"
             );
-            await Task.Delay(2000);
+            await Task.Delay(300);
 
-            string arpOutput = await _sh.RunBashAsync("ip neigh");
-            foreach (string line in arpOutput.Split('\n'))
-            {
-                if (line.Contains(mac, StringComparison.OrdinalIgnoreCase))
-                {
-                    string[] parts = line.Split(' ');
-                    if (parts.Length > 0 && FilterIpv4(parts[0]) != null)
-                        return parts[0];
-                }
-            }
+            return FindMacInArp(await _sh.RunBashAsync("ip neigh"), mac);
         }
         catch (Exception ex)
         {
@@ -152,29 +147,18 @@ public class ProxmoxIpResolver : IVmIpResolver
         return null;
     }
 
-    private async Task<string> GetNodeSubnetAsync()
+    private static string? FindMacInArp(string arpOutput, string mac)
     {
-        try
+        foreach (string line in arpOutput.Split('\n'))
         {
-            string bridge = _api.DefaultBridge;
-            string output = await _sh.RunBashAsync(
-                $"ip addr show {bridge} | grep 'inet ' | awk '{{print $2}}' | cut -d/ -f1 | head -1"
-            );
-            string ip = output.Trim();
-            if (string.IsNullOrEmpty(ip))
+            if (line.Contains(mac, StringComparison.OrdinalIgnoreCase))
             {
-                output = await _sh.RunBashAsync(
-                    "ip route | grep default | awk '{print $3}' | head -1"
-                );
-                ip = output.Trim();
+                string[] parts = line.Split(' ');
+                if (parts.Length > 0 && FilterIpv4(parts[0]) != null)
+                    return parts[0];
             }
-            int lastDot = ip.LastIndexOf('.');
-            return lastDot > 0 ? ip[..lastDot] : "";
         }
-        catch
-        {
-            return "";
-        }
+        return null;
     }
 
     private static string? FilterIpv4(string address)
