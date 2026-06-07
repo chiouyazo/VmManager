@@ -278,7 +278,15 @@ public sealed class RdpCredSspConnectionHandler
             if (authResult.SniHostname.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
             {
                 string vmName = authResult.SniHostname[..^suffix.Length];
-                return (vmName, authResult.Username);
+                string resolvedUsername = authResult.Username;
+                if (
+                    _userService.GetByUsername(resolvedUsername) == null
+                    && !string.IsNullOrEmpty(authResult.Domain)
+                )
+                {
+                    resolvedUsername = authResult.Domain + "\\" + authResult.Username;
+                }
+                return (vmName, resolvedUsername);
             }
         }
 

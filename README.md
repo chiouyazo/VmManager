@@ -22,16 +22,21 @@ VmManager is designed for teams that need on-demand Windows VMs with minimal inf
 ### VM Management
 - **Multi-backend support** - Hyper-V (Windows), KVM/libvirt (Linux), Proxmox VE (API-based)
 - **Full VM lifecycle** - Create, start, stop, rename, reset, delete
+- **Template-based instant creation** - First import creates a Proxmox template; subsequent VMs are linked clones (seconds instead of minutes)
+- **Disk Passthrough import** - For agents running inside a VM: hot-plugs disks via Proxmox API, no CLI access needed
 - **Snapshot management** - Create, restore, delete, clone from snapshots
 - **Snapshot sharing** - Push snapshots to OCI registries or Nexus repositories for team sharing
 - **Image catalog** - Browse and import VM images from OCI, Nexus, or local sources
+- **VLAN support** - Configure bridge, VLAN tag, and VM subnet for network isolation
 - **Locale configuration** - Apply language, keyboard layout, timezone on VM creation via WinRM or PowerShell Direct
 - **Post-creation scripts** - Run custom scripts after VM creation or startup
 - **VM name validation** - Cross-platform safe naming (letters, numbers, hyphens, dots, max 63 chars)
 
 ### RDP CredSSP Proxy
-- **Transparent RDP access** - Users connect with their VmManager credentials, proxy authenticates to VMs with stored Administrator password
+- **Transparent RDP access** - Users connect with their VmManager credentials, proxy authenticates to VMs
+- **Per-user VM credentials** - 4-level hierarchy: per-user-per-VM > per-user global > per-VM default > global default
 - **Dual-mode routing** - DNS wildcard (e.g. `myVm.lab.domain`) or username-prefix (`vmName:user@email`)
+- **Username or email login** - Users can log in with email or optional short username (e.g. AD account name)
 - **No tokens or .rdp files** - Standard mstsc login dialog, credentials validated against VmManager user database
 - **Session tracking** - Active RDP sessions visible in the web UI and API
 - **Permission-based access** - Users can only connect to VMs they own or have been shared
@@ -59,7 +64,7 @@ VmManager is designed for teams that need on-demand Windows VMs with minimal inf
 - **Brute force detection** - Failed RDP login tracking with configurable thresholds
 
 ### User Management
-- **Email-based accounts** - Users identified by email address
+- **Email + username accounts** - Users identified by email, with optional short username for login
 - **PBKDF2-SHA256 passwords** - 100K iterations, salted
 - **23 granular permissions** - VM, snapshot, catalog, settings, RDP, monitoring, user management
 - **VM sharing** - Share VMs with specific users, grant per-VM permissions

@@ -40,18 +40,19 @@ public class UserService
         lock (FileLock)
         {
             List<UserAccount> users = LoadUsers();
-            return users.FirstOrDefault(u =>
-                string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase)
-                || (
-                    !string.IsNullOrEmpty(u.DisplayUsername)
-                    && string.Equals(
-                        u.DisplayUsername,
-                        username,
-                        StringComparison.OrdinalIgnoreCase
-                    )
-                )
-            );
+            return FindUser(users, username);
         }
+    }
+
+    private static UserAccount? FindUser(List<UserAccount> users, string identifier)
+    {
+        return users.FirstOrDefault(u =>
+            string.Equals(u.Username, identifier, StringComparison.OrdinalIgnoreCase)
+            || (
+                !string.IsNullOrEmpty(u.DisplayUsername)
+                && string.Equals(u.DisplayUsername, identifier, StringComparison.OrdinalIgnoreCase)
+            )
+        );
     }
 
     public UserAccount CreateUser(
@@ -75,6 +76,7 @@ public class UserService
             UserAccount account = new UserAccount
             {
                 Username = username,
+                Email = EmailValidator.IsValid(username) ? username : "",
                 PasswordHash = HashPassword(password, salt),
                 Salt = salt,
                 IsAdmin = isAdmin,
@@ -159,9 +161,7 @@ public class UserService
         lock (FileLock)
         {
             List<UserAccount> users = LoadUsers();
-            UserAccount? user = users.FirstOrDefault(u =>
-                string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase)
-            );
+            UserAccount? user = FindUser(users, username);
             if (user == null)
                 throw new InvalidOperationException("User not found: " + username);
             if (!string.IsNullOrWhiteSpace(email))
@@ -176,9 +176,7 @@ public class UserService
         lock (FileLock)
         {
             List<UserAccount> users = LoadUsers();
-            UserAccount? user = users.FirstOrDefault(u =>
-                string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase)
-            );
+            UserAccount? user = FindUser(users, username);
             if (user == null)
                 throw new InvalidOperationException("User not found: " + username);
             if (!string.IsNullOrWhiteSpace(displayUsername))
@@ -214,9 +212,7 @@ public class UserService
         lock (FileLock)
         {
             List<UserAccount> users = LoadUsers();
-            UserAccount? user = users.FirstOrDefault(u =>
-                string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase)
-            );
+            UserAccount? user = FindUser(users, username);
             if (user == null)
                 throw new InvalidOperationException("User not found: " + username);
             user.VmUsername = vmUsername;
@@ -245,19 +241,12 @@ public class UserService
         lock (FileLock)
         {
             List<UserAccount> users = LoadUsers();
-            UserAccount? user = users.FirstOrDefault(u =>
-                string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase)
-                || (
-                    !string.IsNullOrEmpty(u.DisplayUsername)
-                    && string.Equals(
-                        u.DisplayUsername,
-                        username,
-                        StringComparison.OrdinalIgnoreCase
-                    )
-                )
-            );
+            UserAccount? user = FindUser(users, username);
             if (user == null)
+            {
+                _logger.LogWarning("Login failed: user not found for [{Username}]", username);
                 return false;
+            }
             string hash = HashPassword(password, user.Salt);
             bool valid = CryptographicOperations.FixedTimeEquals(
                 Encoding.UTF8.GetBytes(hash),
@@ -305,9 +294,7 @@ public class UserService
         lock (FileLock)
         {
             List<UserAccount> users = LoadUsers();
-            UserAccount? user = users.FirstOrDefault(u =>
-                string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase)
-            );
+            UserAccount? user = FindUser(users, username);
             if (user == null)
                 throw new InvalidOperationException("User not found: " + username);
             user.Salt = GenerateSalt();
@@ -324,21 +311,14 @@ public class UserService
         lock (FileLock)
         {
             List<UserAccount> users = LoadUsers();
-            UserAccount? user = users.FirstOrDefault(u =>
-                string.Equals(u.Username, username, StringComparison.OrdinalIgnoreCase)
-                || (
-                    !string.IsNullOrEmpty(u.DisplayUsername)
-                    && string.Equals(
-                        u.DisplayUsername,
-                        username,
-                        StringComparison.OrdinalIgnoreCase
-                    )
-                )
-            );
-            if (user == null || string.IsNullOrEmpty(user.NtHash))
+            UserAccount? user = FindUser(users, username);
+            if (user == null)
                 return null;
 
-            return Convert.FromHexString(user.NtHash);
+            string hash = user.NtHash;
+            if (string.IsNullOrEmpty(hash))
+                return null;
+            return Convert.FromHexString(hash);
         }
     }
 

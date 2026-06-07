@@ -865,48 +865,40 @@ public class ProxmoxImportService
         onStatus?.Invoke("Waiting for WinRM...");
         await Shared.WinRmLocaleHelper.WaitForWinRmAsync(ip, TimeSpan.FromMinutes(3));
 
-        string combinedScript = Shared.WinRmLocaleHelper.BuildCombinedPreRebootScript(
-            locale,
-            keyboardLayout,
-            inputMethodTip,
-            timezone,
-            vmName,
-            renameComputer,
-            postCreationScript
-        );
-
         onStatus?.Invoke("Applying configuration...");
-        _logger.LogInformation("Running combined pre-reboot script on {VmName}", vmName);
+        _logger.LogInformation("Applying locale/config on {VmName} via PowerShell", vmName);
 
-        bool hasPostCreationScript = !string.IsNullOrWhiteSpace(postCreationScript);
-        if (hasPostCreationScript)
+        List<string> psCommands = new List<string>();
+        if (needsLocale)
         {
-            string regOnlyScript = Shared.WinRmLocaleHelper.BuildCombinedPreRebootScript(
-                locale,
-                keyboardLayout,
-                inputMethodTip,
-                timezone,
-                vmName,
-                renameComputer,
-                postCreationScript: null
-            );
-            if (!string.IsNullOrWhiteSpace(regOnlyScript))
-                await Shared.WinRmLocaleHelper.RunWinRmCmdAsync(
-                    ip,
-                    username,
-                    password,
-                    regOnlyScript
-                );
+            psCommands.Add($"Set-WinUserLanguageList -LanguageList {locale} -Force");
+            if (!string.IsNullOrWhiteSpace(timezone))
+                psCommands.Add($"Set-TimeZone -Id \"{timezone}\"");
+        }
+        if (renameComputer && !string.IsNullOrWhiteSpace(vmName))
+            psCommands.Add($"Rename-Computer -NewName \"{vmName}\" -Force");
+
+        if (psCommands.Count > 0)
+        {
+            string psScript = string.Join("\n", psCommands);
+            _logger.LogDebug("PowerShell script: {Script}", psScript);
             await Shared.WinRmLocaleHelper.RunWinRmPowerShellAsync(
                 ip,
                 username,
                 password,
-                postCreationScript!
+                psScript
             );
         }
-        else
+
+        if (!string.IsNullOrWhiteSpace(postCreationScript))
         {
-            await Shared.WinRmLocaleHelper.RunWinRmCmdAsync(ip, username, password, combinedScript);
+            _logger.LogInformation("Running post-creation script on {VmName}", vmName);
+            await Shared.WinRmLocaleHelper.RunWinRmPowerShellAsync(
+                ip,
+                username,
+                password,
+                postCreationScript
+            );
         }
 
         onStatus?.Invoke("Shutting down VM...");

@@ -181,7 +181,9 @@ Create `/root/.config/VmManager/settings.json`:
     "MaxPoolCpuCores": 0,
     "VmIdRangeStart": 400,
     "VmIdRangeEnd": 499,
-    "DefaultBridge": "vmbr1"
+    "DefaultBridge": "vmbr1",
+    "DefaultVlanTag": 0,
+    "VmSubnet": "192.168.10"
   },
   "DefaultVmUsername": "Administrator",
   "DefaultVmPassword": "Admin123!",
@@ -212,9 +214,11 @@ Create `/root/.config/VmManager/settings.json`:
 | `VmIdRangeStart` | First VMID in the allowed range (0 = use Proxmox default) |
 | `VmIdRangeEnd` | Last VMID in the allowed range |
 | `DefaultBridge` | Network bridge for VM NICs (default: `vmbr0`) |
+| `DefaultVlanTag` | VLAN tag for VM NICs (0 = no VLAN) |
+| `VmSubnet` | VM subnet prefix for IP resolution (e.g. `192.168.10`) |
 | `ImportMethod` | `Standard` (agent on Proxmox host) or `DiskPassthrough` (agent in a VM) |
 | `AgentVmId` | VMID of the VM running the agent (required for DiskPassthrough) |
-
+| `DefaultVmUsername` | Windows login for VMs (default: `Administrator`). Users can override per-VM or per-user. |
 | `DefaultVmPassword` | Password for VM guest OS (used by CredSSP proxy) |
 | `RdpDomainSuffix` | DNS wildcard domain for RDP (e.g. `vms.company.com`), leave empty for username-prefix mode |
 | `Monitoring.Enabled` | Enable monitoring checks and alerts |

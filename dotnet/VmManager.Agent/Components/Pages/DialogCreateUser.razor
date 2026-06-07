@@ -12,7 +12,7 @@
         }
         <MudTextField @bind-Value="_email" Label="Email" Immediate="true" Class="mb-2" />
         <MudTextField @bind-Value="_displayUsername" Label="Username" Immediate="true" Class="mb-2"
-                      HelperText="Optional short login name (e.g. AD account name)" />
+                      HelperText="Optional short login name" />
         <MudTextField @bind-Value="_password" Label="Password" InputType="InputType.Password"
                       Immediate="true" Class="mb-2" Disabled="_sendInvite"
                       HelperText="@(_sendInvite ? "Password will be auto-generated" : "")" />

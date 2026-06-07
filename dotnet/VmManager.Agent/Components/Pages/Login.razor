@@ -106,7 +106,13 @@ else
                 && !string.IsNullOrEmpty(storedPass.Value))
             {
                 AuthState.RestoreSession(storedUser.Value, storedPass.Value);
-                if (AuthState.MustChangePassword)
+                bool isLoggedIn = AuthState.CurrentUsername != "";
+                if (!isLoggedIn)
+                {
+                    await Storage.DeleteAsync("auth_user");
+                    await Storage.DeleteAsync("auth_pass");
+                }
+                else if (AuthState.MustChangePassword)
                 {
                     _username = storedUser.Value;
                     _password = storedPass.Value;
@@ -130,13 +136,6 @@ else
 
         if (AuthState.TryLogin(_username, _password))
         {
-            try
-            {
-                await Storage.SetAsync("auth_user", _username);
-                await Storage.SetAsync("auth_pass", _password);
-            }
-            catch { }
-
             if (AuthState.MustChangePassword)
             {
                 _mustChangePassword = true;
@@ -144,6 +143,12 @@ else
             }
             else
             {
+                try
+                {
+                    await Storage.SetAsync("auth_user", _username);
+                    await Storage.SetAsync("auth_pass", _password);
+                }
+                catch { }
                 Navigation.NavigateTo("/vms");
             }
         }

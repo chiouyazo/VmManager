@@ -15,8 +15,7 @@
             </MudCardHeader>
             <MudCardContent>
                 <MudTextField @bind-Value="_email" Label="Email" Class="mb-2" />
-                <MudTextField @bind-Value="_displayUsername" Label="Username"
-                              HelperText="Optional short login name (e.g. AD account name)" Class="mb-2" />
+                <MudTextField Value="@_displayUsername" Label="Username" ReadOnly="true" Class="mb-2" />
             </MudCardContent>
             <MudCardActions>
                 <MudSpacer />

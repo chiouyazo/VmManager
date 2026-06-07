@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using MudBlazor.Services;
 using Serilog;
 using VmManager.Agent.Auth;
@@ -129,6 +130,13 @@ public static class AgentHost
 
         rdpHandler = app.Services.GetRequiredService<RdpCredSspConnectionHandler>();
 
+        app.UseForwardedHeaders(
+            new ForwardedHeadersOptions
+            {
+                ForwardedHeaders =
+                    ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+            }
+        );
         app.UseCors();
         app.UseAuthentication();
         app.UseMiddleware<Auth.MustChangePasswordMiddleware>();
