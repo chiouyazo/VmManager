@@ -435,6 +435,13 @@ public class CatalogController : ControllerBase
                         cancellationToken: ctx.Token
                     );
                 }
+                catch (OrphanedVmException ex)
+                {
+                    if (networkMappings != null)
+                        _networkTrackingService.DecrementReferences(request.Name);
+                    NotifyOrphanedVm(ex);
+                    throw;
+                }
                 catch
                 {
                     if (networkMappings != null)
@@ -541,6 +548,41 @@ public class CatalogController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to send VM created email for {VmName}", vmName);
+        }
+    }
+
+    private void NotifyOrphanedVm(OrphanedVmException ex)
+    {
+        try
+        {
+            if (!_emailService.IsConfigured)
+                return;
+            AppSettings settings = _settingsService.Load();
+            string? notifyEmail = settings.Monitoring?.DefaultNotificationEmail;
+            if (string.IsNullOrWhiteSpace(notifyEmail))
+                return;
+            _ = _emailService.SendAsync(
+                notifyEmail,
+                "[VmManager] Orphaned VM requires manual cleanup",
+                "<h2>Orphaned VM</h2>"
+                    + "<p>VM creation failed and the VM could not be automatically deleted from Proxmox.</p>"
+                    + "<p><b>VM Name:</b> "
+                    + ex.VmName
+                    + "<br/>"
+                    + "<b>VMID:</b> "
+                    + ex.VmId
+                    + "<br/>"
+                    + "<b>Error:</b> "
+                    + ex.Message
+                    + "</p>"
+                    + "<p>Please delete VMID "
+                    + ex.VmId
+                    + " manually in the Proxmox web UI.</p>"
+            );
+        }
+        catch (Exception emailEx)
+        {
+            _logger.LogWarning(emailEx, "Failed to send orphaned VM notification");
         }
     }
 

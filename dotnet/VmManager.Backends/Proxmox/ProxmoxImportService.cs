@@ -205,10 +205,43 @@ public class ProxmoxImportService
             .GetString()!;
         await _api.PollTaskAsync(createUpid);
 
-        if (_api.ImportMethod == "DiskPassthrough")
-            await ImportViaDiskPassthroughAsync(diskPath!, diskFormat, vmid, onStatus);
-        else
-            await ImportViaStandardAsync(diskPath!, diskFormat, vmid, onStatus);
+        try
+        {
+            if (_api.ImportMethod == "DiskPassthrough")
+                await ImportViaDiskPassthroughAsync(diskPath!, diskFormat, vmid, onStatus);
+            else
+                await ImportViaStandardAsync(diskPath!, diskFormat, vmid, onStatus);
+        }
+        catch (Exception importEx)
+        {
+            _logger.LogError(
+                importEx,
+                "Import failed for VM {Name} (VMID {VmId}), cleaning up",
+                finalName,
+                vmid
+            );
+            onStatus?.Invoke("Import failed, cleaning up...");
+            try
+            {
+                await _api.DeleteAsync($"{_api.VmPath(vmid)}?purge=1");
+                _logger.LogInformation("Cleaned up failed VM {VmId}", vmid);
+            }
+            catch (Exception cleanupEx)
+            {
+                _logger.LogError(cleanupEx, "Failed to delete orphaned VM {VmId} in Proxmox", vmid);
+                throw new OrphanedVmException(
+                    finalName,
+                    vmid,
+                    "VM import failed and the orphaned VM could not be deleted from Proxmox. "
+                        + "VMID "
+                        + vmid
+                        + " must be removed manually. Import error: "
+                        + importEx.Message,
+                    importEx
+                );
+            }
+            throw;
+        }
 
         onStatus?.Invoke("VM imported successfully");
         _logger.LogInformation("VM created: {Name} (VMID {VmId})", finalName, vmid);
@@ -783,7 +816,7 @@ public class ProxmoxImportService
     {
         ProcessStartInfo psi = new ProcessStartInfo("qemu-img")
         {
-            Arguments = $"convert -p -W -O raw {Q(diskPath)} /dev/{targetDevice}",
+            Arguments = $"convert -p -W -O raw \"{diskPath}\" /dev/{targetDevice}",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

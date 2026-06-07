@@ -113,7 +113,7 @@ public class ProxmoxVmService
             await _api.PollTaskAsync(stopUpid, TimeSpan.FromSeconds(15));
         }
 
-        await _api.DeleteAsync($"{_api.VmPath(vmid)}?destroy-unreferenced-disks=1&purge=1");
+        await _api.DeleteAsync($"{_api.VmPath(vmid)}?purge=1");
     }
 
     public async Task RenameVmAsync(string currentName, string newName)

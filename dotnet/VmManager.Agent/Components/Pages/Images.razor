@@ -15,6 +15,7 @@
 @inject VmOwnershipService OwnershipService
 @inject IVmTrackingService TrackingService
 @inject QuotaService QuotaService
+@inject EmailService EmailService
 
 <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
     <MudText Typo="Typo.h5">Images</MudText>
@@ -429,12 +430,20 @@ else
 
             TaskManager.StartTask("Creating VM: " + vmName, username, async ctx =>
             {
-                ctx.ReportProgress(0.0, "Importing disk image...");
-                await VmBackend.ImportVmAsync(
-                    extractedPath, settings.LocalVmPath,
-                    settings.DefaultMemoryMb, settings.DefaultCpuCount, vmName,
-                    onStatus: status => ctx.ReportProgress(-1, status),
-                    cancellationToken: ctx.Token);
+                try
+                {
+                    ctx.ReportProgress(0.0, "Importing disk image...");
+                    await VmBackend.ImportVmAsync(
+                        extractedPath, settings.LocalVmPath,
+                        settings.DefaultMemoryMb, settings.DefaultCpuCount, vmName,
+                        onStatus: status => ctx.ReportProgress(-1, status),
+                        cancellationToken: ctx.Token);
+                }
+                catch (OrphanedVmException ex)
+                {
+                    NotifyOrphanedVm(ex);
+                    throw;
+                }
 
                 TrackingService.TrackVm(vmName, origin);
                 OwnershipService.SetOwner(vmName, username);
@@ -496,15 +505,23 @@ else
 
             TaskManager.StartTask("Creating VM: " + vmName, username, async ctx =>
             {
-                ctx.ReportProgress(0.0, "Importing disk image...");
-                await VmBackend.ImportVmAsync(
-                    local.Path,
-                    settings.LocalVmPath,
-                    settings.DefaultMemoryMb,
-                    settings.DefaultCpuCount,
-                    vmName,
-                    onStatus: status => ctx.ReportProgress(-1, status),
-                    cancellationToken: ctx.Token);
+                try
+                {
+                    ctx.ReportProgress(0.0, "Importing disk image...");
+                    await VmBackend.ImportVmAsync(
+                        local.Path,
+                        settings.LocalVmPath,
+                        settings.DefaultMemoryMb,
+                        settings.DefaultCpuCount,
+                        vmName,
+                        onStatus: status => ctx.ReportProgress(-1, status),
+                        cancellationToken: ctx.Token);
+                }
+                catch (OrphanedVmException ex)
+                {
+                    NotifyOrphanedVm(ex);
+                    throw;
+                }
 
                 TrackingService.TrackVm(vmName, origin);
                 OwnershipService.SetOwner(vmName, username);
@@ -535,6 +552,25 @@ else
             });
             Snackbar.Add("Creating VM '" + vmName + "' in background...", Severity.Info);
         }
+    }
+
+    private void NotifyOrphanedVm(OrphanedVmException ex)
+    {
+        if (!EmailService.IsConfigured)
+            return;
+        AppSettings settings = SettingsService.Load();
+        string? notifyEmail = settings.Monitoring?.DefaultNotificationEmail;
+        if (string.IsNullOrWhiteSpace(notifyEmail))
+            return;
+        _ = EmailService.SendAsync(
+            notifyEmail,
+            "[VmManager] Orphaned VM requires manual cleanup",
+            "<h2>Orphaned VM</h2>"
+            + "<p>VM creation failed and the VM could not be automatically deleted from Proxmox.</p>"
+            + "<p><b>VM Name:</b> " + ex.VmName + "<br/>"
+            + "<b>VMID:</b> " + ex.VmId + "<br/>"
+            + "<b>Error:</b> " + ex.Message + "</p>"
+            + "<p>Please delete VMID " + ex.VmId + " manually in the Proxmox web UI.</p>");
     }
 
     private async Task DeleteLocalImage(LocalImage local)
