@@ -65,6 +65,7 @@ public sealed class VmCredSspHandler
                 Credential = new NetworkCredential(vmUser, vmPassword, vmDomain),
                 TargetName = "TERMSRV/" + vmIp,
                 RequiredProtectionLevel = ProtectionLevel.EncryptAndSign,
+                Package = "NTLM",
             }
         );
 
@@ -78,21 +79,21 @@ public sealed class VmCredSspHandler
 
         await vmSsl.WriteAsync(CredSspMessageBuilder.WrapNtlmToken(token1), cancellationToken);
 
-        // Step 2: Read SPNEGO CHALLENGE
+        // Step 2: Read NTLM CHALLENGE
         byte[] challengeResponse = await X224Handler.ReadAvailableAsync(vmSsl, cancellationToken);
-        byte[] spnegoChallenge = CredSspMessageParser.ExtractNegoToken(challengeResponse);
+        byte[] ntlmChallenge = CredSspMessageParser.ExtractNegoToken(challengeResponse);
 
         // Step 3: Process challenge, get auth token
-        byte[]? spnegoToken = nego.GetOutgoingBlob(
-            spnegoChallenge,
+        byte[]? authToken = nego.GetOutgoingBlob(
+            ntlmChallenge,
             out NegotiateAuthenticationStatusCode status3
         );
-        if (spnegoToken == null)
-            throw new InvalidOperationException("SPNEGO AUTHENTICATE failed: " + status3);
+        if (authToken == null)
+            throw new InvalidOperationException("NTLM AUTHENTICATE failed: " + status3);
 
         _logger.LogDebug(
-            "SPNEGO auth token: {Length} bytes, status={Status}",
-            spnegoToken.Length,
+            "NTLM auth token: {Length} bytes, status={Status}",
+            authToken.Length,
             status3
         );
 
@@ -101,7 +102,7 @@ public sealed class VmCredSspHandler
         {
             // Send the auth token without pubKeyAuth first
             await vmSsl.WriteAsync(
-                CredSspMessageBuilder.WrapNtlmToken(spnegoToken),
+                CredSspMessageBuilder.WrapNtlmToken(authToken),
                 cancellationToken
             );
 
@@ -110,15 +111,15 @@ public sealed class VmCredSspHandler
             {
                 byte[] legResponse = await X224Handler.ReadAvailableAsync(vmSsl, cancellationToken);
                 byte[] legToken = CredSspMessageParser.ExtractNegoToken(legResponse);
-                spnegoToken = nego.GetOutgoingBlob(legToken, out status3);
+                authToken = nego.GetOutgoingBlob(legToken, out status3);
                 _logger.LogDebug("SPNEGO additional leg: status={Status}", status3);
 
                 if (
-                    spnegoToken != null
+                    authToken != null
                     && status3 == NegotiateAuthenticationStatusCode.ContinueNeeded
                 )
                     await vmSsl.WriteAsync(
-                        CredSspMessageBuilder.WrapNtlmToken(spnegoToken),
+                        CredSspMessageBuilder.WrapNtlmToken(authToken),
                         cancellationToken
                     );
             }
@@ -150,12 +151,12 @@ public sealed class VmCredSspHandler
 
         byte[] sealedPubKeyAuth = pubKeyBuf.WrittenSpan.ToArray();
 
-        // Step 5: Build TSRequest with pubKeyAuth + nonce (and final spnegoToken if present)
+        // Step 5: Build TSRequest with pubKeyAuth + nonce (and final authToken if present)
         byte[] tsRequest;
-        if (spnegoToken != null && spnegoToken.Length > 0)
+        if (authToken != null && authToken.Length > 0)
         {
             tsRequest = CredSspMessageBuilder.BuildAuthenticateRequest(
-                spnegoToken,
+                authToken,
                 sealedPubKeyAuth,
                 vmNonce
             );
