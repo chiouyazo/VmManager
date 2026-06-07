@@ -14,4 +14,6 @@ public class ProxmoxSettings
     public int VmIdRangeStart { get; set; }
     public int VmIdRangeEnd { get; set; }
     public string DefaultBridge { get; set; } = "vmbr0";
+    public string ImportMethod { get; set; } = "Standard";
+    public int AgentVmId { get; set; }
 }

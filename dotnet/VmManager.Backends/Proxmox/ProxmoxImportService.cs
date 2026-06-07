@@ -201,20 +201,26 @@ public class ProxmoxImportService
             .GetString()!;
         await _api.PollTaskAsync(createUpid);
 
-        onStatus?.Invoke("Uploading disk image to Proxmox storage...");
-        string uploadFilename = $"vm-{vmid}-disk-0.{diskFormat}";
-        string uploadPath = $"/api2/json/nodes/{_api.Node}/storage/{_api.StorageId}/upload";
-        string uploadRaw = await _api.UploadFileAsync(
-            uploadPath,
-            diskPath!,
-            "images",
-            uploadFilename
+        if (_api.ImportMethod == "DiskPassthrough")
+            await ImportViaDiskPassthroughAsync(diskPath!, diskFormat, vmid, onStatus);
+        else
+            await ImportViaStandardAsync(diskPath!, diskFormat, vmid, onStatus);
+
+        onStatus?.Invoke("VM imported successfully");
+        _logger.LogInformation("VM created: {Name} (VMID {VmId})", finalName, vmid);
+    }
+
+    private async Task ImportViaStandardAsync(
+        string diskPath,
+        string diskFormat,
+        int vmid,
+        Action<string>? onStatus
+    )
+    {
+        onStatus?.Invoke("Importing disk image...");
+        await _sh.RunBashAsync(
+            $"qm importdisk {vmid} {Q(diskPath)} {_api.StorageId} --format {diskFormat}"
         );
-        string uploadUpid = JsonDocument
-            .Parse(uploadRaw)
-            .RootElement.GetProperty("data")
-            .GetString()!;
-        await _api.PollTaskAsync(uploadUpid);
 
         onStatus?.Invoke("Configuring VM...");
         JsonElement vmConfig = await _api.GetAsync<JsonElement>($"{_api.VmPath(vmid)}/config");
@@ -229,13 +235,8 @@ public class ProxmoxImportService
             }
         }
         if (diskVolId == null)
-        {
-            diskVolId = $"{_api.StorageId}:{uploadFilename}";
-            _logger.LogWarning(
-                "No unused disk in VM config, using constructed volume ID: {VolId}",
-                diskVolId
-            );
-        }
+            throw new InvalidOperationException("No unused disk found after import.");
+
         _logger.LogInformation("Attaching disk volume: {VolId}", diskVolId);
         await _api.PutAsync(
             $"{_api.VmPath(vmid)}/config",
@@ -245,9 +246,200 @@ public class ProxmoxImportService
             $"{_api.VmPath(vmid)}/config",
             new Dictionary<string, string> { ["boot"] = "order=sata0" }
         );
+    }
 
-        onStatus?.Invoke("VM imported successfully");
-        _logger.LogInformation("VM created: {Name} (VMID {VmId})", finalName, vmid);
+    private async Task ImportViaDiskPassthroughAsync(
+        string diskPath,
+        string diskFormat,
+        int targetVmId,
+        Action<string>? onStatus
+    )
+    {
+        int agentVmId = _api.AgentVmId;
+        if (agentVmId <= 0)
+            throw new InvalidOperationException(
+                "DiskPassthrough requires AgentVmId to be set in Proxmox settings."
+            );
+
+        onStatus?.Invoke("Reading disk image size...");
+        string infoJson = await _sh.RunBashAsync($"qemu-img info --output=json {Q(diskPath)}");
+        long virtualSizeBytes = JsonDocument
+            .Parse(infoJson)
+            .RootElement.GetProperty("virtual-size")
+            .GetInt64();
+        int sizeGb = (int)Math.Ceiling(virtualSizeBytes / (1024.0 * 1024.0 * 1024.0));
+        _logger.LogInformation("Disk virtual size: {SizeGb} GB", sizeGb);
+
+        onStatus?.Invoke("Finding free SCSI slot on agent VM...");
+        JsonElement agentConfig = await _api.GetAsync<JsonElement>(
+            $"{_api.VmPath(agentVmId)}/config"
+        );
+        string scsiSlot = "";
+        for (int i = 1; i <= 13; i++)
+        {
+            string candidate = "scsi" + i;
+            if (!agentConfig.TryGetProperty(candidate, out _))
+            {
+                scsiSlot = candidate;
+                break;
+            }
+        }
+        if (string.IsNullOrEmpty(scsiSlot))
+            throw new InvalidOperationException("No free SCSI slot on agent VM.");
+
+        onStatus?.Invoke("Snapshotting block devices...");
+        string devicesBefore = await _sh.RunBashAsync("lsblk -dno NAME");
+        HashSet<string> beforeSet = new HashSet<string>(
+            devicesBefore.Split(
+                '\n',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+            )
+        );
+
+        string volumeId = "";
+        try
+        {
+            onStatus?.Invoke("Creating temporary disk on agent VM...");
+            await _api.PutAsync(
+                $"{_api.VmPath(agentVmId)}/config",
+                new Dictionary<string, string> { [scsiSlot] = $"{_api.StorageId}:{sizeGb}" }
+            );
+
+            JsonElement agentConfigAfterCreate = await _api.GetAsync<JsonElement>(
+                $"{_api.VmPath(agentVmId)}/config"
+            );
+            string scsiValue = agentConfigAfterCreate.GetProperty(scsiSlot).GetString()!;
+            volumeId = scsiValue.Split(',')[0];
+            _logger.LogInformation("Created temp disk: {VolumeId}", volumeId);
+
+            onStatus?.Invoke("Waiting for disk to appear...");
+            await _sh.RunBashAsync(
+                "for host in /sys/class/scsi_host/host*; do echo \"- - -\" > \"$host/scan\"; done"
+            );
+
+            string newDevice = "";
+            for (int attempt = 0; attempt < 30; attempt++)
+            {
+                await Task.Delay(1000);
+                string devicesNow = await _sh.RunBashAsync("lsblk -dno NAME");
+                foreach (
+                    string dev in devicesNow.Split(
+                        '\n',
+                        StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+                    )
+                )
+                {
+                    if (!beforeSet.Contains(dev))
+                    {
+                        newDevice = dev;
+                        break;
+                    }
+                }
+                if (!string.IsNullOrEmpty(newDevice))
+                    break;
+            }
+
+            if (string.IsNullOrEmpty(newDevice))
+                throw new TimeoutException("Temporary disk did not appear within 30 seconds.");
+
+            _logger.LogInformation("New device detected: /dev/{Device}", newDevice);
+
+            onStatus?.Invoke("Writing disk image to temporary disk...");
+            await _sh.RunBashAsync($"qemu-img convert -O raw {Q(diskPath)} /dev/{newDevice}");
+
+            onStatus?.Invoke("Detaching temporary disk from agent VM...");
+            await _api.PutAsync(
+                $"{_api.VmPath(agentVmId)}/config",
+                new Dictionary<string, string> { ["delete"] = scsiSlot }
+            );
+
+            onStatus?.Invoke("Moving disk to target VM...");
+            JsonElement agentConfigAfterDetach = await _api.GetAsync<JsonElement>(
+                $"{_api.VmPath(agentVmId)}/config"
+            );
+            string unusedSlot = "";
+            for (int i = 0; i < 16; i++)
+            {
+                string key = "unused" + i;
+                if (
+                    agentConfigAfterDetach.TryGetProperty(key, out JsonElement unusedEl)
+                    && unusedEl.GetString() == volumeId
+                )
+                {
+                    unusedSlot = key;
+                    break;
+                }
+            }
+            if (string.IsNullOrEmpty(unusedSlot))
+                throw new InvalidOperationException(
+                    "Detached disk not found as unused on agent VM. Volume: " + volumeId
+                );
+
+            string moveRaw = await _api.PostRawAsync(
+                $"{_api.VmPath(agentVmId)}/move_disk",
+                new Dictionary<string, string>
+                {
+                    ["disk"] = unusedSlot,
+                    ["target-vmid"] = targetVmId.ToString(),
+                    ["target-disk"] = "sata0",
+                }
+            );
+            string moveUpid = JsonDocument
+                .Parse(moveRaw)
+                .RootElement.GetProperty("data")
+                .GetString()!;
+            await _api.PollTaskAsync(moveUpid);
+
+            onStatus?.Invoke("Setting boot order...");
+            await _api.PutAsync(
+                $"{_api.VmPath(targetVmId)}/config",
+                new Dictionary<string, string> { ["boot"] = "order=sata0" }
+            );
+        }
+        catch
+        {
+            _logger.LogWarning("DiskPassthrough failed, cleaning up...");
+            try
+            {
+                JsonElement cleanupConfig = await _api.GetAsync<JsonElement>(
+                    $"{_api.VmPath(agentVmId)}/config"
+                );
+                if (cleanupConfig.TryGetProperty(scsiSlot, out _))
+                {
+                    await _api.PutAsync(
+                        $"{_api.VmPath(agentVmId)}/config",
+                        new Dictionary<string, string> { ["delete"] = scsiSlot }
+                    );
+                }
+
+                if (!string.IsNullOrEmpty(volumeId))
+                {
+                    cleanupConfig = await _api.GetAsync<JsonElement>(
+                        $"{_api.VmPath(agentVmId)}/config"
+                    );
+                    for (int i = 0; i < 16; i++)
+                    {
+                        string key = "unused" + i;
+                        if (
+                            cleanupConfig.TryGetProperty(key, out JsonElement unusedEl)
+                            && unusedEl.GetString() == volumeId
+                        )
+                        {
+                            await _api.PostRawAsync(
+                                $"{_api.VmPath(agentVmId)}/unlink",
+                                new Dictionary<string, string> { ["idlist"] = key, ["force"] = "1" }
+                            );
+                            break;
+                        }
+                    }
+                }
+            }
+            catch (Exception cleanupEx)
+            {
+                _logger.LogWarning(cleanupEx, "Cleanup after failed DiskPassthrough also failed");
+            }
+            throw;
+        }
     }
 
     public async Task ConfigureLocaleAsync(

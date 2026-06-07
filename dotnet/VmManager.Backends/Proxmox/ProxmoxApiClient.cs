@@ -51,6 +51,8 @@ public class ProxmoxApiClient
     public string DefaultBridge => _settings.DefaultBridge;
     public int VmIdRangeStart => _settings.VmIdRangeStart;
     public int VmIdRangeEnd => _settings.VmIdRangeEnd;
+    public string ImportMethod => _settings.ImportMethod;
+    public int AgentVmId => _settings.AgentVmId;
 
     public async Task<T> GetAsync<T>(string path)
     {

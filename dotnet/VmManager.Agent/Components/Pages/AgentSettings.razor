@@ -77,6 +77,21 @@ else
                         </MudItem>
                     </MudGrid>
 
+                    <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Import Method</MudText>
+                    <MudGrid>
+                        <MudItem xs="12" md="4">
+                            <MudSelect T="string" @bind-Value="_proxmox.ImportMethod" Label="Import Method">
+                                <MudSelectItem Value="@("Standard")">Standard (agent on Proxmox host)</MudSelectItem>
+                                <MudSelectItem Value="@("DiskPassthrough")">Disk Passthrough (agent in VM)</MudSelectItem>
+                            </MudSelect>
+                        </MudItem>
+                        <MudItem xs="12" md="4">
+                            <MudNumericField @bind-Value="_proxmox.AgentVmId" Label="Agent VM ID"
+                                             HelperText="VMID of the VM running this agent"
+                                             Min="100" Disabled="@(_proxmox.ImportMethod != "DiskPassthrough")" />
+                        </MudItem>
+                    </MudGrid>
+
                     <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Pool Limits</MudText>
                     <MudGrid>
                         <MudItem xs="12" md="4">

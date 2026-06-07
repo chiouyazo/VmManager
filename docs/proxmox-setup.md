@@ -212,6 +212,8 @@ Create `/root/.config/VmManager/settings.json`:
 | `VmIdRangeStart` | First VMID in the allowed range (0 = use Proxmox default) |
 | `VmIdRangeEnd` | Last VMID in the allowed range |
 | `DefaultBridge` | Network bridge for VM NICs (default: `vmbr0`) |
+| `ImportMethod` | `Standard` (agent on Proxmox host) or `DiskPassthrough` (agent in a VM) |
+| `AgentVmId` | VMID of the VM running the agent (required for DiskPassthrough) |
 
 | `DefaultVmPassword` | Password for VM guest OS (used by CredSSP proxy) |
 | `RdpDomainSuffix` | DNS wildcard domain for RDP (e.g. `vms.company.com`), leave empty for username-prefix mode |
@@ -300,6 +302,47 @@ Or if using iptables directly:
 iptables -A INPUT -p tcp --dport 18275 -j ACCEPT
 iptables -A INPUT -p tcp --dport 13389 -j ACCEPT
 ```
+
+## Running the Agent on a Separate VM (Disk Passthrough)
+
+When the agent runs inside a Proxmox VM rather than directly on the Proxmox host, the standard import method (`qm importdisk`) is unavailable. The Disk Passthrough method works around this by hot-plugging a temporary SCSI disk to the agent VM, writing the image data locally, then moving the disk to the target VM via the API.
+
+### Agent VM Requirements
+
+The agent VM must have:
+- `scsihw=virtio-scsi-single` (SCSI controller that supports hot-plug)
+- `hotplug=disk,network,usb` (enable disk hot-plug)
+
+These can be set in the Proxmox web UI under VM > Hardware > Options, or via API.
+
+### Configuration
+
+Set in Agent Settings (web UI) or `settings.json`:
+
+```json
+{
+  "Proxmox": {
+    "ImportMethod": "DiskPassthrough",
+    "AgentVmId": 403
+  }
+}
+```
+
+- `ImportMethod`: Set to `DiskPassthrough`
+- `AgentVmId`: The VMID of the VM running the VmManager agent (visible in the Proxmox web UI)
+
+### How It Works
+
+1. Agent creates the target VM via API (empty, with EFI disk)
+2. Agent creates a temporary SCSI disk on its own VM (hot-plugged, same storage as target)
+3. Agent writes the QCOW2 image to the hot-plugged disk using `qemu-img convert`
+4. Agent detaches the disk from itself
+5. Agent moves the disk to the target VM via the `move_disk` API
+6. Target VM has a bootable disk with the imported image
+
+### Permissions
+
+The API token needs VM management permissions on both the agent VM and the target pool. No special storage permissions beyond `AllocateSpace` are required.
 
 ## Known Limitations
 
