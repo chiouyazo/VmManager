@@ -191,12 +191,19 @@ public sealed class RdpCredSspConnectionHandler
             using (vmTcp)
             {
                 // VM TLS + CredSSP
+                string vmUser = settings.DefaultVmUsername;
                 string vmDomain = "";
+                if (vmUser.Contains('\\'))
+                {
+                    string[] parts = vmUser.Split('\\', 2);
+                    vmDomain = parts[0] == "." ? "" : parts[0];
+                    vmUser = parts[1];
+                }
                 (SslStream vmSsl, NegotiateAuthentication nego) =
                     await _vmHandler.AuthenticateAsync(
                         vmNet,
                         vmIp,
-                        settings.DefaultVmUsername,
+                        vmUser,
                         settings.DefaultVmPassword,
                         vmDomain,
                         cancellationToken

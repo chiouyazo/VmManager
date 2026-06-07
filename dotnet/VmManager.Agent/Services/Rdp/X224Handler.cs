@@ -109,10 +109,55 @@ public static class X224Handler
         CancellationToken cancellationToken
     )
     {
-        byte[] buffer = new byte[16384];
-        int read = await stream.ReadAsync(buffer, cancellationToken);
-        if (read == 0)
-            throw new IOException("Connection closed");
-        return buffer.AsSpan(0, read).ToArray();
+        byte[] firstTwo = new byte[2];
+        await ReadExactAsync(stream, firstTwo, cancellationToken);
+
+        int contentLength;
+        byte[] headerExtra = Array.Empty<byte>();
+        if ((firstTwo[1] & 0x80) == 0)
+        {
+            contentLength = firstTwo[1];
+        }
+        else
+        {
+            int lengthBytes = firstTwo[1] & 0x7F;
+            headerExtra = new byte[lengthBytes];
+            await ReadExactAsync(stream, headerExtra, cancellationToken);
+            contentLength = 0;
+            for (int i = 0; i < lengthBytes; i++)
+                contentLength = (contentLength << 8) | headerExtra[i];
+        }
+
+        int headerSize = 2 + headerExtra.Length;
+        byte[] result = new byte[headerSize + contentLength];
+        result[0] = firstTwo[0];
+        result[1] = firstTwo[1];
+        if (headerExtra.Length > 0)
+            headerExtra.CopyTo(result, 2);
+
+        if (contentLength > 0)
+            await ReadExactAsync(
+                stream,
+                result.AsMemory(headerSize, contentLength),
+                cancellationToken
+            );
+
+        return result;
+    }
+
+    private static async Task ReadExactAsync(
+        Stream stream,
+        Memory<byte> buffer,
+        CancellationToken cancellationToken
+    )
+    {
+        int offset = 0;
+        while (offset < buffer.Length)
+        {
+            int read = await stream.ReadAsync(buffer[offset..], cancellationToken);
+            if (read == 0)
+                throw new IOException("Connection closed during read");
+            offset += read;
+        }
     }
 }
