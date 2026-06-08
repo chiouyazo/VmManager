@@ -234,7 +234,7 @@ public class WinRmClient : IDisposable
                 "512000"
             ),
             new XElement(Wsa + "MessageID", $"uuid:{Guid.NewGuid()}"),
-            new XElement(Wsman + "OperationTimeout", "PT60S")
+            new XElement(Wsman + "OperationTimeout", "PT300S")
         );
 
         if (selectorShellId != null)

@@ -868,15 +868,40 @@ public class ProxmoxImportService
         onStatus?.Invoke("Applying configuration...");
         _logger.LogInformation("Applying locale/config on {VmName} via PowerShell", vmName);
 
+        string localeCmd = "";
+        if (needsLocale)
+        {
+            localeCmd =
+                $"reg add \"HKCU\\Control Panel\\International\\User Profile\" /v Languages /t REG_MULTI_SZ /d {locale} /f"
+                + $" & reg add \"HKCU\\Control Panel\\International\\User Profile\\{locale}\" /v {inputMethodTip} /t REG_DWORD /d 1 /f"
+                + $" & reg add \"HKCU\\Control Panel\\International\\User Profile\\{locale}\" /v CachedLanguageName /t REG_SZ /d \"@Winlangdb.dll,-1110\" /f"
+                + " & reg delete \"HKCU\\Control Panel\\International\\User Profile\\en-US\" /f >nul 2>&1"
+                + $" & reg add \"HKCU\\Keyboard Layout\\Preload\" /v 1 /t REG_SZ /d {keyboardLayout} /f"
+                + " & reg delete \"HKCU\\Keyboard Layout\\Preload\" /v 2 /f >nul 2>&1"
+                + $" & reg add \"HKCU\\Control Panel\\International\" /v Locale /t REG_SZ /d {keyboardLayout.PadLeft(8, '0')} /f"
+                + $" & reg add \"HKCU\\Control Panel\\International\" /v LocaleName /t REG_SZ /d {locale} /f"
+                + " & exit /b 0";
+        }
+
         List<string> psCommands = new List<string>();
         if (needsLocale)
         {
-            psCommands.Add($"Set-WinUserLanguageList -LanguageList {locale} -Force");
+            psCommands.Add($"Set-WinSystemLocale -SystemLocale {locale}");
             if (!string.IsNullOrWhiteSpace(timezone))
                 psCommands.Add($"Set-TimeZone -Id \"{timezone}\"");
         }
         if (renameComputer && !string.IsNullOrWhiteSpace(vmName))
             psCommands.Add($"Rename-Computer -NewName \"{vmName}\" -Force");
+
+        if (!string.IsNullOrEmpty(localeCmd))
+        {
+            _logger.LogInformation(
+                "Setting keyboard layout via RunOnce registry on {VmName}",
+                vmName
+            );
+            await Shared.WinRmLocaleHelper.RunWinRmCmdAsync(ip, username, password, localeCmd);
+            _logger.LogInformation("RunOnce registry set on {VmName}", vmName);
+        }
 
         if (psCommands.Count > 0)
         {

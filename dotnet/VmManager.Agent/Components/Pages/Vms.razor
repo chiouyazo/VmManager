@@ -15,6 +15,7 @@
 @inject SnapshotPushService PushService
 @inject FeedResolutionService FeedResolution
 @inject VmCredentialStore CredentialStore
+@inject IVmIpResolver VmIpResolver
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
 @inject IBackgroundTaskManager TaskManager
@@ -55,6 +56,14 @@ else
                                  Variant="Variant.Filled">
                             @vm.State
                         </MudChip>
+                        @if (vm.State == "Running" && _reachability.TryGetValue(vm.Name, out bool reachable))
+                        {
+                            <MudChip T="string" Size="Size.Small" Class="mr-2"
+                                     Color="@(reachable ? Color.Success : Color.Warning)"
+                                     Variant="Variant.Outlined">
+                                @(reachable ? "Ready" : "Unreachable")
+                            </MudChip>
+                        }
                         <MudSpacer />
                         @if (CanDo(vm, Permission.RdpConnect) && vm.State == "Running")
                         {
@@ -193,6 +202,8 @@ else
     </MudGrid>
 }
 
+@implements IDisposable
+
 @code
 {
     private List<VmInstance> _vms = new List<VmInstance>();
@@ -202,6 +213,8 @@ else
     private string _stateFilter = "All";
     private string? _expandedVm;
     private bool _loading = true;
+    private Dictionary<string, bool> _reachability = new Dictionary<string, bool>();
+    private Timer? _reachabilityTimer;
 
     private List<VmSnapshot> _snapshots = new List<VmSnapshot>();
     private bool _snapshotsLoading;
@@ -229,6 +242,14 @@ else
         AppSettings settings = SettingsService.Load();
         _domainSuffix = settings.RdpDomainSuffix;
         await LoadVms();
+        _ = CheckReachabilityAsync();
+        _reachabilityTimer = new Timer(_ => InvokeAsync(CheckReachabilityAsync), null,
+            TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
+    }
+
+    public void Dispose()
+    {
+        _reachabilityTimer?.Dispose();
     }
 
     private async Task LoadVms()
@@ -238,6 +259,43 @@ else
         List<VmInstance> vmInstances = await VmBackend.GetVmsAsync();
         _vms = vmInstances.Where(vm => AuthService.CanViewVm(_user, vm.Name)).ToList();
         _loading = false;
+    }
+
+    private async Task CheckReachabilityAsync()
+    {
+        List<VmInstance> runningVms = _vms.Where(vm => vm.State == "Running").ToList();
+        if (runningVms.Count == 0)
+            return;
+
+        List<Task> checks = new List<Task>();
+        foreach (VmInstance vm in runningVms)
+        {
+            string vmName = vm.Name;
+            checks.Add(Task.Run(async () =>
+            {
+                try
+                {
+                    string? ip = await VmIpResolver.ResolveIpAsync(vmName);
+                    if (ip == null)
+                    {
+                        _reachability[vmName] = false;
+                        return;
+                    }
+                    using System.Net.Sockets.TcpClient tcp = new System.Net.Sockets.TcpClient();
+                    Task connectTask = tcp.ConnectAsync(ip, 3389);
+                    bool connected = await Task.WhenAny(connectTask, Task.Delay(2000)) == connectTask
+                        && tcp.Connected;
+                    _reachability[vmName] = connected;
+                }
+                catch
+                {
+                    _reachability[vmName] = false;
+                }
+            }));
+        }
+
+        await Task.WhenAll(checks);
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ToggleExpand(VmInstance vm)
@@ -293,6 +351,7 @@ else
 
     private void Start(VmInstance vm)
     {
+        _reachability[vm.Name] = false;
         string username = _user.Identity?.Name ?? "";
         TaskManager.StartTask("Starting " + vm.Name, username, async ctx =>
         {
@@ -301,6 +360,7 @@ else
             vm.State = "Running";
             ctx.ReportProgress(1.0, "Started");
             await InvokeAsync(StateHasChanged);
+            _ = CheckReachabilityAsync();
         });
     }
 
@@ -324,6 +384,9 @@ else
             try
             {
                 await VmBackend.DeleteVmAsync(vm.Name);
+                TrackingService.UntrackVm(vm.Name);
+                OwnershipService.RemoveOwner(vm.Name);
+                CredentialStore.RemoveAllForVm(vm.Name);
                 _vms.Remove(vm);
                 Snackbar.Add(vm.Name + " deleted", Severity.Success);
                 StateHasChanged();
