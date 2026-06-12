@@ -10,9 +10,16 @@ string logPath = Path.Combine(
     "agent-.log"
 );
 
-Log.Logger = new LoggerConfiguration()
+LoggerConfiguration logConfig = new LoggerConfiguration()
     .MinimumLevel.Information()
-    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Warning);
+
+if (Environment.GetEnvironmentVariable("VMMANAGER_DEBUG_RDP") == "true")
+{
+    logConfig.MinimumLevel.Override("VmManager.Agent.Services.Rdp", LogEventLevel.Debug);
+}
+
+Log.Logger = logConfig
     .WriteTo.Console()
     .WriteTo.File(logPath, rollingInterval: RollingInterval.Day, retainedFileCountLimit: 14)
     .CreateLogger();

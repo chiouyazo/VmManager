@@ -322,15 +322,21 @@ public class ProxmoxImportService
             templateVmId
         );
 
-        onStatus?.Invoke("Cloning from template...");
+        bool fullClone = _api.FullClone;
+        onStatus?.Invoke(
+            fullClone ? "Creating full clone from template..." : "Cloning from template..."
+        );
+        Dictionary<string, string> cloneParams = new Dictionary<string, string>
+        {
+            ["newid"] = vmid.ToString(),
+            ["name"] = vmName,
+            ["pool"] = _api.PoolId,
+        };
+        if (fullClone)
+            cloneParams["full"] = "1";
         string cloneRaw = await _api.PostRawAsync(
             $"{_api.VmPath(templateVmId)}/clone",
-            new Dictionary<string, string>
-            {
-                ["newid"] = vmid.ToString(),
-                ["name"] = vmName,
-                ["pool"] = _api.PoolId,
-            }
+            cloneParams
         );
         string cloneUpid = JsonDocument
             .Parse(cloneRaw)

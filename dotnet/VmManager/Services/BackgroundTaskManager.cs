@@ -115,6 +115,13 @@ public class BackgroundTaskManager : IBackgroundTaskManager
         RaiseTasksChanged();
     }
 
+    public void RemoveTask(string taskId)
+    {
+        IBackgroundTask? task = _tasks.FirstOrDefault(t => t.Id == taskId);
+        if (task != null)
+            RemoveTask(task);
+    }
+
     private static void DispatchToUi(Action action)
     {
         if (Dispatcher.UIThread.CheckAccess())

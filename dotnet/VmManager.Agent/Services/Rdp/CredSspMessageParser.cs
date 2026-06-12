@@ -4,6 +4,14 @@ namespace VmManager.Agent.Services.Rdp;
 
 public static class CredSspMessageParser
 {
+    public static int ExtractVersion(byte[] tsRequest)
+    {
+        (int seqContent, _) = Asn1Helper.ParseTagLength(tsRequest, 0);
+        (int versionTagContent, _) = Asn1Helper.ParseTagLength(tsRequest, seqContent);
+        (int intContent, _) = Asn1Helper.ParseTagLength(tsRequest, versionTagContent);
+        return tsRequest[intContent];
+    }
+
     public static byte[] ExtractNegoToken(byte[] tsRequest)
     {
         (int seqContent, _) = Asn1Helper.ParseTagLength(tsRequest, 0);

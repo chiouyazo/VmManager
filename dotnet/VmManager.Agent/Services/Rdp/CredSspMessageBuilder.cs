@@ -5,27 +5,33 @@ namespace VmManager.Agent.Services.Rdp;
 
 public static class CredSspMessageBuilder
 {
-    public static byte[] WrapNtlmToken(byte[] ntlmMessage)
+    public static byte[] WrapNtlmToken(byte[] ntlmMessage, int version)
     {
         byte[] octetString = Asn1Helper.Wrap(0x04, ntlmMessage);
         byte[] context0 = Asn1Helper.Wrap(0xA0, octetString);
         byte[] innerSeq = Asn1Helper.Wrap(0x30, context0);
         byte[] outerSeq = Asn1Helper.Wrap(0x30, innerSeq);
         byte[] negoTokens = Asn1Helper.Wrap(0xA1, outerSeq);
-        byte[] version = Asn1Helper.Wrap(0xA0, Asn1Helper.Wrap(0x02, new byte[] { 0x06 }));
-        return Asn1Helper.Wrap(0x30, Asn1Helper.Concat(version, negoTokens));
+        byte[] versionField = Asn1Helper.Wrap(
+            0xA0,
+            Asn1Helper.Wrap(0x02, new byte[] { (byte)version })
+        );
+        return Asn1Helper.Wrap(0x30, Asn1Helper.Concat(versionField, negoTokens));
     }
 
-    public static byte[] BuildPubKeyResponse(byte[] sealedHash, byte[]? nonce)
+    public static byte[] BuildPubKeyResponse(byte[] sealedData, byte[]? nonce, int version)
     {
-        byte[] version = Asn1Helper.Wrap(0xA0, Asn1Helper.Wrap(0x02, new byte[] { 0x06 }));
-        byte[] pubKeyAuth = Asn1Helper.Wrap(0xA3, Asn1Helper.Wrap(0x04, sealedHash));
+        byte[] versionField = Asn1Helper.Wrap(
+            0xA0,
+            Asn1Helper.Wrap(0x02, new byte[] { (byte)version })
+        );
+        byte[] pubKeyAuth = Asn1Helper.Wrap(0xA3, Asn1Helper.Wrap(0x04, sealedData));
         byte[] nonceField =
-            nonce != null
+            (version >= 5 && nonce != null)
                 ? Asn1Helper.Wrap(0xA5, Asn1Helper.Wrap(0x04, nonce))
                 : Array.Empty<byte>();
 
-        byte[] content = Asn1Helper.Concat(Asn1Helper.Concat(version, pubKeyAuth), nonceField);
+        byte[] content = Asn1Helper.Concat(Asn1Helper.Concat(versionField, pubKeyAuth), nonceField);
         return Asn1Helper.Wrap(0x30, content);
     }
 

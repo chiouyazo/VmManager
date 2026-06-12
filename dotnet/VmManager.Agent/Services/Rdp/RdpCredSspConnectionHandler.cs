@@ -75,24 +75,39 @@ public sealed class RdpCredSspConnectionHandler
         try
         {
             // Read client X.224 Connection Request
+            _logger.LogDebug("Reading client X.224 Connection Request...");
             byte[] x224Payload = await X224Handler.ReadPayloadAsync(
                 clientStream,
                 cancellationToken
+            );
+            _logger.LogDebug(
+                "Client X.224 payload: {Length} bytes, hex={Hex}",
+                x224Payload.Length,
+                Convert.ToHexString(x224Payload, 0, Math.Min(32, x224Payload.Length))
             );
 
             // Send X.224 Confirm with PROTOCOL_HYBRID_EX and full flags
             byte[] confirm = X224Handler.BuildConnectionConfirm(0x08, 0x3F);
             await clientStream.WriteAsync(confirm, cancellationToken);
+            _logger.LogDebug("Sent X.224 Confirm (HYBRID_EX, flags=0x3F)");
 
             // TLS handshake with client (captures SNI hostname)
             X509Certificate2 cert = _certificateFactory.GetCertificate();
+            _logger.LogDebug("Starting TLS handshake with client...");
             (SslStream clientSsl, string? sniHostname) =
                 await _clientHandler.PerformTlsHandshakeAsync(
                     clientStream,
                     cert,
                     cancellationToken
                 );
+            _logger.LogDebug(
+                "TLS handshake complete: SNI={Sni}, Protocol={Protocol}, Cipher={Cipher}",
+                sniHostname,
+                clientSsl.SslProtocol,
+                clientSsl.CipherAlgorithm
+            );
 
+            _logger.LogDebug("Starting NTLM exchange...");
             ClientAuthResult authResult = await _clientHandler.PerformNtlmExchangeAsync(
                 clientSsl,
                 cert,

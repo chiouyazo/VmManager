@@ -77,7 +77,7 @@ public sealed class VmCredSspHandler
         if (token1 == null)
             throw new InvalidOperationException("SPNEGO NEGOTIATE failed: " + status1);
 
-        await vmSsl.WriteAsync(CredSspMessageBuilder.WrapNtlmToken(token1), cancellationToken);
+        await vmSsl.WriteAsync(CredSspMessageBuilder.WrapNtlmToken(token1, 6), cancellationToken);
 
         // Step 2: Read NTLM CHALLENGE
         byte[] challengeResponse = await X224Handler.ReadAvailableAsync(vmSsl, cancellationToken);
@@ -102,7 +102,7 @@ public sealed class VmCredSspHandler
         {
             // Send the auth token without pubKeyAuth first
             await vmSsl.WriteAsync(
-                CredSspMessageBuilder.WrapNtlmToken(authToken),
+                CredSspMessageBuilder.WrapNtlmToken(authToken, 6),
                 cancellationToken
             );
 
@@ -119,7 +119,7 @@ public sealed class VmCredSspHandler
                     && status3 == NegotiateAuthenticationStatusCode.ContinueNeeded
                 )
                     await vmSsl.WriteAsync(
-                        CredSspMessageBuilder.WrapNtlmToken(authToken),
+                        CredSspMessageBuilder.WrapNtlmToken(authToken, 6),
                         cancellationToken
                     );
             }
@@ -163,7 +163,7 @@ public sealed class VmCredSspHandler
         }
         else
         {
-            tsRequest = CredSspMessageBuilder.BuildPubKeyResponse(sealedPubKeyAuth, vmNonce);
+            tsRequest = CredSspMessageBuilder.BuildPubKeyResponse(sealedPubKeyAuth, vmNonce, 6);
         }
         await vmSsl.WriteAsync(tsRequest, cancellationToken);
 

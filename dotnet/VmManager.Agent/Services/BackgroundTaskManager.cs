@@ -73,6 +73,15 @@ public class BackgroundTaskManager : IBackgroundTaskManager
         return task;
     }
 
+    public void RemoveTask(string taskId)
+    {
+        if (_tasks.TryRemove(taskId, out AgentBackgroundTask? removed))
+        {
+            _observableTasks.Remove(removed);
+            TasksChanged?.Invoke();
+        }
+    }
+
     public IEnumerable<IBackgroundTask> GetAllTasks() => _tasks.Values;
 
     public IEnumerable<IBackgroundTask> GetTasksForUser(string username)

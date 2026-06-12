@@ -61,6 +61,7 @@ public class ProxmoxApiClient
     public int VmIdRangeEnd => _settingsLoader().VmIdRangeEnd;
     public string ImportMethod => _settingsLoader().ImportMethod;
     public int AgentVmId => _settingsLoader().AgentVmId;
+    public bool FullClone => _settingsLoader().FullClone;
 
     public async Task<T> GetAsync<T>(string path)
     {

@@ -19,5 +19,6 @@ public interface IBackgroundTaskManager
         bool isCancellable = true
     );
     IEnumerable<IBackgroundTask> GetTasksForUser(string username);
+    void RemoveTask(string taskId);
     event Action? TasksChanged;
 }

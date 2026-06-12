@@ -188,6 +188,7 @@
     private void DismissTask(IBackgroundTask task)
     {
         _hiddenTaskIds.Add(task.Id);
+        TaskManager.RemoveTask(task.Id);
         RefreshTasks();
     }
 

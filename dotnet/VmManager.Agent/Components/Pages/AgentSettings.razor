@@ -96,6 +96,9 @@ else
                                              HelperText="VMID of the VM running this agent"
                                              Min="100" Disabled="@(_proxmox.ImportMethod != "DiskPassthrough")" />
                         </MudItem>
+                        <MudItem xs="12" md="4">
+                            <MudCheckBox @bind-Value="_proxmox.FullClone" Label="Full Clone (better disk performance)" />
+                        </MudItem>
                     </MudGrid>
 
                     <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Pool Limits</MudText>

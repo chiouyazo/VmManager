@@ -18,4 +18,5 @@ public class ProxmoxSettings
     public string VmSubnet { get; set; } = "";
     public string ImportMethod { get; set; } = "Standard";
     public int AgentVmId { get; set; }
+    public bool FullClone { get; set; }
 }

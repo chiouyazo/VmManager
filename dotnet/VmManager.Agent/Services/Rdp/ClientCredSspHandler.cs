@@ -50,24 +50,72 @@ public sealed class ClientCredSspHandler
     )
     {
         // Read NTLM NEGOTIATE (Type 1) wrapped in CredSSP TSRequest
+        _logger.LogDebug("Waiting for client NTLM Type 1 (NEGOTIATE)...");
         byte[] credSspNeg = await X224Handler.ReadAvailableAsync(clientSsl, cancellationToken);
+        _logger.LogDebug(
+            "Received CredSSP NEGOTIATE: {Length} bytes, hex={Hex}",
+            credSspNeg.Length,
+            Convert.ToHexString(credSspNeg, 0, Math.Min(64, credSspNeg.Length))
+        );
+
         int negOffset = NtlmType3Parser.FindNtlmssp(credSspNeg);
         if (negOffset < 0)
+        {
+            _logger.LogWarning(
+                "No NTLMSSP signature found in {Length} bytes: {Hex}",
+                credSspNeg.Length,
+                Convert.ToHexString(credSspNeg, 0, Math.Min(128, credSspNeg.Length))
+            );
             throw new InvalidOperationException("No NTLMSSP signature in CredSSP NEGOTIATE");
+        }
+
+        int clientVersion = CredSspMessageParser.ExtractVersion(credSspNeg);
+        int negotiatedVersion = Math.Min(clientVersion, 6);
+        _logger.LogDebug(
+            "NTLM Type 1 found at offset {Offset}, CredSSP clientVersion={ClientVersion}, negotiated={Negotiated}, Type1 flags=0x{Flags:X8}",
+            negOffset,
+            clientVersion,
+            negotiatedVersion,
+            credSspNeg.Length > negOffset + 15
+                ? BitConverter.ToUInt32(credSspNeg, negOffset + 12)
+                : 0
+        );
 
         // Build and send NTLM CHALLENGE (Type 2)
         byte[] serverChallenge = RandomNumberGenerator.GetBytes(8);
         byte[] type2Message = NtlmType2Builder.Build(serverChallenge);
-        byte[] credSspChallenge = CredSspMessageBuilder.WrapNtlmToken(type2Message);
+        byte[] credSspChallenge = CredSspMessageBuilder.WrapNtlmToken(
+            type2Message,
+            negotiatedVersion
+        );
+        _logger.LogDebug(
+            "Sending CredSSP CHALLENGE: {Length} bytes, Type2={Type2Len} bytes",
+            credSspChallenge.Length,
+            type2Message.Length
+        );
         await clientSsl.WriteAsync(credSspChallenge, cancellationToken);
 
         // Read NTLM AUTHENTICATE (Type 3) wrapped in CredSSP TSRequest
+        _logger.LogDebug("Waiting for client NTLM Type 3 (AUTHENTICATE)...");
         byte[] credSspAuth = await X224Handler.ReadAvailableAsync(clientSsl, cancellationToken);
+        _logger.LogDebug(
+            "Received CredSSP AUTHENTICATE: {Length} bytes, hex={Hex}",
+            credSspAuth.Length,
+            Convert.ToHexString(credSspAuth, 0, Math.Min(64, credSspAuth.Length))
+        );
+
         int authOffset = NtlmType3Parser.FindNtlmssp(credSspAuth);
         if (authOffset < 0)
+        {
+            _logger.LogWarning(
+                "No NTLMSSP signature in AUTHENTICATE: {Hex}",
+                Convert.ToHexString(credSspAuth, 0, Math.Min(128, credSspAuth.Length))
+            );
             throw new InvalidOperationException("No NTLMSSP signature in CredSSP AUTHENTICATE");
+        }
 
         ClientAuthResult authResult = NtlmType3Parser.Parse(credSspAuth, authOffset);
+        authResult.CredSspVersion = negotiatedVersion;
         authResult.ClientNonce = CredSspMessageParser.ExtractNonce(credSspAuth);
         authResult.RawCredSspAuth = credSspAuth;
 
@@ -120,11 +168,6 @@ public sealed class ClientCredSspHandler
             certificate.PublicKey.ExportSubjectPublicKeyInfo()
         );
 
-        byte[] expectedClientHash = NtlmCrypto.ComputeClientServerHash(
-            authResult.ClientNonce ?? Array.Empty<byte>(),
-            subjectPublicKey
-        );
-
         byte[]? clientPubKeyAuth = CredSspMessageParser.ExtractPubKeyAuth(credSspAuth, 0);
         if (clientPubKeyAuth == null)
         {
@@ -132,27 +175,37 @@ public sealed class ClientCredSspHandler
             return false;
         }
 
-        _logger.LogInformation(
-            "Client pubKeyAuth: {Length} bytes (should be 48 = 16 sig + 32 encrypted)",
-            clientPubKeyAuth.Length
-        );
-
         byte[] decrypted = NtlmCrypto.Unseal(
             authResult.ExportedSessionKey,
             clientPubKeyAuth,
             clientToServer: true
         );
 
-        bool match = decrypted.SequenceEqual(expectedClientHash);
-        _logger.LogInformation("Client pubKeyAuth verification: {Match}", match);
+        bool match;
+        if (authResult.CredSspVersion >= 5)
+        {
+            byte[] expectedHash = NtlmCrypto.ComputeClientServerHash(
+                authResult.ClientNonce ?? Array.Empty<byte>(),
+                subjectPublicKey
+            );
+            match = decrypted.SequenceEqual(expectedHash);
+        }
+        else
+        {
+            match = decrypted.SequenceEqual(subjectPublicKey);
+        }
+
+        _logger.LogDebug(
+            "pubKeyAuth verification (v{Version}): {Match}",
+            authResult.CredSspVersion,
+            match
+        );
         if (!match)
         {
             _logger.LogWarning(
-                "Session key mismatch. Decrypted={Decrypted}, Expected={Expected}",
-                Convert.ToHexString(decrypted).Substring(0, Math.Min(20, decrypted.Length * 2)),
-                Convert
-                    .ToHexString(expectedClientHash)
-                    .Substring(0, Math.Min(20, expectedClientHash.Length * 2))
+                "pubKeyAuth mismatch. Decrypted={Decrypted}, ExpectedLen={ExpectedLen}",
+                Convert.ToHexString(decrypted, 0, Math.Min(10, decrypted.Length)),
+                authResult.CredSspVersion >= 5 ? 32 : subjectPublicKey.Length
             );
         }
 
@@ -170,20 +223,30 @@ public sealed class ClientCredSspHandler
             certificate.PublicKey.ExportSubjectPublicKeyInfo()
         );
 
-        byte[] serverClientHash = NtlmCrypto.ComputeServerClientHash(
-            authResult.ClientNonce ?? Array.Empty<byte>(),
-            subjectPublicKey
-        );
+        byte[] dataToSeal;
+        if (authResult.CredSspVersion >= 5)
+        {
+            dataToSeal = NtlmCrypto.ComputeServerClientHash(
+                authResult.ClientNonce ?? Array.Empty<byte>(),
+                subjectPublicKey
+            );
+        }
+        else
+        {
+            dataToSeal = (byte[])subjectPublicKey.Clone();
+            dataToSeal[0] = (byte)(dataToSeal[0] + 1);
+        }
 
-        byte[] sealedHash = NtlmCrypto.Seal(
+        byte[] sealedData = NtlmCrypto.Seal(
             authResult.ExportedSessionKey,
-            serverClientHash,
+            dataToSeal,
             serverToClient: true
         );
 
         byte[] response = CredSspMessageBuilder.BuildPubKeyResponse(
-            sealedHash,
-            authResult.ClientNonce
+            sealedData,
+            authResult.ClientNonce,
+            authResult.CredSspVersion
         );
         await clientSsl.WriteAsync(response, cancellationToken);
     }

@@ -10,4 +10,5 @@ public sealed class ClientAuthResult
     public byte[]? ClientNonce { get; set; }
     public string? SniHostname { get; set; }
     public byte[] RawCredSspAuth { get; set; } = Array.Empty<byte>();
+    public int CredSspVersion { get; set; }
 }
