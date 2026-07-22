@@ -1,0 +1,51 @@
+<MudDialog>
+    <DialogContent>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4" Dense="true">@_error</MudAlert>
+        }
+        <MudText Typo="Typo.body2" Class="mb-3">
+            Creates a reusable Proxmox template from <b>@SourceVmName</b>. The VM is full-cloned
+            first, so <b>@SourceVmName</b> stays usable. Others can then create VMs from this template
+            on the Images page.
+        </MudText>
+        <MudTextField @bind-Value="_name" Label="Template Name" Immediate="true" Class="mb-2" />
+        <MudTextField @bind-Value="_description" Label="Description (optional)" Lines="2"
+                      Variant="Variant.Outlined" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" OnClick="Submit">Create Template</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private string _name = "";
+    private string _description = "";
+    private string _error = "";
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public string SourceVmName { get; set; } = "";
+
+    protected override void OnInitialized()
+    {
+        _name = SourceVmName + "-template";
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Submit()
+    {
+        string? validationError = VmNameValidator.GetError(_name);
+        if (validationError != null)
+        {
+            _error = validationError;
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok((_name.Trim(), _description.Trim())));
+    }
+}

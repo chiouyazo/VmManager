@@ -12,4 +12,5 @@ public interface IAppPaths
     string UsersPath { get; }
     string VmOwnersPath { get; }
     string VmSharesPath { get; }
+    string EnvironmentsPath { get; }
 }

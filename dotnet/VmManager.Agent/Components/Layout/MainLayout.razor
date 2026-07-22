@@ -28,6 +28,13 @@
                 </MudNavLink>
             }
             
+            @if (AuthService.HasPermission(_user, Permission.TestEnvManage))
+            {
+                <MudNavLink Href="/test-environments" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Science">
+                    <MudText Typo="Typo.caption">Test Environments</MudText>
+                </MudNavLink>
+            }
+
             @if (AuthService.HasPermission(_user, Permission.UsersManage))
             {
                 <MudNavLink Href="/sessions" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ScreenShare">

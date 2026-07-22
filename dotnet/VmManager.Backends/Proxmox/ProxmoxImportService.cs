@@ -405,6 +405,93 @@ public class ProxmoxImportService
         return vmid;
     }
 
+    /// <summary>
+    /// Turns an existing VM into a reusable Proxmox template. The source VM is
+    /// full-cloned first and the clone is converted, so the original VM stays
+    /// usable. Returns the VMID of the newly created template.
+    /// </summary>
+    public async Task<int> ConvertVmToTemplateAsync(
+        string sourceVmName,
+        string templateName,
+        Action<string>? onStatus = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        onStatus?.Invoke("Resolving source VM...");
+        int sourceVmId = await _vms.ResolveVmIdAsync(sourceVmName);
+
+        onStatus?.Invoke("Allocating template VM ID...");
+        int templateVmId = await _api.GetNextVmIdAsync();
+        _logger.LogInformation(
+            "Creating template '{TemplateName}' (VMID {VmId}) as full clone of VM {Source} (VMID {SourceVmId})",
+            templateName,
+            templateVmId,
+            sourceVmName,
+            sourceVmId
+        );
+
+        onStatus?.Invoke("Cloning VM (full clone)...");
+        string cloneRaw = await _api.PostRawAsync(
+            $"{_api.VmPath(sourceVmId)}/clone",
+            new Dictionary<string, string>
+            {
+                ["newid"] = templateVmId.ToString(),
+                ["name"] = templateName,
+                ["pool"] = _api.PoolId,
+                ["full"] = "1",
+            }
+        );
+        string cloneUpid = JsonDocument
+            .Parse(cloneRaw)
+            .RootElement.GetProperty("data")
+            .GetString()!;
+        await _api.PollTaskAsync(cloneUpid);
+
+        try
+        {
+            onStatus?.Invoke("Converting clone to template...");
+            string templateRaw = await _api.PostRawAsync(
+                $"{_api.VmPath(templateVmId)}/template",
+                null
+            );
+            string templateUpid = JsonDocument
+                .Parse(templateRaw)
+                .RootElement.GetProperty("data")
+                .GetString()!;
+            await _api.PollTaskAsync(templateUpid);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Template conversion failed for VMID {VmId}, cleaning up clone",
+                templateVmId
+            );
+            onStatus?.Invoke("Conversion failed, cleaning up...");
+            try
+            {
+                await _api.DeleteAsync($"{_api.VmPath(templateVmId)}?purge=1");
+            }
+            catch (Exception cleanupEx)
+            {
+                _logger.LogError(
+                    cleanupEx,
+                    "Failed to delete orphaned clone VMID {VmId} in Proxmox",
+                    templateVmId
+                );
+            }
+            throw;
+        }
+
+        onStatus?.Invoke("Template created");
+        _logger.LogInformation(
+            "Template created: '{TemplateName}' (VMID {VmId})",
+            templateName,
+            templateVmId
+        );
+        return templateVmId;
+    }
+
     private string DetectStorageFormat(JsonElement storages)
     {
         if (storages.ValueKind == JsonValueKind.Array)

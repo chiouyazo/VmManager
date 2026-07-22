@@ -22,12 +22,16 @@ public static class Permission
     public const string CatalogImport = "catalog.import";
     public const string CatalogDeleteLocal = "catalog.delete-local";
 
+    public const string TemplateManage = "template.manage";
+
     public const string SettingsView = "settings.view";
     public const string SettingsEditVmDefaults = "settings.edit-vm-defaults";
     public const string SettingsManageFeeds = "settings.manage-feeds";
     public const string SettingsEditScripts = "settings.edit-scripts";
 
     public const string RdpConnect = "rdp.connect";
+
+    public const string TestEnvManage = "testenv.manage";
 
     public const string UsersManage = "users.manage";
 
@@ -55,18 +59,30 @@ public static class Permission
         CatalogBrowse,
         CatalogImport,
         CatalogDeleteLocal,
+        TemplateManage,
         SettingsView,
         SettingsEditVmDefaults,
         SettingsManageFeeds,
         SettingsEditScripts,
         RdpConnect,
+        TestEnvManage,
         UsersManage,
         MonitoringView,
         MonitoringManage,
     ];
 
     public static HashSet<string> DefaultUser { get; } =
-    [VmViewOwn, VmStart, VmStop, VmCreate, SnapshotCreate, CatalogBrowse, SettingsView, RdpConnect];
+    [
+        VmViewOwn,
+        VmStart,
+        VmStop,
+        VmCreate,
+        SnapshotCreate,
+        CatalogBrowse,
+        SettingsView,
+        RdpConnect,
+        TestEnvManage,
+    ];
 
     public static HashSet<string> Shareable { get; } =
     [VmStart, VmStop, VmReset, RdpConnect, SnapshotCreate, SnapshotRestore];

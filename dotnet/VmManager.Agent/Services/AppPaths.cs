@@ -17,4 +17,5 @@ public class AppPaths : IAppPaths
     public string UsersPath => Path.Combine(AppDataDir, "users.json");
     public string VmOwnersPath => Path.Combine(AppDataDir, "vm-owners.json");
     public string VmSharesPath => Path.Combine(AppDataDir, "vm-shares.json");
+    public string EnvironmentsPath => Path.Combine(AppDataDir, "environments.json");
 }

@@ -1,0 +1,57 @@
+@using VmManager.Agent.Services
+
+<MudDialog>
+    <DialogContent>
+        <MudTextField @bind-Value="_key" Label="Key" Required="true" Immediate="true"
+                      HelperText="Stable id, also the VM name basis (e.g. pr-123)." Class="mb-2" />
+        <MudTextField @bind-Value="_image" Label="Image"
+                      HelperText="Local image id/name. Leave empty to use any locally extracted image." Class="mb-2" />
+        <MudTextField @bind-Value="_version" Label="Version (optional)" Class="mb-2" />
+        <MudStack Row="true" Spacing="2">
+            <MudNumericField @bind-Value="_memoryMb" Label="Memory (MB)" Min="1024" Step="1024" />
+            <MudNumericField @bind-Value="_cpuCount" Label="vCPUs" Min="1" Max="64" />
+            <MudNumericField @bind-Value="_ttlMinutes" Label="TTL (minutes)" Min="1"
+                             Max="@EnvironmentService.MaxTtlMinutes" />
+        </MudStack>
+        <MudTextField @bind-Value="_accessEmails" Label="Access emails (comma separated)"
+                      HelperText="Each gets RDP access; unknown emails get an account created." Class="mt-2" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="@(string.IsNullOrWhiteSpace(_key))"
+                   OnClick="Submit">Create</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    private string _key = "";
+    private string _image = "";
+    private string _version = "";
+    private int _memoryMb = 4096;
+    private int _cpuCount = 4;
+    private int _ttlMinutes = EnvironmentService.DefaultTtlMinutes;
+    private string _accessEmails = "";
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Submit()
+    {
+        EnvironmentProvisionRequest request = new EnvironmentProvisionRequest
+        {
+            Key = _key.Trim(),
+            IfExists = EnvironmentExistsBehavior.Replace,
+            Image = _image.Trim(),
+            Version = _version.Trim(),
+            MemoryMb = _memoryMb,
+            CpuCount = _cpuCount,
+            TtlMinutes = _ttlMinutes,
+            AccessEmails = _accessEmails
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList(),
+        };
+        MudDialog.Close(DialogResult.Ok(request));
+    }
+}

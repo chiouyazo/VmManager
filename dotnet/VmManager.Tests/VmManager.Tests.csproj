@@ -23,5 +23,6 @@
     <ProjectReference Include="..\VmManager.Catalog\VmManager.Catalog.csproj" />
     <ProjectReference Include="..\VmManager.Backends\VmManager.Backends.csproj" />
     <ProjectReference Include="..\VmManager\VmManager.csproj" />
+    <ProjectReference Include="..\VmManager.Agent\VmManager.Agent.csproj" />
   </ItemGroup>
 </Project>

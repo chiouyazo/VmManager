@@ -10,6 +10,9 @@ namespace VmManager.Agent.Services.Rdp;
 
 public sealed class VmCredSspHandler
 {
+    private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan AuthTimeout = TimeSpan.FromSeconds(20);
+
     private readonly ILogger<VmCredSspHandler> _logger;
 
     public VmCredSspHandler(ILogger<VmCredSspHandler> logger)
@@ -25,21 +28,45 @@ public sealed class VmCredSspHandler
         byte NegFlags
     )> ConnectAndNegotiateX224Async(string vmIp, int vmPort, CancellationToken cancellationToken)
     {
-        TcpClient tcpClient = new TcpClient();
-        await tcpClient.ConnectAsync(vmIp, vmPort, cancellationToken);
-        NetworkStream netStream = tcpClient.GetStream();
-
-        await netStream.WriteAsync(X224Handler.BuildConnectionRequest(), cancellationToken);
-        byte[] x224Payload = await X224Handler.ReadPayloadAsync(netStream, cancellationToken);
-        (int selectedProtocol, byte negFlags) = X224Handler.ParseConfirmResponse(x224Payload);
-
-        _logger.LogDebug(
-            "VM X.224 negotiated: protocol=0x{Protocol:X}, flags=0x{Flags:X2}",
-            selectedProtocol,
-            negFlags
+        // Bound the whole connect + X.224 negotiation: an unreachable or still-booting VM must
+        // fail fast instead of hanging the client until the OS connect timeout (~21s) or longer.
+        using CancellationTokenSource opCts = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken
         );
+        opCts.CancelAfter(ConnectTimeout);
+        CancellationToken ct = opCts.Token;
 
-        return (tcpClient, netStream, selectedProtocol, negFlags);
+        TcpClient tcpClient = new TcpClient();
+        try
+        {
+            await tcpClient.ConnectAsync(vmIp, vmPort, ct);
+            ProxySocketTuning.Apply(tcpClient.Client, _logger);
+            NetworkStream netStream = tcpClient.GetStream();
+
+            await netStream.WriteAsync(X224Handler.BuildConnectionRequest(), ct);
+            byte[] x224Payload = await X224Handler.ReadPayloadAsync(netStream, ct);
+            (int selectedProtocol, byte negFlags) = X224Handler.ParseConfirmResponse(x224Payload);
+
+            _logger.LogDebug(
+                "VM X.224 negotiated: protocol=0x{Protocol:X}, flags=0x{Flags:X2}",
+                selectedProtocol,
+                negFlags
+            );
+
+            return (tcpClient, netStream, selectedProtocol, negFlags);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            tcpClient.Dispose();
+            throw new TimeoutException(
+                $"Timed out connecting to / negotiating with VM at {vmIp}:{vmPort} after {ConnectTimeout.TotalSeconds:0}s"
+            );
+        }
+        catch
+        {
+            tcpClient.Dispose();
+            throw;
+        }
     }
 
     public async Task<(SslStream SslStream, NegotiateAuthentication Auth)> AuthenticateAsync(
@@ -48,15 +75,27 @@ public sealed class VmCredSspHandler
         string vmUser,
         string vmPassword,
         string vmDomain,
-        CancellationToken cancellationToken
+        CancellationToken outerToken
     )
     {
-        SslStream vmSsl = new SslStream(
-            netStream,
-            leaveInnerStreamOpen: false,
-            (_, _, _, _) => true
+        // Bound the credential exchange so a wedged VM cannot stall the proxy indefinitely.
+        // All awaits below observe this local token, which trips on the outer token or the timeout.
+        using CancellationTokenSource authCts = CancellationTokenSource.CreateLinkedTokenSource(
+            outerToken
         );
-        await vmSsl.AuthenticateAsClientAsync(vmIp);
+        authCts.CancelAfter(AuthTimeout);
+        CancellationToken cancellationToken = authCts.Token;
+
+        SslStream vmSsl = new SslStream(netStream, leaveInnerStreamOpen: false);
+        await vmSsl.AuthenticateAsClientAsync(
+            new SslClientAuthenticationOptions
+            {
+                TargetHost = vmIp,
+                // The proxy MITMs the RDP session, so VM RDP certs are self-signed by design.
+                RemoteCertificateValidationCallback = (_, _, _, _) => true,
+            },
+            cancellationToken
+        );
         _logger.LogDebug("VM TLS handshake complete: {Protocol}", vmSsl.SslProtocol);
 
         NegotiateAuthentication nego = new NegotiateAuthentication(

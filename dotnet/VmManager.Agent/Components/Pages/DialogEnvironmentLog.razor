@@ -1,0 +1,23 @@
+<MudDialog>
+    <DialogContent>
+        <MudPaper Elevation="0" Class="pa-2" Style="max-height: 60vh; overflow: auto; background: var(--mud-palette-background-grey);">
+            <pre style="white-space: pre-wrap; word-break: break-word; margin: 0; font-size: 0.8rem;">@LogText</pre>
+        </MudPaper>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter]
+    public string Title { get; set; } = "";
+
+    [Parameter]
+    public string LogText { get; set; } = "";
+
+    private void Close() => MudDialog.Close();
+}

@@ -9,6 +9,10 @@ namespace VmManager.Agent.Services.Rdp;
 
 public sealed class RdpCredSspConnectionHandler
 {
+    // SEC_E_LOGON_DENIED. Surfaced to the client (mstsc) as a clean "logon attempt failed"
+    // instead of leaving it to hang until its own timeout.
+    private const uint SecELogonDenied = 0x8009030C;
+
     private readonly ILogger<RdpCredSspConnectionHandler> _logger;
     private readonly ClientCredSspHandler _clientHandler;
     private readonly VmCredSspHandler _vmHandler;
@@ -124,6 +128,7 @@ public sealed class RdpCredSspConnectionHandler
             catch (InvalidOperationException ex)
             {
                 _logger.LogWarning("VM resolution failed: {Message}", ex.Message);
+                await SendCredSspError(clientSsl, SecELogonDenied, cancellationToken);
                 return;
             }
 
@@ -142,14 +147,14 @@ public sealed class RdpCredSspConnectionHandler
                     "User {Username} has no NT hash (needs password reset or login)",
                     username
                 );
-                await SendCredSspError(clientSsl, 0x8009030C, cancellationToken);
+                await SendCredSspError(clientSsl, SecELogonDenied, cancellationToken);
                 return;
             }
 
             if (!_clientHandler.DeriveSessionKey(authResult, ntHash))
             {
                 _logger.LogWarning("Failed to derive session key for user {Username}", username);
-                await SendCredSspError(clientSsl, 0x8009030C, cancellationToken);
+                await SendCredSspError(clientSsl, SecELogonDenied, cancellationToken);
                 return;
             }
 
@@ -160,24 +165,21 @@ public sealed class RdpCredSspConnectionHandler
                     "Invalid credentials for user {Username} (pubKeyAuth verification failed)",
                     username
                 );
-                await SendCredSspError(clientSsl, 0x8009030C, cancellationToken);
+                await SendCredSspError(clientSsl, SecELogonDenied, cancellationToken);
                 return;
             }
 
-            // Send CredSSP v6 pubKeyAuth response
-            await _clientHandler.SendPubKeyResponseAsync(
-                clientSsl,
-                authResult,
-                cert,
-                cancellationToken
-            );
-
-            await _clientHandler.ReadTsCredentialsAsync(clientSsl, cancellationToken);
-
+            // Authorize and resolve the target BEFORE proving the server and accepting credentials.
+            // Per MS-CSSP 3.1.5 the server may answer the client's pubKeyAuth with an errorCode
+            // TSRequest (the client then fails immediately). Once we send our pubKeyAuth response and
+            // the client submits authInfo (TSCredentials), the CredSSP exchange is finished and a
+            // late errorCode is not part of the documented sequence. So every rejection that should
+            // surface to the client as a clean error MUST happen here, in this window.
             UserAccount? user = _userService.GetByUsername(username);
             if (user == null)
             {
                 _logger.LogWarning("User {Username} not found", username);
+                await SendCredSspError(clientSsl, SecELogonDenied, cancellationToken);
                 return;
             }
 
@@ -187,7 +189,7 @@ public sealed class RdpCredSspConnectionHandler
                     "User {Username} must change password before connecting to VMs",
                     username
                 );
-                await SendCredSspError(clientSsl, 0x8009030C, cancellationToken);
+                await SendCredSspError(clientSsl, SecELogonDenied, cancellationToken);
                 return;
             }
 
@@ -196,6 +198,7 @@ public sealed class RdpCredSspConnectionHandler
             if (!_authorizationService.CanAccessVm(principal, vmName, Permission.RdpConnect))
             {
                 _logger.LogWarning("User {Username} cannot access VM {VmName}", username, vmName);
+                await SendCredSspError(clientSsl, SecELogonDenied, cancellationToken);
                 return;
             }
 
@@ -203,8 +206,20 @@ public sealed class RdpCredSspConnectionHandler
             if (string.IsNullOrEmpty(vmIp))
             {
                 _logger.LogWarning("Cannot resolve IP for VM {VmName}", vmName);
+                await SendCredSspError(clientSsl, SecELogonDenied, cancellationToken);
                 return;
             }
+
+            // Authorized: prove the server to the client (CredSSP pubKeyAuth response), then accept
+            // and discard its delegated credentials (the proxy uses its own VM credentials).
+            await _clientHandler.SendPubKeyResponseAsync(
+                clientSsl,
+                authResult,
+                cert,
+                cancellationToken
+            );
+
+            await _clientHandler.ReadTsCredentialsAsync(clientSsl, cancellationToken);
 
             // Connect to VM and do X.224
             AppSettings settings = _settingsService.Load();
@@ -246,6 +261,14 @@ public sealed class RdpCredSspConnectionHandler
                 RdpSession session = _sessionStore.CreateSession(vmName, vmIp, username);
                 session.State = RdpSessionState.Active;
 
+                // Link the per-session token so ForceDisconnect / share-revocation actually tear
+                // down the live relay, not just flip the session's bookkeeping state.
+                using CancellationTokenSource relayCts =
+                    CancellationTokenSource.CreateLinkedTokenSource(
+                        cancellationToken,
+                        session.Cancellation.Token
+                    );
+
                 try
                 {
                     _logger.LogInformation(
@@ -256,7 +279,7 @@ public sealed class RdpCredSspConnectionHandler
                     );
 
                     string connectionId = vmName + "-" + Guid.NewGuid().ToString("N")[..8];
-                    await _relay.RelayAsync(clientSsl, vmSsl, connectionId, cancellationToken);
+                    await _relay.RelayAsync(clientSsl, vmSsl, connectionId, relayCts.Token);
                 }
                 finally
                 {

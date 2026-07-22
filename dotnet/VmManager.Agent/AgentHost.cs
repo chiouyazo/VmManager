@@ -179,6 +179,7 @@ public static class AgentHost
         app.MapRazorComponents<App>().AddInteractiveServerRenderMode().AllowAnonymous();
 
         int rdpProxyPort = builder.Configuration.GetValue("VmManager:RdpProxyPort", 13389);
+        int rdpMaxConnections = builder.Configuration.GetValue("VmManager:RdpMaxConnections", 100);
         if (rdpProxyPort > 0)
         {
             RdpProxyListener rdpProxyListener = app.Services.GetRequiredService<RdpProxyListener>();
@@ -187,7 +188,11 @@ public static class AgentHost
                 {
                     try
                     {
-                        await rdpProxyListener.StartAsync(rdpProxyPort, cancellationToken);
+                        await rdpProxyListener.StartAsync(
+                            rdpProxyPort,
+                            rdpMaxConnections,
+                            cancellationToken
+                        );
                     }
                     catch (Exception ex)
                     {

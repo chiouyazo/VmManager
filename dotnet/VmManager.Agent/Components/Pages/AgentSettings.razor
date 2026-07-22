@@ -257,6 +257,34 @@ else
 
         <MudCard Elevation="2">
             <MudCardHeader>
+                <MudText Typo="Typo.h6">Test Environments</MudText>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudGrid>
+                    <MudItem xs="12" md="4">
+                        <MudNumericField @bind-Value="_settings.DefaultEnvTtlMinutes" Label="Default TTL (minutes)" Min="1"
+                                         HelperText="Applied when a request specifies no TTL." />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudNumericField @bind-Value="_settings.MaxEnvTtlMinutes" Label="Max TTL (minutes)" Min="1"
+                                         HelperText="Cap on TTL and extensions." />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudNumericField @bind-Value="_settings.EnvExpiryWarnLeadMinutes" Label="Expiry warning lead (minutes)" Min="0" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudNumericField @bind-Value="_settings.EnvCleanupIntervalMinutes" Label="Cleanup interval (minutes)" Min="1" />
+                    </MudItem>
+                    <MudItem xs="12" md="8">
+                        <MudTextField @bind-Value="_settings.DevEphemeralFeed" Label="Dev/ephemeral feed"
+                                      HelperText="Feed id/name used for per-branch prerelease builds." />
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+
+        <MudCard Elevation="2">
+            <MudCardHeader>
                 <MudText Typo="Typo.h6">Monitoring</MudText>
             </MudCardHeader>
             <MudCardContent>

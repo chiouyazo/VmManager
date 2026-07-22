@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using VmManager.Agent.Services.Rdp;
@@ -6,9 +7,13 @@ namespace VmManager.Agent.Services;
 
 public sealed class RdpProxyListener
 {
+    private static readonly TimeSpan DrainTimeout = TimeSpan.FromSeconds(10);
+
     private readonly RdpCredSspConnectionHandler _rdpHandler;
     private readonly ILogger<RdpProxyListener> _logger;
+    private readonly ConcurrentDictionary<Task, byte> _activeConnections = new();
     private TcpListener? _listener;
+    private SemaphoreSlim? _connectionLimit;
 
     public RdpProxyListener(
         RdpCredSspConnectionHandler rdpHandler,
@@ -21,11 +26,16 @@ public sealed class RdpProxyListener
         _logger = logger;
     }
 
-    public async Task StartAsync(int port, CancellationToken cancellationToken)
+    public async Task StartAsync(int port, int maxConnections, CancellationToken cancellationToken)
     {
+        _connectionLimit = new SemaphoreSlim(maxConnections, maxConnections);
         _listener = new TcpListener(IPAddress.Any, port);
         _listener.Start();
-        _logger.LogInformation("RDP proxy listening on port {Port}", port);
+        _logger.LogInformation(
+            "RDP proxy listening on port {Port} (max {Max} concurrent connections)",
+            port,
+            maxConnections
+        );
 
         try
         {
@@ -46,11 +56,25 @@ public sealed class RdpProxyListener
                     continue;
                 }
 
+                // Reject immediately when saturated rather than letting connections pile up unbounded.
+                if (!await _connectionLimit.WaitAsync(0))
+                {
+                    _logger.LogWarning(
+                        "RDP proxy at capacity ({Max}); rejecting connection from {Remote}",
+                        maxConnections,
+                        client.Client.RemoteEndPoint
+                    );
+                    client.Dispose();
+                    continue;
+                }
+
+                ProxySocketTuning.Apply(client.Client, _logger);
+
                 _logger.LogInformation(
                     "RDP proxy accepted TCP connection from {Remote}",
                     client.Client.RemoteEndPoint
                 );
-                _ = HandleConnectionAsync(client, cancellationToken);
+                TrackConnection(client, cancellationToken);
             }
         }
         catch (Exception ex)
@@ -60,7 +84,51 @@ public sealed class RdpProxyListener
         finally
         {
             _listener.Stop();
+            await DrainAsync();
             _logger.LogInformation("RDP proxy stopped");
+        }
+    }
+
+    private void TrackConnection(TcpClient client, CancellationToken cancellationToken)
+    {
+        Task task = HandleConnectionAsync(client, cancellationToken);
+        _activeConnections.TryAdd(task, 0);
+        _ = task.ContinueWith(
+            completed =>
+            {
+                _activeConnections.TryRemove(completed, out _);
+                _connectionLimit!.Release();
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default
+        );
+    }
+
+    private async Task DrainAsync()
+    {
+        Task[] pending = _activeConnections.Keys.ToArray();
+        if (pending.Length == 0)
+            return;
+
+        _logger.LogInformation(
+            "Waiting for {Count} active RDP connection(s) to drain...",
+            pending.Length
+        );
+        try
+        {
+            await Task.WhenAll(pending).WaitAsync(DrainTimeout);
+        }
+        catch (TimeoutException)
+        {
+            _logger.LogWarning(
+                "Drain timed out; {Count} connection(s) still active",
+                _activeConnections.Count
+            );
+        }
+        catch
+        {
+            // Individual connection failures are already logged by HandleConnectionAsync.
         }
     }
 

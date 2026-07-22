@@ -21,6 +21,7 @@ public static class AgentServiceCollectionExtensions
         services.AddSingleton<ITempTracker>(sp => sp.GetRequiredService<TempTracker>());
         services.AddSingleton<VmTrackingService>();
         services.AddSingleton<IVmTrackingService>(sp => sp.GetRequiredService<VmTrackingService>());
+        services.AddSingleton<VmTemplateStore>();
         services.AddSingleton<ILocalImageMetadataService, LocalImageMetadataService>();
         services.AddSingleton<BackgroundTaskManager>();
         services.AddSingleton<IBackgroundTaskManager>(sp =>
@@ -83,6 +84,12 @@ public static class AgentServiceCollectionExtensions
         services.AddSingleton<EmailService>();
         services.AddSingleton<QuotaService>();
         services.AddHostedService<StaleVmReminderService>();
+
+        services.AddSingleton<EnvironmentStore>();
+        services.AddSingleton<EnvironmentAccessService>();
+        services.AddSingleton<EnvironmentProvisioner>();
+        services.AddSingleton<EnvironmentService>();
+        services.AddHostedService<ExpiredEnvironmentCleanupService>();
 
         services.AddSingleton<AlertStore>();
         services.AddSingleton<AlertNotifier>();

@@ -3,6 +3,7 @@
 @using System.Security.Claims
 @using Microsoft.JSInterop
 @using VmManager.Agent.Services
+@using VmManager.Backends.Proxmox
 @attribute [Authorize]
 @inject IVmBackend VmBackend
 @inject AuthorizationService AuthService
@@ -19,6 +20,7 @@
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
 @inject IBackgroundTaskManager TaskManager
+@inject IServiceProvider ServiceProvider
 
 <MudStack Row="true" AlignItems="AlignItems.Stretch" Class="mb-4">
     <MudText Typo="Typo.h5" Class="py-2">My VMs</MudText>
@@ -91,6 +93,10 @@ else
                                 <MudMenuItem Icon="@Icons.Material.Filled.Key" OnClick="() => SetVmCredentials(vm)">VM Credentials</MudMenuItem>
                             }
                             <MudMenuItem Icon="@Icons.Material.Filled.Login" OnClick="() => SetMyLogin(vm)">My Login</MudMenuItem>
+                            @if (_canManageTemplates && VmBackend is ProxmoxService)
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.Dashboard" OnClick="() => MakeTemplate(vm)">Make Template</MudMenuItem>
+                            }
                             @if (CanDo(vm, Permission.VmReset))
                             {
                                 <MudMenuItem Icon="@Icons.Material.Filled.RestartAlt" OnClick="() => ResetToBase(vm)">Reset to Base</MudMenuItem>
@@ -213,6 +219,7 @@ else
     private string _stateFilter = "All";
     private string? _expandedVm;
     private bool _loading = true;
+    private bool _canManageTemplates;
     private Dictionary<string, bool> _reachability = new Dictionary<string, bool>();
     private Timer? _reachabilityTimer;
 
@@ -242,6 +249,7 @@ else
         AppSettings settings = SettingsService.Load();
         _domainSuffix = settings.RdpDomainSuffix;
         await LoadVms();
+        _canManageTemplates = AuthService.HasPermission(_user, Permission.TemplateManage);
         _ = CheckReachabilityAsync();
         _reachabilityTimer = new Timer(_ => InvokeAsync(CheckReachabilityAsync), null,
             TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
@@ -430,6 +438,57 @@ else
             { x => x.OwnerUsername, owner },
         };
         await DialogService.ShowAsync<DialogShareVm>("Share " + vm.Name, parameters);
+    }
+
+    private async Task MakeTemplate(VmInstance vm)
+    {
+        DialogParameters<DialogMakeTemplate> parameters = new DialogParameters<DialogMakeTemplate>
+        {
+            { x => x.SourceVmName, vm.Name },
+        };
+        IDialogReference dialog = await DialogService.ShowAsync<DialogMakeTemplate>(
+            "Make Template from " + vm.Name, parameters);
+        DialogResult? result = await dialog.Result;
+
+        if ((result?.Canceled ?? true) || result.Data is not ValueTuple<string, string> data)
+            return;
+
+        if (VmBackend is not ProxmoxService proxmox)
+        {
+            Snackbar.Add("Templates are only supported on Proxmox.", Severity.Warning);
+            return;
+        }
+
+        (string templateName, string description) = data;
+        string username = _user.Identity?.Name ?? "";
+        AppSettings settings = SettingsService.Load();
+        VmOrigin? origin = TrackingService.GetOrigin(vm.Name);
+        VmTemplateStore? store = ServiceProvider.GetService<VmTemplateStore>();
+
+        TaskManager.StartTask("Creating template from " + vm.Name, username, async ctx =>
+        {
+            ctx.ReportProgress(-1, "Cloning VM and converting to template...");
+            int templateVmId = await proxmox.Import.ConvertVmToTemplateAsync(
+                vm.Name, templateName,
+                onStatus: status => ctx.ReportProgress(-1, status),
+                cancellationToken: ctx.Token);
+
+            store?.Add(new VmTemplate
+            {
+                TemplateVmId = templateVmId,
+                Name = templateName,
+                Description = description,
+                CreatedBy = username,
+                CreatedAt = DateTime.UtcNow,
+                SourceVmName = vm.Name,
+                MemoryMb = settings.DefaultMemoryMb,
+                CpuCount = settings.DefaultCpuCount,
+                Origin = origin,
+            });
+
+            ctx.ReportProgress(1.0, "Template created");
+        });
+        Snackbar.Add("Creating template '" + templateName + "' from '" + vm.Name + "'...", Severity.Info);
     }
 
     private async Task ResetToBase(VmInstance vm)

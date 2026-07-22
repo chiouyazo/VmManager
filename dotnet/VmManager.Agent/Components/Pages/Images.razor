@@ -73,7 +73,42 @@ else
         </MudGrid>
     }
 
-    @if (_images.Count == 0 && _localImages.Count == 0)
+    @if (_templates.Count > 0)
+    {
+        <MudText Typo="Typo.h6" Class="mb-2 mt-4">VM Templates</MudText>
+        <MudGrid Class="mb-6">
+            @foreach (VmTemplate tpl in _templates)
+            {
+                <MudItem xs="12" md="6">
+                    <MudCard Elevation="2">
+                        <MudCardHeader>
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.body1" Style="font-weight: 600;">@tpl.Name</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @(string.IsNullOrWhiteSpace(tpl.Description) ? ("From " + tpl.SourceVmName) : tpl.Description) | by @tpl.CreatedBy @tpl.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")
+                                </MudText>
+                            </MudStack>
+                            <MudSpacer />
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">Template</MudChip>
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" Class="ml-2"
+                                       OnClick="() => CreateVmFromTemplate(tpl)"
+                                       Disabled="@(!_canCreateVm)">
+                                Create VM
+                            </MudButton>
+                            @if (_canManageTemplates)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                               Color="Color.Error" Class="ml-1"
+                                               OnClick="() => DeleteTemplate(tpl)" />
+                            }
+                        </MudCardHeader>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+
+    @if (_images.Count == 0 && _localImages.Count == 0 && _templates.Count == 0)
     {
         <div class="empty-state">
             <MudIcon Icon="@Icons.Material.Filled.Inventory2" />
@@ -171,11 +206,13 @@ else
 @code {
     private List<VmImage> _images = new List<VmImage>();
     private List<LocalImage> _localImages = new List<LocalImage>();
+    private List<VmTemplate> _templates = new List<VmTemplate>();
     private string _searchQuery = "";
     private bool _loading = true;
     private bool _canImport;
     private bool _canCreateVm;
     private bool _canDeleteLocal;
+    private bool _canManageTemplates;
     private HashSet<string> _activeImports = new HashSet<string>();
     private ClaimsPrincipal _user = new ClaimsPrincipal();
 
@@ -201,6 +238,7 @@ else
         _canImport = AuthService.HasPermission(_user, Permission.CatalogImport);
         _canCreateVm = AuthService.HasPermission(_user, Permission.VmCreate);
         _canDeleteLocal = AuthService.HasPermission(_user, Permission.CatalogDeleteLocal);
+        _canManageTemplates = AuthService.HasPermission(_user, Permission.TemplateManage);
         await LoadAll();
     }
 
@@ -211,6 +249,7 @@ else
         {
             _images = await CatalogAggregator.LoadCatalogAsync();
             LoadLocalImages();
+            LoadTemplates();
             MarkLocalAvailability();
         }
         catch (Exception ex)
@@ -543,6 +582,90 @@ else
             return false;
         string imageStorageId = Path.GetFileName(localPath);
         return registry.GetTemplateVmId(imageStorageId).HasValue;
+    }
+
+    private void LoadTemplates()
+    {
+        VmTemplateStore? store = ServiceProvider.GetService<VmTemplateStore>();
+        _templates = store?.LoadAll().OrderByDescending(t => t.CreatedAt).ToList()
+            ?? new List<VmTemplate>();
+    }
+
+    private async Task CreateVmFromTemplate(VmTemplate tpl)
+    {
+        if (VmBackend is not ProxmoxService proxmox)
+        {
+            Snackbar.Add("Templates are only supported on Proxmox.", Severity.Warning);
+            return;
+        }
+
+        LocalImage local = new LocalImage { Name = tpl.Name };
+        DialogParameters<DialogCreateVm> parameters = new DialogParameters<DialogCreateVm>
+        {
+            { x => x.LocalImage, local },
+        };
+        IDialogReference dialog = await DialogService.ShowAsync<DialogCreateVm>("Create VM", parameters);
+        DialogResult? result = await dialog.Result;
+
+        if ((result?.Canceled ?? true) || result.Data is not string vmName)
+            return;
+
+        string username = _user.Identity?.Name ?? "";
+        AppSettings settings = SettingsService.Load();
+        int memoryMb = tpl.MemoryMb > 0 ? tpl.MemoryMb : settings.DefaultMemoryMb;
+        int cpuCount = tpl.CpuCount > 0 ? tpl.CpuCount : settings.DefaultCpuCount;
+
+        TaskManager.StartTask("Creating VM: " + vmName, username, async ctx =>
+        {
+            ctx.ReportProgress(-1, "Cloning from template...");
+            await proxmox.Import.CreateVmFromTemplateAsync(
+                tpl.TemplateVmId, vmName, memoryMb, cpuCount,
+                onStatus: status => ctx.ReportProgress(-1, status),
+                cancellationToken: ctx.Token);
+
+            TrackingService.TrackVm(vmName, tpl.Origin);
+            OwnershipService.SetOwner(vmName, username);
+
+            ctx.ReportProgress(-1, "Creating base snapshot...");
+            await VmBackend.CreateSnapshotAsync(vmName, "Base");
+
+            ctx.ReportProgress(1.0, "VM created");
+        });
+        Snackbar.Add("Creating VM '" + vmName + "' in background...", Severity.Info);
+    }
+
+    private async Task DeleteTemplate(VmTemplate tpl)
+    {
+        DialogParameters<DialogConfirm> parameters = new DialogParameters<DialogConfirm>
+        {
+            { x => x.Message, "Delete template '" + tpl.Name + "'? The Proxmox template will be removed and can no longer be used to create VMs." },
+            { x => x.ConfirmText, "Delete" },
+        };
+        IDialogReference dialog = await DialogService.ShowAsync<DialogConfirm>("Delete Template", parameters);
+        DialogResult? result = await dialog.Result;
+
+        if (result?.Canceled ?? true)
+            return;
+
+        try
+        {
+            ProxmoxApiClient? api = ServiceProvider.GetService<ProxmoxApiClient>();
+            if (api != null)
+            {
+                try
+                {
+                    await api.DeleteAsync(api.VmPath(tpl.TemplateVmId) + "?purge=1");
+                }
+                catch { }
+            }
+            ServiceProvider.GetService<VmTemplateStore>()?.Remove(tpl.TemplateVmId);
+            LoadTemplates();
+            Snackbar.Add("Template deleted", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Failed: " + ex.Message, Severity.Error);
+        }
     }
 
     private async Task ImportOrCloneVmAsync(

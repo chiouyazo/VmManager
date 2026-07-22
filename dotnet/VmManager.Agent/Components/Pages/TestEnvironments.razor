@@ -1,0 +1,219 @@
+@page "/test-environments"
+@using System.Security.Claims
+@using VmManager.Agent.Services
+@attribute [Authorize(Policy = Permission.TestEnvManage)]
+@inject EnvironmentService Environments
+@inject BasicAuthStateProvider AuthState
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IBackgroundTaskManager TaskManager
+@implements IDisposable
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h5" Class="py-2">Test Environments</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+               StartIcon="@Icons.Material.Filled.Add" OnClick="ShowCreate">
+        New Environment
+    </MudButton>
+    <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
+</MudStack>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (_envs.Count == 0)
+{
+    <div class="empty-state">
+        <MudIcon Icon="@Icons.Material.Filled.Science" />
+        <MudText Typo="Typo.h6" Color="Color.Secondary">No test environments</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            Create one here, or trigger it from a pull request / Jira ticket.
+        </MudText>
+    </div>
+}
+else
+{
+    <MudGrid>
+        @foreach (EnvironmentView env in _envs)
+        {
+            <MudItem xs="12" md="6">
+                <MudCard Elevation="1">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                <MudText Typo="Typo.body1" Style="font-weight: 600;">@env.Key</MudText>
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Filled"
+                                         Color="@StatusColor(env.Status)">@env.Status</MudChip>
+                                @if (env.Status == EnvironmentStatus.Ready || env.Status == EnvironmentStatus.Expiring)
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@Countdown(env)</MudText>
+                                }
+                            </MudStack>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
+                                <MudMenuItem Icon="@Icons.Material.Filled.ContentCopy" OnClick="() => ShowConnect(env)">
+                                    Connection info
+                                </MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.Schedule" OnClick="() => Extend(env, 60)">
+                                    Extend +1h
+                                </MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.Schedule" OnClick="() => Extend(env, 1440)">
+                                    Extend +1 day
+                                </MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.Description" OnClick="() => ShowLog(env)">
+                                    View provision log
+                                </MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.Delete" IconColor="Color.Error"
+                                             OnClick="() => Destroy(env)">
+                                    Destroy
+                                </MudMenuItem>
+                            </MudMenu>
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">VM: @env.VmName · Owner: @env.Owner</MudText>
+                        @if (env.Labels.Count > 0)
+                        {
+                            <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1" Class="mt-2">
+                                @foreach (KeyValuePair<string, string> kv in env.Labels)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@kv.Key: @kv.Value</MudChip>
+                                }
+                            </MudStack>
+                        }
+                        @if (!string.IsNullOrEmpty(env.RdpTarget))
+                        {
+                            <MudText Typo="Typo.body2" Class="mt-2">RDP: <code>@env.RdpTarget</code></MudText>
+                        }
+                        @if (env.AccessEmails.Count > 0)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                                Access: @string.Join(", ", env.AccessEmails)
+                            </MudText>
+                        }
+                        @if (env.Status == EnvironmentStatus.Failed && !string.IsNullOrEmpty(env.LastError))
+                        {
+                            <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2">@env.LastError</MudAlert>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private List<EnvironmentView> _envs = new List<EnvironmentView>();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        TaskManager.TasksChanged += OnTasksChanged;
+        await Load();
+    }
+
+    private void OnTasksChanged() => InvokeAsync(async () => { await Load(); StateHasChanged(); });
+
+    private async Task Load()
+    {
+        _loading = true;
+        _envs = await Environments.ListAsync();
+        _loading = false;
+    }
+
+    private async Task ShowCreate()
+    {
+        IDialogReference dialog = await DialogService.ShowAsync<DialogCreateTestEnvironment>("New test environment");
+        DialogResult? result = await dialog.Result;
+        if (result is { Canceled: false, Data: EnvironmentProvisionRequest request })
+        {
+            string caller = AuthState.CurrentUsername ?? "admin";
+            ProvisionOutcome outcome = await Environments.ProvisionAsync(request, caller);
+            if (outcome.Status == ProvisionStatus.Accepted)
+                Snackbar.Add($"Provisioning '{outcome.Key}'...", Severity.Info);
+            else
+                Snackbar.Add(outcome.Message ?? outcome.Status.ToString(), Severity.Warning);
+            await Load();
+        }
+    }
+
+    private async Task Extend(EnvironmentView env, int minutes)
+    {
+        DateTime? expires = Environments.Extend(env.Key, minutes);
+        if (expires != null)
+            Snackbar.Add($"'{env.Key}' now expires {expires:u}", Severity.Success);
+        await Load();
+    }
+
+    private async Task Destroy(EnvironmentView env)
+    {
+        bool ok = await Confirm($"Destroy environment '{env.Key}'?",
+            "The VM, shares and credentials will be removed. This cannot be undone.");
+        if (!ok)
+            return;
+        await Environments.DeleteAsync(env.Key);
+        Snackbar.Add($"Destroyed '{env.Key}'", Severity.Success);
+        await Load();
+    }
+
+    private async Task ShowLog(EnvironmentView env)
+    {
+        string log = Environments.GetLogText(env.Key) ?? "(no provision log yet)";
+        DialogParameters<DialogEnvironmentLog> p = new DialogParameters<DialogEnvironmentLog>
+        {
+            { x => x.Title, $"Provision log: {env.Key}" },
+            { x => x.LogText, log },
+        };
+        await DialogService.ShowAsync<DialogEnvironmentLog>($"Provision log: {env.Key}", p);
+    }
+
+    private async Task ShowConnect(EnvironmentView env)
+    {
+        string target = string.IsNullOrEmpty(env.RdpTarget) ? "(not available yet)" : env.RdpTarget;
+        DialogParameters<DialogEnvironmentLog> p = new DialogParameters<DialogEnvironmentLog>
+        {
+            { x => x.Title, $"Connect: {env.Key}" },
+            { x => x.LogText,
+                $"RDP target: {target}\nVM: {env.VmName}\n\nConnect with your VmManager login as username \"{env.VmName}:<your-email>\"; the VM password is injected by the proxy." },
+        };
+        await DialogService.ShowAsync<DialogEnvironmentLog>($"Connect: {env.Key}", p);
+    }
+
+    private async Task<bool> Confirm(string title, string message)
+    {
+        DialogParameters<DialogConfirm> p = new DialogParameters<DialogConfirm>
+        {
+            { x => x.Message, message },
+            { x => x.ConfirmText, "Destroy" },
+        };
+        IDialogReference dialog = await DialogService.ShowAsync<DialogConfirm>(title, p);
+        DialogResult? result = await dialog.Result;
+        return !(result?.Canceled ?? true);
+    }
+
+    private static Color StatusColor(EnvironmentStatus status) => status switch
+    {
+        EnvironmentStatus.Ready => Color.Success,
+        EnvironmentStatus.Provisioning => Color.Info,
+        EnvironmentStatus.Expiring => Color.Warning,
+        EnvironmentStatus.Failed => Color.Error,
+        _ => Color.Default,
+    };
+
+    private static string Countdown(EnvironmentView env)
+    {
+        if (env.ExpiresAt == null)
+            return "";
+        TimeSpan left = env.ExpiresAt.Value - DateTime.UtcNow;
+        if (left <= TimeSpan.Zero)
+            return "expired";
+        if (left.TotalHours >= 1)
+            return $"expires in {(int)left.TotalHours}h {left.Minutes}m";
+        return $"expires in {left.Minutes}m";
+    }
+
+    public void Dispose() => TaskManager.TasksChanged -= OnTasksChanged;
+}

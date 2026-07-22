@@ -1,8 +1,11 @@
+using System.Buffers;
+using System.Diagnostics;
+
 namespace VmManager.Agent.Services;
 
 public class RdpTcpRelay
 {
-    private const int BufferSize = 8192;
+    private const int BufferSize = 64 * 1024;
 
     private readonly ILogger<RdpTcpRelay> _logger;
 
@@ -22,15 +25,16 @@ public class RdpTcpRelay
         using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken
         );
+        long startTimestamp = Stopwatch.GetTimestamp();
 
-        Task clientToTarget = PipeAsync(
+        Task<PipeResult> clientToTarget = PipeAsync(
             clientStream,
             targetStream,
             "client->vm",
             connectionId,
             linkedCts
         );
-        Task targetToClient = PipeAsync(
+        Task<PipeResult> targetToClient = PipeAsync(
             targetStream,
             clientStream,
             "vm->client",
@@ -47,9 +51,35 @@ public class RdpTcpRelay
         {
             _logger.LogDebug(ex, "[{ConnectionId}] Relay ended with error", connectionId);
         }
+
+        PipeResult c2t = await SafeResult(clientToTarget);
+        PipeResult t2c = await SafeResult(targetToClient);
+        TimeSpan duration = Stopwatch.GetElapsedTime(startTimestamp);
+
+        _logger.LogInformation(
+            "[{ConnectionId}] Relay ended after {Duration}: client->vm {C2tBytes} bytes ({C2tReason}), vm->client {T2cBytes} bytes ({T2cReason})",
+            connectionId,
+            duration,
+            c2t.Bytes,
+            c2t.Reason,
+            t2c.Bytes,
+            t2c.Reason
+        );
     }
 
-    private async Task PipeAsync(
+    private static async Task<PipeResult> SafeResult(Task<PipeResult> task)
+    {
+        try
+        {
+            return await task;
+        }
+        catch
+        {
+            return new PipeResult(0, "faulted");
+        }
+    }
+
+    private async Task<PipeResult> PipeAsync(
         Stream source,
         Stream destination,
         string direction,
@@ -57,7 +87,9 @@ public class RdpTcpRelay
         CancellationTokenSource linkedCts
     )
     {
-        byte[] buffer = new byte[BufferSize];
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
+        long total = 0;
+        string reason = "completed";
 
         try
         {
@@ -65,17 +97,39 @@ public class RdpTcpRelay
             {
                 int bytesRead = await source.ReadAsync(buffer, linkedCts.Token);
                 if (bytesRead == 0)
+                {
+                    reason = "peer closed";
                     break;
+                }
 
+                total += bytesRead;
                 await destination.WriteAsync(buffer.AsMemory(0, bytesRead), linkedCts.Token);
                 await destination.FlushAsync(linkedCts.Token);
             }
         }
-        catch (OperationCanceledException) { }
-        catch (IOException) { }
+        catch (OperationCanceledException)
+        {
+            reason = "cancelled";
+        }
+        catch (IOException ex)
+        {
+            reason = "io error: " + ex.Message;
+        }
         finally
         {
+            ArrayPool<byte>.Shared.Return(buffer);
             await linkedCts.CancelAsync();
         }
+
+        _logger.LogDebug(
+            "[{ConnectionId}] {Direction} pipe ended: {Bytes} bytes, {Reason}",
+            connectionId,
+            direction,
+            total,
+            reason
+        );
+        return new PipeResult(total, reason);
     }
+
+    private readonly record struct PipeResult(long Bytes, string Reason);
 }

@@ -42,5 +42,11 @@ public class AppSettings
 
     public int StaleVmReminderDays { get; set; }
 
+    public int DefaultEnvTtlMinutes { get; set; } = 1440;
+    public int MaxEnvTtlMinutes { get; set; } = 4320;
+    public int EnvExpiryWarnLeadMinutes { get; set; } = 120;
+    public int EnvCleanupIntervalMinutes { get; set; } = 15;
+    public string DevEphemeralFeed { get; set; } = "";
+
     public MonitoringSettings? Monitoring { get; set; }
 }
