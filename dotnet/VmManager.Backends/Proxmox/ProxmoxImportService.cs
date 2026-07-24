@@ -984,7 +984,10 @@ public class ProxmoxImportService
                 psCommands.Add($"Set-TimeZone -Id \"{timezone}\"");
         }
         if (renameComputer && !string.IsNullOrWhiteSpace(vmName))
-            psCommands.Add($"Rename-Computer -NewName \"{vmName}\" -Force");
+        {
+            string computerName = Shared.WinRmLocaleHelper.ToWindowsComputerName(vmName);
+            psCommands.Add($"Rename-Computer -NewName \"{computerName}\" -Force");
+        }
 
         if (!string.IsNullOrEmpty(localeCmd))
         {

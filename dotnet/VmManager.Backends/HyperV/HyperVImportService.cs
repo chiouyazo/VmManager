@@ -304,8 +304,9 @@ public class HyperVImportService
 
         onStatus?.Invoke("Running post-creation tasks...");
 
+        string computerName = Shared.WinRmLocaleHelper.ToWindowsComputerName(vmName);
         string renameBlock = renameComputer
-            ? $"Invoke-Command -Session $session -ScriptBlock {{ Rename-Computer -NewName {PowerShellRunner.Q(vmName)} -Force }} -ErrorAction SilentlyContinue"
+            ? $"Invoke-Command -Session $session -ScriptBlock {{ Rename-Computer -NewName {PowerShellRunner.Q(computerName)} -Force }} -ErrorAction SilentlyContinue"
             : "";
 
         string scriptBlock = !string.IsNullOrWhiteSpace(postCreationScript)

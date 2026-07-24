@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 
 namespace VmManager.Backends.Shared;
 
@@ -85,7 +86,8 @@ Copy-UserInternationalSettingsToSystem -WelcomeScreen $true -NewUser $true
     {
         if (renameComputer)
         {
-            string renameScript = $"Rename-Computer -NewName '{Esc(vmName)}' -Force";
+            string computerName = ToWindowsComputerName(vmName);
+            string renameScript = $"Rename-Computer -NewName '{Esc(computerName)}' -Force";
             await RunWinRmPowerShellAsync(ip, username, password, renameScript);
         }
 
@@ -184,6 +186,46 @@ Copy-UserInternationalSettingsToSystem -WelcomeScreen $true -NewUser $true
         throw new TimeoutException(
             $"WinRM on {ip} did not become available within {timeout.TotalSeconds}s"
         );
+    }
+
+    /// <summary>
+    /// Converts a VM name into a valid Windows (NetBIOS) computer name:
+    /// ASCII letters/digits/hyphens only (everything else becomes a hyphen),
+    /// no leading/trailing/repeated hyphens, max 15 characters, never all-numeric.
+    /// Windows rejects names containing '.', spaces or other punctuation, which
+    /// otherwise makes Rename-Computer fail with "The parameter is incorrect".
+    /// </summary>
+    public static string ToWindowsComputerName(string vmName)
+    {
+        if (string.IsNullOrWhiteSpace(vmName))
+            return "WIN";
+
+        System.Text.StringBuilder sb = new System.Text.StringBuilder(vmName.Length);
+        foreach (char c in vmName)
+        {
+            bool ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+            sb.Append(ok ? c : '-');
+        }
+
+        string name = sb.ToString();
+        while (name.Contains("--"))
+            name = name.Replace("--", "-");
+        name = name.Trim('-');
+
+        if (name.Length > 15)
+            name = name[..15].Trim('-');
+
+        if (string.IsNullOrEmpty(name))
+            return "WIN";
+
+        if (name.All(char.IsDigit))
+        {
+            name = "PC-" + name;
+            if (name.Length > 15)
+                name = name[..15].Trim('-');
+        }
+
+        return name;
     }
 
     private static string Esc(string value) => value.Replace("'", "''");
