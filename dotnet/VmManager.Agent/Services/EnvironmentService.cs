@@ -309,6 +309,9 @@ public class EnvironmentService
             _vmTracking.TrackVm(vmName, null);
             _ownership.SetOwner(vmName, env.Owner);
 
+            ctx.ReportProgress(0.3, "Starting VM...");
+            await _backend.StartVmAsync(vmName);
+
             ctx.ReportProgress(0.35, "Waiting for VM IP...");
             string ip = await WaitForIpAsync(vmName, TimeSpan.FromMinutes(5), ctx.Token);
 

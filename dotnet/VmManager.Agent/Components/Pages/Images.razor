@@ -59,7 +59,7 @@ else
                             <MudSpacer />
                             <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
                                        OnClick="() => CreateVmFromLocal(local)"
-                                       Disabled="@(!_canImport)">
+                                       Disabled="@(!_canCreateVm)">
                                 Create VM
                             </MudButton>
                             <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
