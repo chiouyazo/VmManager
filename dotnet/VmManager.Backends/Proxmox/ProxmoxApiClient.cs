@@ -129,6 +129,15 @@ public class ProxmoxApiClient
         }
     }
 
+    public async Task<string> DeleteRawAsync(string path)
+    {
+        using HttpResponseMessage resp = await _http.DeleteAsync(path);
+        string body = await resp.Content.ReadAsStringAsync();
+        if (!resp.IsSuccessStatusCode)
+            throw new ProxmoxApiException((int)resp.StatusCode, body);
+        return body;
+    }
+
     public async Task PollTaskAsync(string upid, TimeSpan? timeout = null)
     {
         timeout ??= TimeSpan.FromMinutes(10);

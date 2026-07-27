@@ -92,9 +92,11 @@ public class ProxmoxSnapshotService
         string snapshotName = ParseSnapshotName(snapshotId);
         int vmid = await _vms.ResolveVmIdAsync(vmName);
         _logger.LogInformation("Deleting snapshot {Snap} for VM {Name}", snapshotName, vmName);
-        await _api.DeleteAsync(
+        string raw = await _api.DeleteRawAsync(
             $"{_api.VmPath(vmid)}/snapshot/{Uri.EscapeDataString(snapshotName)}"
         );
+        string upid = JsonDocument.Parse(raw).RootElement.GetProperty("data").GetString()!;
+        await _api.PollTaskAsync(upid);
     }
 
     public async Task ExportSnapshotAsync(string snapshotId, string destDir)

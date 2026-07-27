@@ -492,6 +492,70 @@ public class ProxmoxImportService
         return templateVmId;
     }
 
+    /// <summary>
+    /// Clones a new independent VM from a specific snapshot of an existing VM,
+    /// using Proxmox's native clone with the <c>snapname</c> parameter. This does
+    /// NOT touch the source VM (no rollback) and works on any storage type.
+    /// The clone gets a fresh NIC (new MAC) so it can run alongside the source.
+    /// Returns the VMID of the new VM.
+    /// </summary>
+    public async Task<int> CloneVmFromSnapshotAsync(
+        string sourceVmName,
+        string snapshotName,
+        string newVmName,
+        Action<string>? onStatus = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        onStatus?.Invoke("Resolving source VM...");
+        int sourceVmId = await _vms.ResolveVmIdAsync(sourceVmName);
+
+        onStatus?.Invoke("Allocating VM ID...");
+        int vmid = await _api.GetNextVmIdAsync();
+        _logger.LogInformation(
+            "Cloning VM {Source} (VMID {SourceVmId}) snapshot {Snap} to {New} (VMID {VmId})",
+            sourceVmName,
+            sourceVmId,
+            snapshotName,
+            newVmName,
+            vmid
+        );
+
+        // Full clone from the snapshot: independent copy, universally supported
+        // (linked clones are only allowed from templates).
+        onStatus?.Invoke("Cloning from snapshot...");
+        string cloneRaw = await _api.PostRawAsync(
+            $"{_api.VmPath(sourceVmId)}/clone",
+            new Dictionary<string, string>
+            {
+                ["newid"] = vmid.ToString(),
+                ["name"] = newVmName,
+                ["pool"] = _api.PoolId,
+                ["snapname"] = snapshotName,
+                ["full"] = "1",
+            }
+        );
+        string cloneUpid = JsonDocument
+            .Parse(cloneRaw)
+            .RootElement.GetProperty("data")
+            .GetString()!;
+        await _api.PollTaskAsync(cloneUpid);
+
+        // Give the clone a fresh NIC so its MAC doesn't collide with the source.
+        onStatus?.Invoke("Configuring network...");
+        string networkParam = "e1000e,bridge=" + _api.DefaultBridge;
+        if (_api.DefaultVlanTag > 0)
+            networkParam += ",tag=" + _api.DefaultVlanTag;
+        await _api.PutAsync(
+            $"{_api.VmPath(vmid)}/config",
+            new Dictionary<string, string> { ["net0"] = networkParam }
+        );
+
+        onStatus?.Invoke("VM cloned from snapshot");
+        _logger.LogInformation("VM cloned from snapshot: {New} (VMID {VmId})", newVmName, vmid);
+        return vmid;
+    }
+
     private string DetectStorageFormat(JsonElement storages)
     {
         if (storages.ValueKind == JsonValueKind.Array)

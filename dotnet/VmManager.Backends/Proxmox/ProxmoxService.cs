@@ -151,28 +151,7 @@ public class ProxmoxService : IVmBackend
 
     public async Task CloneVmFromSnapshotAsync(string vmName, string snapshotName, string newVmName)
     {
-        _logger.LogInformation(
-            "Cloning VM {VmName} snapshot {Snap} to {NewVm}",
-            vmName,
-            snapshotName,
-            newVmName
-        );
-        string tempDir = Path.Combine(Path.GetTempPath(), $"vmm-clone-{Guid.NewGuid():N}");
-        try
-        {
-            Directory.CreateDirectory(tempDir);
-            string compositeId = vmName + ":" + snapshotName;
-            await Snapshots.ExportSnapshotAsync(compositeId, tempDir);
-            await Import.ImportVmAsync(tempDir, "/var/lib/vmmanager", 4096, 2, newVmName);
-        }
-        finally
-        {
-            try
-            {
-                Directory.Delete(tempDir, true);
-            }
-            catch { }
-        }
+        await Import.CloneVmFromSnapshotAsync(vmName, snapshotName, newVmName);
     }
 
     public async Task ResetDiskAsync(string name)

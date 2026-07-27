@@ -509,12 +509,19 @@ else
 
     private async Task CreateSnapshot(VmInstance vm)
     {
+        string? snapshotName = SnapshotNameValidator.Sanitize(_newSnapshotName.Trim());
+        if (snapshotName == null)
+        {
+            Snackbar.Add("Invalid snapshot name.", Severity.Warning);
+            return;
+        }
+
         try
         {
-            await VmBackend.CreateSnapshotAsync(vm.Name, _newSnapshotName.Trim());
+            await VmBackend.CreateSnapshotAsync(vm.Name, snapshotName);
             _newSnapshotName = "";
             _snapshots = await VmBackend.GetSnapshotsAsync(vm.Name);
-            Snackbar.Add("Snapshot created", Severity.Success);
+            Snackbar.Add($"Snapshot '{snapshotName}' created", Severity.Success);
         }
         catch (Exception ex)
         {
@@ -571,6 +578,7 @@ else
             {
                 ctx.ReportProgress(-1, "Cloning from snapshot '" + snapshot.Name + "'...");
                 await VmBackend.CloneVmFromSnapshotAsync(vm.Name, snapshot.Name, newName);
+                TrackingService.TrackVm(newName, TrackingService.GetOrigin(vm.Name));
                 OwnershipService.SetOwner(newName, username);
                 ctx.ReportProgress(1.0, "Clone complete");
             });
